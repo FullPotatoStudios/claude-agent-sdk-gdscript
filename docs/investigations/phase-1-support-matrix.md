@@ -12,7 +12,7 @@ This document narrows the initial target platforms and distribution assumptions 
 | Headless desktop validation runs | Supported in principle | Confirmed locally with the feasibility probe. |
 | Exported desktop app on Linux | Plausible, unverified | Needs direct validation, but external process launching is conceptually aligned with the transport approach. |
 | Exported desktop app on Windows | Plausible, unverified | Needs validation. No current blocker identified, but should be tested explicitly. |
-| Exported desktop app on macOS, unsandboxed | Plausible but risky | Must validate real app-bundle behavior, signing, and external executable lookup. |
+| Exported desktop app on macOS, unsandboxed | Partially validated | Headless packaged-app probe succeeded locally; GUI-mode behavior and signing remain open. |
 | Exported desktop app on macOS with App Sandbox enabled | Not a viable v1 target for external `claude` | Sandboxed apps are limited to embedded helper executables. |
 | App Store distribution on macOS | Not a viable v1 target | Requires sandboxing, which conflicts with launching an external user-installed Claude CLI. |
 | Web export | Out of scope / unsupported | `OS.execute_with_pipe()` is not available on Web. |
@@ -34,6 +34,7 @@ Practical consequence:
 - A macOS-exported app that expects to launch a user-installed `claude` binary from somewhere on the system should not be treated as compatible with App Sandbox or App Store distribution.
 - If exported macOS support is desired in v1, the realistic target is unsandboxed desktop distribution first.
 - Even in unsandboxed builds, the addon should avoid relative executable assumptions and support explicit CLI path configuration.
+- In a packaged exported run, Claude saw the current working directory as the app bundle's `Contents/Resources` directory, not the original project root.
 
 ## CLI policy recommendation
 
@@ -75,6 +76,7 @@ That supports the user's claim that a sibling app can rely on the already instal
 - macOS exported-app validation deserves its own checkpoint, not just editor validation.
 - Auth and transport should be tested separately when possible.
 - Probe runs should use the cheapest model configuration by default: `haiku` with `low` effort.
+- Export validation should distinguish between headless packaged execution and interactive GUI launches.
 
 ## Local evidence worth carrying forward
 
@@ -86,7 +88,7 @@ An existing Godot experiment in another local project already encountered an `OS
 
 1. What exact exported desktop scenarios do we want to claim in the first public release?
 2. Do we want explicit project settings for CLI path discovery and validation?
-3. Should macOS exported support remain experimental until verified with signed app bundles?
+3. Should macOS exported support remain experimental until verified with signed app bundles and GUI-mode launches?
 
 ## Reference sources
 

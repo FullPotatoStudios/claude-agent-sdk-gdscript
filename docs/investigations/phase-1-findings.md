@@ -113,18 +113,46 @@ Implication for Phase 1:
 
 ## Export validation status
 
-A direct exported desktop validation path is now scaffolded:
+A direct exported desktop validation path is now available:
 
 - shared probe helper: `tools/spikes/claude_cli_probe.gd`
 - exported-app runner scene: `tools/spikes/export_probe_runner.tscn`
 - minimal macOS export preset: `export_presets.cfg`
 
-Current blocker in this environment:
+Validated result in this environment:
 
-- the available Godot installation only has web export templates installed locally
-- macOS export requires the macOS template archive for the matching Godot version
+- a locally exported macOS app bundle launched successfully through its packaged executable
+- the exported app, when run with `--headless`, launched the local `claude` binary and completed the same transport probe as the editor/headless run
+- the packaged run observed:
+  - `control_response`
+  - `system/init`
+  - `assistant`
+  - `result`
 
-So the exported-app scenario is prepared but not yet fully validated on this machine.
+Example validation shape:
+
+```bash
+HOME=/tmp/godot-home \
+XDG_DATA_HOME=/tmp/godot-home \
+XDG_CONFIG_HOME=/tmp/godot-config \
+XDG_CACHE_HOME=/tmp/godot-cache \
+"./ClaudeAgentSdkProbe.app/Contents/MacOS/Claude Agent SDK GDScript" \
+  --headless \
+  -- \
+  --claude-path=claude
+```
+
+Observed caveats:
+
+- when launched without `--headless` in this environment, the exported executable exited early with no console output, so GUI-mode validation remains open
+- in the exported app, Claude reported its working directory as the bundle resources directory:
+  - `ClaudeAgentSdkProbe.app/Contents/Resources`
+
+Implications:
+
+- exported desktop validation is now proven for the packaged macOS executable in headless mode
+- the addon should not assume the project root is the current working directory in exported builds
+- resource and path handling should rely on explicit configuration and Godot path APIs, not bundle-relative process assumptions
 
 ## Recommendation after the first probe
 
@@ -138,7 +166,7 @@ But keep the following open until Phase 1 is fully closed:
 
 - exact CLI discovery policy
 - supported platform/export matrix
-- exported macOS behavior
+- exported macOS GUI behavior
 
 ## Initial support recommendation
 
@@ -146,7 +174,7 @@ For v1 planning, assume:
 
 - supported first: local desktop development environments
 - likely supported first: editor use and headless validation
-- unproven: exported desktop applications
+- partially proven: exported desktop applications in headless validation
 - especially risky: macOS sandboxed exports that may restrict launching external executables
 - out of scope for v1 unless proven otherwise: web and mobile
 
@@ -164,7 +192,7 @@ This keeps the addon lighter and avoids making packaging decisions before the tr
 
 ## Next Phase 1 tasks
 
-1. Install or supply the matching desktop export templates and complete one direct exported-app validation.
-2. Decide the concrete addon configuration shape for CLI discovery and override paths.
-3. Confirm how much macOS exported support should be claimed in the first release.
+1. Decide the concrete addon configuration shape for CLI discovery and override paths.
+2. Confirm how much macOS exported support should be claimed in the first release, especially for GUI-mode launches.
+3. Validate at least one additional exported desktop target outside the current sandboxed environment.
 4. Move into upstream feature mapping now that the support assumptions are clearer.

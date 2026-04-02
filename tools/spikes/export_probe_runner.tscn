@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://5qrqn0met7on"]
 
-[ext_resource type="Script" path="res://tools/spikes/export_probe_runner.gd" id="1_gmew0"]
+[ext_resource type="Script" uid="uid://xnofw80mkgot" path="res://tools/spikes/export_probe_runner.gd" id="1_gmew0"]
 
-[node name="ExportProbeRunner" type="Node"]
+[node name="ExportProbeRunner" type="Node" unique_id=969720639]
 script = ExtResource("1_gmew0")
