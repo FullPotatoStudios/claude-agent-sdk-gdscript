@@ -7,3 +7,4 @@ config_version=5
 
 config/name="Claude Agent SDK GDScript"
 config/features=PackedStringArray("4.6")
+run/main_scene="res://tools/spikes/export_probe_runner.tscn"

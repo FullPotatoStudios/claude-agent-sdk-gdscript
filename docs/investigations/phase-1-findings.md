@@ -99,11 +99,32 @@ Current interpretation:
 - The `401` failure in this environment appears separate from the Godot subprocess mechanics.
 - Since another local project reportedly uses the installed `claude` binary successfully, the safest conclusion is that the current auth failure is environment-specific and should not be treated as evidence against the transport architecture.
 
+Cross-check from a sibling project:
+
+- `../t3code-analysis` uses the Claude Agent SDK with a configured Claude binary path.
+- Its adapter forwards the host environment to the SDK runtime (`env: process.env`).
+- That is consistent with using the locally installed Claude CLI and its existing auth state instead of introducing a separate auth layer.
+
 Implication for Phase 1:
 
 - keep transport feasibility and auth behavior as separate concerns
 - prefer probe success criteria that focus on process launch and streamed message flow
 - document that real local validation should be repeated outside this restricted sandbox
+
+## Export validation status
+
+A direct exported desktop validation path is now scaffolded:
+
+- shared probe helper: `tools/spikes/claude_cli_probe.gd`
+- exported-app runner scene: `tools/spikes/export_probe_runner.tscn`
+- minimal macOS export preset: `export_presets.cfg`
+
+Current blocker in this environment:
+
+- the available Godot installation only has web export templates installed locally
+- macOS export requires the macOS template archive for the matching Godot version
+
+So the exported-app scenario is prepared but not yet fully validated on this machine.
 
 ## Recommendation after the first probe
 
@@ -143,7 +164,7 @@ This keeps the addon lighter and avoids making packaging decisions before the tr
 
 ## Next Phase 1 tasks
 
-1. Validate at least one exported desktop scenario directly instead of relying only on editor/headless runs.
+1. Install or supply the matching desktop export templates and complete one direct exported-app validation.
 2. Decide the concrete addon configuration shape for CLI discovery and override paths.
 3. Confirm how much macOS exported support should be claimed in the first release.
 4. Move into upstream feature mapping now that the support assumptions are clearer.

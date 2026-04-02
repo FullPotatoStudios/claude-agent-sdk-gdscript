@@ -46,6 +46,29 @@ For v1:
 
 This is the simplest path that fits the current addon goal and avoids prematurely designing around macOS helper-executable packaging.
 
+## Proposed v1 CLI configuration surface
+
+Based on the current probe work and the sibling `t3code-analysis` project, the addon should likely expose something close to:
+
+- `binary_path: String = "claude"`
+- `inherit_environment: bool = true`
+- `extra_env: Dictionary = {}`
+
+Recommended behavior:
+
+- resolve the CLI from `PATH` by default
+- allow an absolute override path when needed
+- inherit the host process environment by default so existing Claude CLI auth and shell configuration can flow through
+- optionally merge extra environment variables on top for advanced setups
+
+This mirrors the most important practical behavior observed in `t3code-analysis`:
+
+- it stores a Claude `binaryPath`
+- it launches the Agent SDK with that path
+- it forwards `env: process.env`
+
+That supports the user's claim that a sibling app can rely on the already installed/authenticated Claude CLI without an extra auth mechanism.
+
 ## Testing implications
 
 - All transport tests should read both stdout and stderr.
