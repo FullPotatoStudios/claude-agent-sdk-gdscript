@@ -1,0 +1,104 @@
+# Roadmap
+
+## Goal
+
+Port the Claude Agent SDK from Python to GDScript as a Godot addon, while adapting the public integration surface to Godot-native patterns.
+
+## Guiding decisions
+
+- The core SDK should be scene-free and not depend on `Node` lifecycle.
+- Godot-native adapters may expose signals and optional Node wrappers.
+- The addon payload should stay self-contained under `addons/claude_agent_sdk/`.
+- The demo project should validate the addon, but should not be required to consume it.
+- The Python SDK is tracked as an upstream reference, not a runtime dependency.
+
+## Phases
+
+### Phase 1: Feasibility gate
+
+Goal:
+- prove that Godot can run and communicate with the Claude CLI in a way that supports streaming control-protocol behavior
+
+Outputs:
+- subprocess feasibility notes
+- platform/export support assumptions
+- initial CLI provisioning recommendation
+- decision on whether to proceed with the current transport approach
+
+### Phase 2: Upstream mapping and v1 scope
+
+Goal:
+- map the Python SDK into a realistic GDScript v1 scope
+
+Outputs:
+- feature matrix
+- v1 scope cut
+- identified deferred items
+
+### Phase 3: Architecture and repo scaffolding
+
+Goal:
+- turn the preliminary direction into durable repo structure and design decisions
+
+Outputs:
+- ADRs
+- initial addon folder structure
+- documentation layout
+- tooling plan
+
+### Phase 4: Core SDK implementation
+
+Goal:
+- implement transport, protocol, types, parsing, and the initial public API
+
+Outputs:
+- transport abstraction
+- Claude CLI transport spike matured into implementation
+- typed message and options models
+- query/client API
+
+### Phase 5: Secondary SDK capabilities
+
+Goal:
+- implement the highest-value parity features beyond the core conversation loop
+
+Candidate areas:
+- hooks
+- permission handling
+- sessions
+- structured output support
+- custom tool support, if feasible in Godot
+
+### Phase 6: Godot integration layer
+
+Goal:
+- expose the core SDK in Godot-native ways
+
+Outputs:
+- signal-based adapters
+- optional Node facade(s)
+- examples for custom UI integration
+
+### Phase 7: Reusable chat panel and demo validation
+
+Goal:
+- ship a usable reference UI and validate the addon end to end
+
+Outputs:
+- reusable chat panel scene in the addon
+- separate demo project
+- documentation for using the panel and replacing it
+
+### Phase 8: Packaging, release, and parity maintenance
+
+Goal:
+- make the addon easy to distribute and keep aligned with upstream over time
+
+Outputs:
+- release packaging flow
+- parity update checklist in active use
+- upstream ledger updates per sync cycle
+
+## Current focus
+
+Work should currently prioritize Phase 1.
