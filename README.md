@@ -18,7 +18,7 @@ The first hard gate is **Phase 1: subprocess feasibility**. Before porting the S
 The current upstream reference target is:
 
 - Upstream repo: `https://github.com/anthropics/claude-agent-sdk-python`
-- Local sibling checkout: `../claude-agent-sdk-python`
+- Local reference: a sibling checkout of the upstream repo, if available
 - Upstream version: `v0.1.54`
 - Upstream commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
 
@@ -56,6 +56,7 @@ tools/
 
 - Roadmap: `docs/roadmap/roadmap.md`
 - Phase 1 investigation: `docs/investigations/phase-1-feasibility.md`
+- Phase 1 findings: `docs/investigations/phase-1-findings.md`
 - Architecture ADR: `docs/adr/0001-core-architecture.md`
 - Upstream tracking ADR: `docs/adr/0002-upstream-tracking.md`
 - Upstream ledger: `docs/parity/upstream-ledger.md`

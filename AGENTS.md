@@ -13,9 +13,9 @@ Then use these files as the source of truth:
 
 Keep this file minimal. Put durable project knowledge in the docs above instead of expanding `AGENTS.md`.
 
-Local upstream reference repo:
+Local upstream reference:
 
-- `../claude-agent-sdk-python`
+- Prefer a sibling checkout of `claude-agent-sdk-python` if one exists.
 
 Current rule of thumb:
 

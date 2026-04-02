@@ -1,0 +1,9 @@
+; Engine configuration file.
+; Minimal project used for headless feasibility probes and later addon validation.
+
+config_version=5
+
+[application]
+
+config/name="Claude Agent SDK GDScript"
+config/features=PackedStringArray("4.6")

@@ -3,7 +3,7 @@
 ## Current baseline
 
 - Upstream repository: `https://github.com/anthropics/claude-agent-sdk-python`
-- Local reference checkout: `../claude-agent-sdk-python`
+- Local reference checkout: a sibling checkout of the upstream repo, if available
 - Version: `v0.1.54`
 - Commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
 - Reviewed on: `2026-04-02`

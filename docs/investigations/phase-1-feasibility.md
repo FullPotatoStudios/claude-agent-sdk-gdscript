@@ -38,3 +38,8 @@ Phase 1 is successful if we can show all of the following:
 - a written findings summary
 - an initial support matrix
 - a recommendation on whether to proceed with the planned transport architecture
+
+## Current artifacts
+
+- Spike script: `tools/spikes/godot_cli_pipe_probe.gd`
+- Findings summary: `docs/investigations/phase-1-findings.md`
