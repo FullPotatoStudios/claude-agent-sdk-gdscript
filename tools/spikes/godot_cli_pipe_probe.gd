@@ -19,6 +19,8 @@ func _build_command_args() -> PackedStringArray:
         "--verbose",
         "--system-prompt", "",
         "--tools", "",
+        "--model", "haiku",
+        "--effort", "low",
         "--max-turns", "1",
         "--input-format", "stream-json",
     ])

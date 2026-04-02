@@ -48,6 +48,8 @@ The spike launches Claude with:
 - `--input-format stream-json`
 - `--verbose`
 - `--tools ""`
+- `--model haiku`
+- `--effort low`
 - `--max-turns 1`
 
 It then sends:
@@ -66,7 +68,7 @@ The local probe observed all of the following in one run:
 - `assistant`
 - `result`
 
-The run ended with authentication failure because the local Claude session was not logged in, but that did not prevent validation of the subprocess and message-stream mechanics.
+The run ended with authentication failure, but that did not prevent validation of the subprocess and message-stream mechanics.
 
 ## Important caveat
 
@@ -80,6 +82,28 @@ The probe worked once Godot was launched with writable overrides:
 - `XDG_CACHE_HOME=/tmp/godot-cache`
 
 This appears to be a local execution-environment constraint, not a project architecture problem, but it is worth remembering for automated validation.
+
+## Auth findings
+
+The auth issue is real, but it is not a clean signal about transport viability.
+
+Observed behavior:
+
+- With `HOME` redirected to a temporary directory, the Claude CLI reports: `Not logged in · Please run /login`.
+- With the normal home directory, the Claude CLI reaches more of its normal startup state but fails here with an OAuth `401` authentication error.
+- In the Codex sandbox, the CLI also reports startup-hook failures trying to create files under `~/.claude/session-env/`.
+
+Current interpretation:
+
+- Redirecting `HOME` changes Claude's login state because it also changes where the CLI looks for local user state.
+- The `401` failure in this environment appears separate from the Godot subprocess mechanics.
+- Since another local project reportedly uses the installed `claude` binary successfully, the safest conclusion is that the current auth failure is environment-specific and should not be treated as evidence against the transport architecture.
+
+Implication for Phase 1:
+
+- keep transport feasibility and auth behavior as separate concerns
+- prefer probe success criteria that focus on process launch and streamed message flow
+- document that real local validation should be repeated outside this restricted sandbox
 
 ## Recommendation after the first probe
 
@@ -105,6 +129,8 @@ For v1 planning, assume:
 - especially risky: macOS sandboxed exports that may restrict launching external executables
 - out of scope for v1 unless proven otherwise: web and mobile
 
+See also: `docs/investigations/phase-1-support-matrix.md`.
+
 ## CLI provisioning recommendation
 
 Current best direction:
@@ -117,8 +143,7 @@ This keeps the addon lighter and avoids making packaging decisions before the tr
 
 ## Next Phase 1 tasks
 
-1. Make the probe easier to run and document the invocation.
-2. Investigate exported desktop implications, especially macOS.
-3. Define the initial support matrix explicitly.
-4. Decide the v1 CLI path/discovery policy.
-5. Move into upstream feature mapping once those decisions are stable.
+1. Validate at least one exported desktop scenario directly instead of relying only on editor/headless runs.
+2. Decide the concrete addon configuration shape for CLI discovery and override paths.
+3. Confirm how much macOS exported support should be claimed in the first release.
+4. Move into upstream feature mapping now that the support assumptions are clearer.

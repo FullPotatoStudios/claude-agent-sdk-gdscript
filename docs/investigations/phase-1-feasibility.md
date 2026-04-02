@@ -43,3 +43,4 @@ Phase 1 is successful if we can show all of the following:
 
 - Spike script: `tools/spikes/godot_cli_pipe_probe.gd`
 - Findings summary: `docs/investigations/phase-1-findings.md`
+- Support matrix: `docs/investigations/phase-1-support-matrix.md`

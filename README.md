@@ -57,6 +57,7 @@ tools/
 - Roadmap: `docs/roadmap/roadmap.md`
 - Phase 1 investigation: `docs/investigations/phase-1-feasibility.md`
 - Phase 1 findings: `docs/investigations/phase-1-findings.md`
+- Phase 1 support matrix: `docs/investigations/phase-1-support-matrix.md`
 - Architecture ADR: `docs/adr/0001-core-architecture.md`
 - Upstream tracking ADR: `docs/adr/0002-upstream-tracking.md`
 - Upstream ledger: `docs/parity/upstream-ledger.md`
