@@ -2,3 +2,6 @@
 *.import
 *.app/
 *.command
+addons/gdUnit4/
+reports/
+.artifacts/

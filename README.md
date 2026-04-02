@@ -11,11 +11,12 @@ The intended end state is:
 
 ## Current status
 
-This project is still in preliminary work, but the first feasibility gate is now documented.
+This project is still in preliminary work, but the first two planning gates are now documented.
 
-The current focus is **Phase 2: upstream mapping and v1 scope cut**.
+The current focus is **Phase 3: architecture lock-in and repo scaffolding**.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
+Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
 
 The current upstream reference target is:
 
@@ -44,11 +45,16 @@ This is the target structure as implementation begins:
 ```text
 addons/claude_agent_sdk/
   runtime/
+    protocol/
+    transport/
+    messages/
+    parser/
   runtime/adapters/
   ui/
   icons/
 demo/
 docs/
+tests/
 tools/
 ```
 
@@ -62,22 +68,29 @@ tools/
 - Phase 1 support matrix: `docs/investigations/phase-1-support-matrix.md`
 - Architecture ADR: `docs/adr/0001-core-architecture.md`
 - Upstream tracking ADR: `docs/adr/0002-upstream-tracking.md`
+- Godot version ADR: `docs/adr/0003-godot-version-policy.md`
+- Package boundary ADR: `docs/adr/0004-package-boundary.md`
+- Runtime class-shape ADR: `docs/adr/0005-runtime-class-shape.md`
+- Testing ADR: `docs/adr/0006-testing-strategy.md`
 - Upstream ledger: `docs/parity/upstream-ledger.md`
 - Feature matrix: `docs/parity/feature-matrix.md`
 - v1 scope: `docs/parity/v1-scope.md`
 - Contributor workflow: `docs/contributing/workflow.md`
+- Testing workflow: `docs/contributing/testing.md`
 
 ## Planned process
 
 1. Prove Godot subprocess and pipe feasibility with the Claude CLI.
 2. Define the supported platform/export matrix and CLI provisioning policy.
 3. Map upstream Python SDK features into a v1 parity scope.
-4. Lock architecture and tracking decisions in ADRs.
-5. Implement the core transport/protocol/types layers.
-6. Add Godot adapters, then the reusable chat panel, then the demo project.
+4. Lock architecture and scaffolding decisions in ADRs.
+5. Scaffold the addon runtime and test layout.
+6. Implement the core transport/protocol/types layers.
+7. Add Godot adapters, then the reusable chat panel, then the demo project.
 
 ## Important constraints
 
 - The Python SDK is a reference implementation, not something this addon should depend on at runtime.
 - If Asset Library distribution matters, required git submodules should be avoided.
 - Testability matters early: transport, parser, and session behavior should be validated before UI work becomes the main focus.
+- Only `addons/claude_agent_sdk/` is intended to become distributable addon payload; tests and probes are dev-only project content.

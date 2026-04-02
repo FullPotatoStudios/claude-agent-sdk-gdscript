@@ -44,8 +44,9 @@ Goal:
 Outputs:
 - ADRs
 - initial addon folder structure
+- top-level test layout
 - documentation layout
-- tooling plan
+- tooling plan for Godot 4.6 and GdUnit4
 
 ### Phase 4: Core SDK implementation
 
@@ -122,4 +123,4 @@ Outputs:
 
 ## Current focus
 
-Work should currently prioritize Phase 2.
+Work should currently prioritize Phase 3.
