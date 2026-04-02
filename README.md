@@ -11,9 +11,11 @@ The intended end state is:
 
 ## Current status
 
-This project is in preliminary work.
+This project is still in preliminary work, but the first feasibility gate is now documented.
 
-The first hard gate is **Phase 1: subprocess feasibility**. Before porting the SDK, we need to prove that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model.
+The current focus is **Phase 2: upstream mapping and v1 scope cut**.
+
+Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 
 The current upstream reference target is:
 
@@ -62,6 +64,7 @@ tools/
 - Upstream tracking ADR: `docs/adr/0002-upstream-tracking.md`
 - Upstream ledger: `docs/parity/upstream-ledger.md`
 - Feature matrix: `docs/parity/feature-matrix.md`
+- v1 scope: `docs/parity/v1-scope.md`
 - Contributor workflow: `docs/contributing/workflow.md`
 
 ## Planned process

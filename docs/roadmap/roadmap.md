@@ -31,9 +31,10 @@ Goal:
 - map the Python SDK into a realistic GDScript v1 scope
 
 Outputs:
-- feature matrix
-- v1 scope cut
-- identified deferred items
+- detailed feature matrix grouped by subsystem
+- explicit v1 scope cut
+- identified deferred items with reasons
+- implementation order for the first core SDK slice
 
 ### Phase 3: Architecture and repo scaffolding
 
@@ -57,6 +58,24 @@ Outputs:
 - typed message and options models
 - query/client API
 
+Implementation order:
+1. transport abstraction and Claude CLI subprocess transport
+2. process lifecycle rules for cwd, env, stdout, stderr, and exported builds
+3. initialize handshake and control-request routing
+4. typed message/content models and parser
+5. `query(prompt, options)`
+6. `ClaudeSDKClient` core methods:
+   - `connect`
+   - `query`
+   - `receive_messages`
+   - `receive_response`
+   - `disconnect`
+   - `interrupt`
+   - `set_permission_mode`
+   - `set_model`
+   - `get_server_info`
+7. test coverage for transport, parser, one-shot flow, interactive flow, and exported-runtime assumptions
+
 ### Phase 5: Secondary SDK capabilities
 
 Goal:
@@ -65,8 +84,10 @@ Goal:
 Candidate areas:
 - hooks
 - permission handling
-- sessions
 - structured output support
+- context-usage queries
+- MCP status/reconnect/toggle
+- sessions
 - custom tool support, if feasible in Godot
 
 ### Phase 6: Godot integration layer
@@ -101,4 +122,4 @@ Outputs:
 
 ## Current focus
 
-Work should currently prioritize Phase 1.
+Work should currently prioritize Phase 2.

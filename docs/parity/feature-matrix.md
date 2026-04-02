@@ -1,23 +1,151 @@
 # Feature Matrix
 
-This matrix is intentionally rough at the start. It will become more detailed as v1 scope is defined.
+This matrix records the upstream Python SDK surface by subsystem and assigns each capability to a delivery bucket for the GDScript addon.
 
-| Upstream area | Python SDK status | GDScript status | Notes |
-| --- | --- | --- | --- |
-| Query API | Implemented upstream | Not started | Likely core v1 |
-| Interactive client API | Implemented upstream | Not started | Likely core v1 |
-| Transport abstraction | Implemented upstream | Not started | Blocked on feasibility |
-| Claude CLI subprocess transport | Implemented upstream | Not started | Phase 1 gate |
-| Message parsing | Implemented upstream | Not started | Likely core v1 |
-| Typed messages and options | Implemented upstream | Not started | Likely core v1 |
-| Hooks | Implemented upstream | Not started | Scope TBD |
-| Tool permission callbacks | Implemented upstream | Not started | Scope TBD |
-| Session listing and reading | Implemented upstream | Not started | Likely post-core |
-| Session mutation helpers | Implemented upstream | Not started | Likely post-core |
-| SDK MCP tool helpers | Implemented upstream | Not started | Feasibility TBD in Godot |
-| Reusable chat UI | Not part of upstream SDK | Planned here | Godot-specific addition |
-| Demo validation project | Not part of upstream SDK | Planned here | Godot-specific addition |
+Buckets:
 
-## v1 scope notes
+- `v1 core`: required for the first serious implementation target
+- `v1 later`: important parity work after the core conversation loop is stable
+- `deferred`: intentionally outside the first public release
+- `not applicable`: Python-specific or mismatched with the current Godot addon design
 
-Still to be defined after the feasibility gate.
+Phase 1 findings that constrain this matrix:
+
+- macOS exported headless transport is partially validated
+- macOS exported GUI behavior is still unproven
+- auth behavior must stay separate from transport viability
+- exported builds cannot assume the project root is the process working directory
+
+## Public one-shot API
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| One-shot `query(prompt, options)` API | `query.py`, `tests/test_query.py`, `examples/quick_start.py` | Smallest useful SDK entrypoint for scripts and simple tools | transport, parser, core options | `v1 core` | Canonical one-shot API target |
+| String prompt flow | `query.py`, `tests/test_client.py`, `examples/quick_start.py` | Most common call shape for gameplay tools and editor tools | query API, parser | `v1 core` | Should map to a simple `String` prompt |
+| Async/streaming prompt input for one-shot mode | `query.py`, `tests/test_query.py` | Enables parity with upstream streaming input patterns | query API, transport lifecycle | `v1 later` | Useful, but not required for first Godot-facing implementation |
+| Public custom transport injection | `query.py`, `client.py` | Helps advanced embedders and parity testing | transport abstraction | `v1 later` | Keep internal transport abstraction in v1 even if public injection waits |
+
+## Interactive client API
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `ClaudeSDKClient` as the interactive core | `client.py`, `tests/test_streaming_client.py`, `examples/streaming_mode.py` | Basis for chat UIs, tools, and adapters | transport, query control, parser | `v1 core` | Canonical interactive API target |
+| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Must support empty connect and prompt-on-connect |
+| `query()` on connected client | `client.py`, `examples/streaming_mode.py` | Sends follow-up messages in active sessions | connect, transport writes | `v1 core` | Must support session-aware follow-ups |
+| `receive_messages()` | `client.py` | Lowest-level interactive receive loop | parser, message routing | `v1 core` | Primary stream-consumption primitive |
+| `receive_response()` | `client.py` | Convenient per-turn receive loop for UI code | `receive_messages`, result detection | `v1 core` | Stop after `ResultMessage` |
+| `disconnect()` | `client.py` | Needed for predictable shutdown in Godot runtime | transport lifecycle | `v1 core` | Important because there is no Python async context manager equivalent |
+| `interrupt()` | `client.py`, `e2e-tests/test_dynamic_control.py` | Needed for chat UIs and long-running tool use | control protocol | `v1 core` | Explicitly part of the first client spec |
+| `set_permission_mode()` | `client.py`, `e2e-tests/test_dynamic_control.py` | Supports switching from planning to editing flows | control protocol | `v1 core` | Required dynamic control in v1 |
+| `set_model()` | `client.py`, `e2e-tests/test_dynamic_control.py` | Lets clients escalate or cheapen a live session | control protocol | `v1 core` | Required dynamic control in v1 |
+| `get_server_info()` | `client.py` | Exposes initialize result to clients and adapters | initialize flow | `v1 core` | Useful for commands, output styles, capability introspection |
+| `get_context_usage()` | `client.py` | Valuable for advanced UIs and diagnostics | control protocol, typed response models | `v1 later` | Worth adding after core conversation flow |
+| `get_mcp_status()` / reconnect / toggle | `client.py`, `e2e-tests/test_sdk_mcp_tools.py` | Important once MCP parity matters | control protocol, MCP config, typed responses | `v1 later` | Not on the critical path for core chat |
+| `rewind_files()` | `client.py` | Depends on checkpointing and replayed user messages | file checkpointing, message UUIDs, control protocol | `deferred` | High complexity, not needed for first public release |
+| `stop_task()` | `client.py` | Useful only once task notifications and task control are first-class | task messages, control protocol | `deferred` | Post-core behavior |
+| Python async context manager | `client.py` `__aenter__` / `__aexit__` | Convenience only | connect/disconnect | `not applicable` | Use explicit lifecycle methods in GDScript |
+
+## Transport and process management
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Internal transport abstraction | `_internal/transport/__init__.py`, `query.py`, `client.py` | Keeps the core scene-free and testable | none | `v1 core` | Must exist even if only one concrete transport ships first |
+| Claude CLI subprocess transport | `_internal/transport/subprocess_cli.py`, `tests/test_transport.py` | The actual runtime bridge to Claude Code | transport abstraction, OS process APIs | `v1 core` | Phase 1 already validated the direction |
+| CLI path override | `ClaudeAgentOptions.cli_path`, `tests/test_transport.py` | Needed for existing local Claude setups | subprocess transport | `v1 core` | Mirrors sibling project usage |
+| Host environment inheritance with extra env overrides | `ClaudeAgentOptions.env`, subprocess transport, sibling project reference | Needed to reuse installed Claude auth and shell setup | subprocess transport | `v1 core` | Default should inherit host env; explicit `env` adds overrides |
+| Working directory override | `ClaudeAgentOptions.cwd`, `tests/test_client.py` | Needed for project-scoped Claude behavior | subprocess transport | `v1 core` | Must not rely on exported app cwd defaults |
+| Command-building for core options | `tests/test_transport.py` | Defines the minimum supported CLI surface | subprocess transport, core options | `v1 core` | Cover core fields first |
+| stdout and stderr draining | subprocess transport, `e2e-tests/test_stderr_callback.py` | Prevents deadlocks and preserves diagnostics | process lifecycle | `v1 core` | Phase 1 confirmed stderr handling is mandatory |
+| Initialize handshake and control routing | `_internal/query.py`, `tests/test_query.py` | Core to streaming mode and client capability negotiation | transport, parser | `v1 core` | Required for both one-shot and interactive flows |
+| String-prompt stdin lifetime rules | `tests/test_query.py` | Prevents deadlocks around late control requests | initialize flow, result tracking | `v1 core` | Important for hooks/MCP compatibility even before those features ship |
+| CLI discovery fallback search | `_internal/transport/subprocess_cli.py` | Nice UX, but not essential if `claude` on `PATH` plus explicit path works | subprocess transport | `v1 later` | Start with `claude` on `PATH` plus override path |
+| Broader CLI flag passthrough via `extra_args` | `ClaudeAgentOptions.extra_args` | Helps edge cases without widening the stable API too early | subprocess transport | `v1 later` | Useful once core behavior is stable |
+| Bundled CLI inside the SDK package | `_bundled/`, subprocess transport | Upstream convenience for Python packaging | packaging pipeline | `not applicable` | Conflicts with current addon strategy of using a user-installed CLI |
+
+## Message parsing and typed event models
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Raw message parser | `_internal/message_parser.py`, `tests/test_message_parser.py` | Converts CLI JSON into stable GDScript data models | transport | `v1 core` | Core parser target |
+| `TextBlock` / `ToolUseBlock` / `ToolResultBlock` | `types.py`, parser, examples | Needed for ordinary Claude conversations and tool traces | parser, typed models | `v1 core` | Minimum useful block set |
+| `ThinkingBlock` parsing | `types.py`, parser, `e2e-tests/test_include_partial_messages.py` | Keeps parser compatible with richer model responses | parser, typed models | `v1 core` | Low-cost to support once content-block parsing exists |
+| `UserMessage` / `AssistantMessage` / `SystemMessage` / `ResultMessage` | `types.py`, parser, tests | Minimum message model for v1 | parser, typed models | `v1 core` | Explicit v1 target set |
+| Forward-compatible unknown message handling | parser | Prevents older SDK versions from crashing on new CLI events | parser | `v1 core` | Skip unknown message types |
+| Specialized task system messages | parser, `types.py` | Useful once task-oriented features exist | system message parsing | `v1 later` | v1 can fall back to generic `SystemMessage` if needed |
+| `StreamEvent` partial-message model | parser, `e2e-tests/test_include_partial_messages.py` | Needed for token-by-token / delta UIs | parser, partial-message option | `v1 later` | Valuable, but not required for first full chat loop |
+| `RateLimitEvent` model | parser | Useful for UX warnings and dashboards | parser | `v1 later` | Nice parity after core loop is stable |
+
+## Dynamic control operations
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `initialize` request/response | `_internal/query.py`, control protocol types | Required to start streaming mode correctly | transport | `v1 core` | Core protocol capability |
+| `interrupt` control | `_internal/query.py`, `client.py` | Required by interactive chat UIs | initialize flow | `v1 core` | First-class client control operation |
+| `set_permission_mode` control | `_internal/query.py`, `client.py` | Supports plan/edit mode changes mid-session | initialize flow | `v1 core` | In the locked v1 client method set |
+| `set_model` control | `_internal/query.py`, `client.py` | Allows dynamic model changes | initialize flow | `v1 core` | In the locked v1 client method set |
+| `get_server_info` from initialize payload | `client.py` | Lets clients inspect capabilities without extra round trips | initialize flow | `v1 core` | Backed by stored initialize result |
+| Context-usage control | `_internal/query.py`, `client.py` | Useful for advanced diagnostics | initialize flow, typed response | `v1 later` | Post-core |
+| MCP status/reconnect/toggle controls | `_internal/query.py`, `client.py` | Needed once MCP support expands | initialize flow, MCP config | `v1 later` | Post-core |
+| Rewind-files control | control protocol types, `client.py` | Depends on checkpointing and replay | initialize flow, file checkpointing | `deferred` | Not for first release |
+| Stop-task control | control protocol types, `client.py` | Depends on task lifecycle support | initialize flow, task messages | `deferred` | Not for first release |
+
+## Hooks and tool-permission callbacks
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Hook matcher and callback configuration | `types.py`, `_internal/query.py`, `examples/hooks.py`, `e2e-tests/test_hooks.py` | Powerful extension point for advanced apps | initialize flow, callback routing | `v1 later` | Valuable parity, but not needed for core chat |
+| Hook-specific input/output models | `types.py`, hook e2e tests | Needed for safe, typed callback integration | hooks | `v1 later` | Implement with hooks as one slice |
+| Tool-permission callback (`can_use_tool`) | `types.py`, `_internal/query.py`, `examples/tool_permission_callback.py`, `e2e-tests/test_tool_permissions.py` | Important for custom approval UX | initialize flow, permission result models | `v1 later` | High-value after core conversation support |
+| Permission update suggestion/result models | `types.py`, hook and permission tests | Needed to mirror upstream callback semantics | permission callbacks | `v1 later` | Bundle with hook/permission work |
+
+## Sessions and session mutations
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Session listing | `_internal/sessions.py`, `tests/test_sessions.py` | Useful for history browsers and chat restoration | Claude local storage knowledge | `deferred` | Separate concern from live SDK runtime |
+| Session transcript reading | `_internal/sessions.py`, `tests/test_sessions.py` | Needed for conversation history tooling | session listing, transcript parsing | `deferred` | Not required for first runtime addon release |
+| Rename/tag/delete session helpers | `_internal/session_mutations.py`, `tests/test_session_mutations.py` | Useful for history management UIs | session file layout and mutation rules | `deferred` | Clear post-v1 feature family |
+| Session forking helpers | `_internal/session_mutations.py` | Advanced workflow for branching conversation history | session transcript mutation | `deferred` | Too much surface for first release |
+
+## MCP integration and SDK MCP helpers
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| External MCP server config passthrough | `types.py`, transport command building | Important once users need external tool ecosystems | transport, settings/config encoding | `v1 later` | Reasonable after core chat and core options settle |
+| MCP status inspection and live toggling | `client.py`, e2e MCP tests | Operational tooling for advanced sessions | MCP config, control protocol | `v1 later` | Tied to broader MCP story |
+| SDK MCP in-process tool helpers | `__init__.py` tool decorator and SDK MCP helpers, `e2e-tests/test_sdk_mcp_tools.py` | Powerful parity feature, but Python implementation is very language-specific | MCP server runtime, callback plumbing | `deferred` | Revisit with a Godot-native design later |
+| Python decorator-based tool definition API | `__init__.py` | Python convenience layer | language-specific reflection and decorators | `not applicable` | GDScript should use a different registration shape if/when this feature arrives |
+
+## Structured output, agents, settings, and diagnostics
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Core options object (`ClaudeAgentOptions`) | `types.py`, all tests/examples | Main configuration entrypoint for parity | typed models | `v1 core` | Keep the name and role close to upstream |
+| Core option fields: `model`, `effort`, `cwd`, `cli_path`, `env`, `system_prompt`, `allowed_tools`, `disallowed_tools`, `permission_mode`, `max_turns`, `resume`, `session_id` | `types.py`, examples, transport tests | Defines the first stable config surface | transport, client/query APIs | `v1 core` | Locked by Phase 2 decisions |
+| Base tool-set selection (`tools`) | `types.py`, `examples/tools_option.py` | Useful for advanced tool governance | command building | `v1 later` | Start with default tool set plus allow/deny lists |
+| System prompt preset/file variants | `types.py`, transport tests | Good parity with upstream configuration ergonomics | command building | `v1 later` | Core v1 only needs the plain string form |
+| Structured output (`output_format`) | `types.py`, `e2e-tests/test_structured_output.py` | Valuable for game/tool integrations consuming machine-readable results | result parsing, option encoding | `v1 later` | Strong candidate once the normal result flow is stable |
+| Partial-message option (`include_partial_messages`) | `types.py`, `e2e-tests/test_include_partial_messages.py` | Needed for token-delta UIs | stream-event parsing | `v1 later` | Pair with `StreamEvent` support |
+| Stderr callback / debug output plumbing | `types.py`, `examples/stderr_callback_example.py`, `e2e-tests/test_stderr_callback.py` | Important for diagnostics and developer UX | stderr draining | `v1 later` | Internal draining is core; public callback can arrive shortly after |
+| Agent definitions in initialize payload | `types.py`, `examples/agents.py`, `e2e-tests/test_agents_and_settings.py` | Advanced control over sub-agent behavior | initialize flow, typed models | `deferred` | Broad agent parity is out of first release scope |
+| Setting-source controls | `types.py`, `examples/setting_sources.py`, `e2e-tests/test_agents_and_settings.py` | Useful for advanced config control | option encoding, CLI settings model | `deferred` | Not needed for first release |
+| Sandbox, plugin, beta, user, fallback model, max budget, task budget, advanced thinking config, add_dirs, settings passthrough, continue-conversation flag | `types.py`, examples, transport tests | Legitimate parity surface, but too broad for the first stable addon API | command building, CLI settings parity | `deferred` | Revisit after core API and v1-later features land |
+
+## Godot-only additions
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Scene-free core mirroring upstream concepts | project ADRs, roadmap | Keeps parity work testable and portable | core SDK implementation | `v1 core` | Godot-specific architectural rule |
+| Signal-based adapters | project roadmap, ADR 0001 | Godot-native integration surface for games/tools | scene-free core | `v1 later` | Separate layer from the core parity target |
+| Optional Node wrappers | project roadmap, ADR 0001 | Convenience for scene-tree users | adapters | `v1 later` | Add only after adapter semantics are clear |
+| Reusable chat panel | project roadmap | Validation UI and reference implementation | adapters | `deferred` | Important project output, but not part of the core parity target |
+| Demo validation project | project roadmap | End-to-end validation and onboarding | core SDK, adapters, chat panel | `deferred` | Ships after the SDK core is usable |
+
+## Current Phase 2 conclusion
+
+The first implementation target should stay narrow:
+
+- build the scene-free core around `query()`, `ClaudeSDKClient`, and `ClaudeAgentOptions`
+- implement subprocess transport, initialize/control routing, and typed message parsing first
+- keep hooks, permissions, structured output, and MCP status work as the next parity slice
+- leave session tooling, SDK MCP helpers, broad agent/settings parity, and UI work outside the first public release

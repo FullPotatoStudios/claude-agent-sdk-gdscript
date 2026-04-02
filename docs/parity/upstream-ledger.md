@@ -9,6 +9,27 @@
 - Reviewed on: `2026-04-02`
 - Local project phase at pin time: preliminary work / Phase 1 feasibility
 
+## Initial parity cut
+
+- Parity cut reviewed on: `2026-04-03`
+- Local project phase: Phase 2 upstream mapping and v1 scope
+- Core scope direction:
+  - `core chat first`
+  - `mirror upstream`
+- Canonical Phase 2 docs:
+  - `docs/parity/feature-matrix.md`
+  - `docs/parity/v1-scope.md`
+  - `docs/roadmap/roadmap.md`
+
+This parity cut classifies the current upstream SDK surface into:
+
+- `v1 core`
+- `v1 later`
+- `deferred`
+- `not applicable`
+
+The first public implementation target is the scene-free core conversation loop, not full upstream breadth.
+
 ## Update process
 
 For each future upstream sync review:
@@ -21,4 +42,5 @@ For each future upstream sync review:
    - `tests/`
    - `e2e-tests/`
 4. Update `docs/parity/feature-matrix.md`.
-5. Update ADRs or roadmap docs if upstream changes alter assumptions.
+5. Update `docs/parity/v1-scope.md` if the parity cut or implementation order changes.
+6. Update ADRs or roadmap docs if upstream changes alter assumptions.
