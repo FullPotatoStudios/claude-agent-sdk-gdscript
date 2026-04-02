@@ -14,6 +14,8 @@ The addon payload is still only `addons/claude_agent_sdk/`. Tests and probes are
 - Initial test target: Godot `4.6`
 - Current validated local binary example:
   - `/Applications/Godot.app/Contents/MacOS/Godot`
+- Preferred override for contributors:
+  - set `GODOT_BIN=/path/to/your/godot-4.6-binary`
 
 ## GdUnit4 policy
 
@@ -32,6 +34,13 @@ Run the test suite with:
 ```bash
 ./tools/dev/run_tests.sh
 ```
+
+`run_tests.sh` resolves the Godot binary in this order:
+
+1. `GODOT_BIN`
+2. `/Applications/Godot.app/Contents/MacOS/Godot`
+3. `godot4` on `PATH`
+4. `godot` on `PATH`
 
 The default test report directory is:
 

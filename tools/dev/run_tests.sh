@@ -11,6 +11,9 @@ godot_binary="${GODOT_BIN:-}"
 if [ -z "${godot_binary}" ] && [ -x "/Applications/Godot.app/Contents/MacOS/Godot" ]; then
 	godot_binary="/Applications/Godot.app/Contents/MacOS/Godot"
 fi
+if [ -z "${godot_binary}" ] && command -v godot4 >/dev/null 2>&1; then
+	godot_binary="$(command -v godot4)"
+fi
 if [ -z "${godot_binary}" ] && command -v godot >/dev/null 2>&1; then
 	godot_binary="$(command -v godot)"
 fi

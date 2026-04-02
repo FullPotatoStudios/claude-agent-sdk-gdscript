@@ -11,12 +11,13 @@ The intended end state is:
 
 ## Current status
 
-This project is still in preliminary work, but the first two planning gates are now documented.
+This project is still in preliminary work, but the first three planning gates are now documented.
 
-The current focus is **Phase 3: architecture lock-in and repo scaffolding**.
+The current focus is **Phase 4: core SDK implementation**.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
+Phase 3 locked the repo structure, addon boundary, and GdUnit4-based development workflow.
 
 The current upstream reference target is:
 

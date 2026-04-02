@@ -123,4 +123,4 @@ Outputs:
 
 ## Current focus
 
-Work should currently prioritize Phase 3.
+Work should currently prioritize Phase 4.

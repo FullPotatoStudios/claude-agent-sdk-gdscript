@@ -6,6 +6,8 @@ Then use these files as the source of truth:
 
 - `docs/roadmap/roadmap.md`
 - `docs/investigations/phase-1-feasibility.md`
+- `docs/investigations/phase-1-findings.md`
+- `docs/investigations/phase-1-support-matrix.md`
 - `docs/adr/0001-core-architecture.md`
 - `docs/adr/0002-upstream-tracking.md`
 - `docs/adr/0003-godot-version-policy.md`
@@ -29,4 +31,5 @@ Current rule of thumb:
 - track upstream explicitly
 - keep the core scene-free
 - use `RefCounted` for scene-free runtime classes by default
+- prefer the Phase 2 `cli_path` and `env` option shape over earlier draft naming
 - keep the addon payload separate from demo-only content

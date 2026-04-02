@@ -49,18 +49,17 @@ This is the simplest path that fits the current addon goal and avoids prematurel
 
 ## Proposed v1 CLI configuration surface
 
-Based on the current probe work and the sibling `t3code-analysis` project, the addon should likely expose something close to:
+The canonical v1 shape should follow the Phase 2 scope docs and use:
 
-- `binary_path: String = "claude"`
-- `inherit_environment: bool = true`
-- `extra_env: Dictionary = {}`
+- `cli_path: String = "claude"`
+- `env: Dictionary = {}`
 
 Recommended behavior:
 
 - resolve the CLI from `PATH` by default
 - allow an absolute override path when needed
 - inherit the host process environment by default so existing Claude CLI auth and shell configuration can flow through
-- optionally merge extra environment variables on top for advanced setups
+- treat `env` as additive overrides layered on top of the inherited environment
 
 This mirrors the most important practical behavior observed in `t3code-analysis`:
 
@@ -69,6 +68,8 @@ This mirrors the most important practical behavior observed in `t3code-analysis`
 - it forwards `env: process.env`
 
 That supports the user's claim that a sibling app can rely on the already installed/authenticated Claude CLI without an extra auth mechanism.
+
+Earlier draft names such as `binary_path`, `inherit_environment`, and `extra_env` should be treated as superseded planning language rather than the implementation target.
 
 ## Testing implications
 
