@@ -11,17 +11,18 @@ The intended end state is:
 
 ## Current status
 
-The project now has a working Phase 5 runtime under `addons/claude_agent_sdk/runtime/`.
+The project now has a working Phase 6 runtime and integration layer under `addons/claude_agent_sdk/runtime/`.
 
-The current focus has moved from runtime parity expansion into the next Godot integration layer.
+The current focus has moved from the first Godot integration layer toward the reusable chat panel and demo validation phase.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
 Phase 3 locked the repo structure, addon boundary, and GdUnit4-based development workflow.
 Phase 4 delivered the first scene-free runtime with subprocess transport, control-protocol initialization, typed message parsing, a one-shot query API, and an interactive client backed by automated tests.
 Phase 5 added hook callbacks, tool-permission callbacks, partial-message parsing, structured-output/result fields, context/MCP control operations, and an explicit CLI auth-status probe, with runtime validation recorded in `docs/investigations/phase-5-validation.md`.
+Phase 6 added `ClaudeClientAdapter` and `ClaudeClientNode` as thin Godot-native wrappers over the scene-free core, plus adapter-focused tests and lightweight integration examples.
 
-Because `RefCounted` already reserves `connect()` and `disconnect()` for Godot's signal API, the current GDScript-facing client uses `connect_client()` and `disconnect_client()` instead of the upstream-style method names.
+Because `Object` and `RefCounted` already reserve names such as `connect()`, `disconnect()`, and `is_connected()` for Godot's own signal API, the Godot-facing integration layer uses names such as `connect_client()`, `disconnect_client()`, and `is_client_connected()` where needed.
 
 The runtime stays scene-free at the API level, but the subprocess transport still requires an active Godot `SceneTree` so it can dispatch pipe events back onto the main loop safely.
 
@@ -87,6 +88,7 @@ tools/
 - v1 scope: `docs/parity/v1-scope.md`
 - Contributor workflow: `docs/contributing/workflow.md`
 - Testing workflow: `docs/contributing/testing.md`
+- Integration guide: `docs/contributing/integration.md`
 
 ## Planned process
 

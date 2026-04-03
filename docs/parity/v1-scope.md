@@ -105,7 +105,7 @@ These are the next parity slice after the core conversation loop is working and 
 Status note:
 
 - the first six items in this section were implemented in Phase 5
-- signal-based adapters and optional Node wrappers remain outside the runtime-only work completed so far
+- signal-based adapters and optional Node wrappers were implemented in Phase 6
 
 ## Deferred
 

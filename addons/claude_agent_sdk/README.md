@@ -2,7 +2,7 @@
 
 This directory is the future distributable addon payload.
 
-Phase 3 scaffolds the runtime layout only. The implementation is intentionally still thin.
+The addon now contains a working runtime core plus the first Godot integration layer.
 
 Current subtrees:
 

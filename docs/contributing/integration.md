@@ -1,0 +1,60 @@
+# Integration Guide
+
+The addon now exposes three layers for integrating Claude into Godot projects:
+
+- `ClaudeQuery` for one-shot string prompts where you are happy to `await` a `ClaudeMessageStream`
+- `ClaudeSDKClient` for scene-free interactive control over a long-lived Claude session
+- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-native signal-driven integration
+
+## Which layer to use
+
+Use `ClaudeSDKClient` directly when:
+
+- you want the closest surface to the upstream Python SDK
+- your own code is already comfortable working with `await`
+- you want to keep your integration scene-free and fully under your own control
+
+Use `ClaudeClientAdapter` when:
+
+- you want Godot signals without introducing a `Node`
+- you want a thin wrapper that drains the session-wide message stream for you
+- you are building your own game/tool state around typed runtime messages
+
+Use `ClaudeClientNode` when:
+
+- you want scene-tree lifecycle hooks such as `_ready()` and `_exit_tree()`
+- you want signal-based integration from a scene script with minimal glue code
+- you want optional `auto_connect_on_ready` and `auto_disconnect_on_exit`
+
+Because `Object` already defines `is_connected(signal_name, callable)`, the Godot-facing adapter layer uses `is_client_connected()` rather than `is_connected()`.
+
+## Signal-driven flow
+
+`ClaudeClientAdapter` and `ClaudeClientNode` expose the same signals:
+
+- `session_ready(server_info)`
+- `turn_started(prompt, session_id)`
+- `message_received(message)`
+- `turn_message_received(message)`
+- `turn_finished(result_message)`
+- `busy_changed(is_busy)`
+- `error_occurred(message)`
+- `session_closed()`
+
+The adapter owns one background drain of `ClaudeSDKClient.receive_messages()`.
+
+- `message_received` is the continuous session-wide stream
+- `turn_message_received` only covers the currently active turn
+- `turn_finished` fires on the first `ClaudeResultMessage` for that turn
+
+## Scope and limits
+
+The integration layer is intentionally thin.
+
+- It does not replace the scene-free runtime
+- It does not add transcript/history caches
+- It does not add task-specific fanout signals
+- It does not add custom-tool or SDK-hosted MCP abstractions
+- It does not include the reusable chat panel yet
+
+Those remain later-phase work built on top of the runtime and adapter layers.

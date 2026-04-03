@@ -104,6 +104,11 @@ Outputs:
 - optional Node facade(s)
 - examples for custom UI integration
 
+Delivered:
+- `ClaudeClientAdapter` as a signal-based `RefCounted` facade over `ClaudeSDKClient`
+- `ClaudeClientNode` as an optional scene-tree wrapper over the adapter
+- lightweight custom-integration examples and docs
+
 ### Phase 7: Reusable chat panel and demo validation
 
 Goal:
@@ -126,4 +131,4 @@ Outputs:
 
 ## Current focus
 
-Work should currently prioritize Phase 6.
+Work should currently prioritize Phase 7.

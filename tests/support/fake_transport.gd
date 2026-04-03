@@ -8,6 +8,7 @@ signal transport_error(message: String)
 
 var connected := false
 var writes: Array[String] = []
+var open_error_message := ""
 var auth_status_result: Dictionary = {
 	"ok": true,
 	"logged_in": true,
@@ -28,6 +29,9 @@ var _last_error := ""
 
 
 func open_transport() -> bool:
+	if not open_error_message.is_empty():
+		_set_last_error(open_error_message)
+		return false
 	connected = true
 	return true
 
