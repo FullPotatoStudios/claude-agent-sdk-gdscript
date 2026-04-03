@@ -30,6 +30,11 @@ The guiding decisions for this scope cut are:
 - `set_model`
 - `get_server_info`
 
+GDScript naming note:
+
+- the conceptual upstream methods remain `connect` and `disconnect`
+- the concrete `RefCounted` implementation uses `connect_client()` and `disconnect_client()` because Godot already reserves `connect()` and `disconnect()` on `Object`/`RefCounted` for signal wiring
+
 ### Core runtime capabilities
 
 - Claude CLI subprocess launch

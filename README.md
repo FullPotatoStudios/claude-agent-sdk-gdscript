@@ -11,13 +11,16 @@ The intended end state is:
 
 ## Current status
 
-This project is still in preliminary work, but the first three planning gates are now documented.
+The project now has a first working Phase 4 core runtime under `addons/claude_agent_sdk/runtime/`.
 
-The current focus is **Phase 4: core SDK implementation**.
+The current focus has moved from planning into validating and refining the core SDK implementation.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
 Phase 3 locked the repo structure, addon boundary, and GdUnit4-based development workflow.
+Phase 4 delivered the first scene-free runtime with subprocess transport, control-protocol initialization, typed message parsing, a one-shot query API, and an interactive client backed by automated tests.
+
+Because `RefCounted` already reserves `connect()` and `disconnect()` for Godot's signal API, the current GDScript-facing client uses `connect_client()` and `disconnect_client()` instead of the upstream-style method names.
 
 The current upstream reference target is:
 
