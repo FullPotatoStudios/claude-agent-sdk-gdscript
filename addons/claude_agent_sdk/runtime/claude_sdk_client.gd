@@ -20,7 +20,7 @@ func _init(initial_options = null, transport = null) -> void:
 func connect_client() -> void:
 	if _session != null:
 		return
-	_session = ClaudeQuerySessionScript.new(_transport)
+	_session = ClaudeQuerySessionScript.new(_transport, options)
 	_session.open_session()
 	_last_error = _session.get_last_error()
 
@@ -84,6 +84,49 @@ func get_server_info() -> Dictionary:
 	if _session == null:
 		return {}
 	return _session.get_server_info()
+
+
+func get_auth_status() -> Dictionary:
+	if _transport != null and _transport.has_method("probe_auth_status"):
+		var result: Dictionary = _transport.probe_auth_status()
+		_last_error = str(result.get("error_message", ""))
+		return result
+	_set_last_error("Current transport does not support auth status probing")
+	return {}
+
+
+func get_context_usage() -> Dictionary:
+	if _session == null:
+		_set_last_error("Call connect_client() before get_context_usage()")
+		return {}
+	var result: Dictionary = await _session.get_context_usage()
+	_last_error = _session.get_last_error()
+	return result
+
+
+func get_mcp_status() -> Dictionary:
+	if _session == null:
+		_set_last_error("Call connect_client() before get_mcp_status()")
+		return {}
+	var result: Dictionary = await _session.get_mcp_status()
+	_last_error = _session.get_last_error()
+	return result
+
+
+func reconnect_mcp_server(server_name: String) -> void:
+	if _session == null:
+		_set_last_error("Call connect_client() before reconnect_mcp_server()")
+		return
+	await _session.reconnect_mcp_server(server_name)
+	_last_error = _session.get_last_error()
+
+
+func toggle_mcp_server(server_name: String, enabled: bool) -> void:
+	if _session == null:
+		_set_last_error("Call connect_client() before toggle_mcp_server()")
+		return
+	await _session.toggle_mcp_server(server_name, enabled)
+	_last_error = _session.get_last_error()
 
 
 func get_last_error() -> String:

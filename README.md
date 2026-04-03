@@ -11,18 +11,21 @@ The intended end state is:
 
 ## Current status
 
-The project now has a first working Phase 4 core runtime under `addons/claude_agent_sdk/runtime/`.
+The project now has a working Phase 5 runtime under `addons/claude_agent_sdk/runtime/`.
 
-The current focus has moved from planning into validating and refining the core SDK implementation.
+The current focus has moved from runtime parity expansion into the next Godot integration layer.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
 Phase 3 locked the repo structure, addon boundary, and GdUnit4-based development workflow.
 Phase 4 delivered the first scene-free runtime with subprocess transport, control-protocol initialization, typed message parsing, a one-shot query API, and an interactive client backed by automated tests.
+Phase 5 added hook callbacks, tool-permission callbacks, partial-message parsing, structured-output/result fields, context/MCP control operations, and an explicit CLI auth-status probe, with runtime validation recorded in `docs/investigations/phase-5-validation.md`.
 
 Because `RefCounted` already reserves `connect()` and `disconnect()` for Godot's signal API, the current GDScript-facing client uses `connect_client()` and `disconnect_client()` instead of the upstream-style method names.
 
 The runtime stays scene-free at the API level, but the subprocess transport still requires an active Godot `SceneTree` so it can dispatch pipe events back onto the main loop safely.
+
+Claude auth is treated as CLI-owned rather than SDK-owned. By default the runtime inherits the parent environment and reuses the installed Claude CLI's existing login and settings state. The runtime now exposes an explicit auth-status probe through `ClaudeSDKClient.get_auth_status()` and `ClaudeQuery.get_auth_status()` so callers can distinguish logged-out CLI state from transport failures.
 
 The current upstream reference target is:
 
@@ -72,6 +75,7 @@ tools/
 - Phase 1 investigation: `docs/investigations/phase-1-feasibility.md`
 - Phase 1 findings: `docs/investigations/phase-1-findings.md`
 - Phase 1 support matrix: `docs/investigations/phase-1-support-matrix.md`
+- Phase 5 validation: `docs/investigations/phase-5-validation.md`
 - Architecture ADR: `docs/adr/0001-core-architecture.md`
 - Upstream tracking ADR: `docs/adr/0002-upstream-tracking.md`
 - Godot version ADR: `docs/adr/0003-godot-version-policy.md`
@@ -92,7 +96,8 @@ tools/
 4. Lock architecture and scaffolding decisions in ADRs.
 5. Scaffold the addon runtime and test layout.
 6. Implement the core transport/protocol/types layers.
-7. Add Godot adapters, then the reusable chat panel, then the demo project.
+7. Expand runtime parity for high-value non-UI features.
+8. Add Godot adapters, then the reusable chat panel, then the demo project.
 
 ## Important constraints
 

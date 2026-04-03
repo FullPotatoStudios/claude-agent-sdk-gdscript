@@ -1,6 +1,8 @@
 extends RefCounted
 class_name ClaudeAgentOptions
 
+const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
+
 var model: String = ""
 var effort: String = ""
 var cwd: String = ""
@@ -13,6 +15,11 @@ var permission_mode: String = ""
 var max_turns: int = 0
 var resume: String = ""
 var session_id: String = ""
+var hooks: Dictionary = {}
+var can_use_tool: Callable = Callable()
+var include_partial_messages: bool = false
+var output_format: Dictionary = {}
+var mcp_servers: Variant = {}
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -45,6 +52,19 @@ func apply(config: Dictionary):
 		resume = str(config["resume"])
 	if config.has("session_id"):
 		session_id = str(config["session_id"])
+	if config.has("hooks") and config["hooks"] is Dictionary:
+		hooks = _normalize_hooks(config["hooks"] as Dictionary)
+	if config.has("can_use_tool") and config["can_use_tool"] is Callable:
+		can_use_tool = config["can_use_tool"]
+	if config.has("include_partial_messages"):
+		include_partial_messages = bool(config["include_partial_messages"])
+	if config.has("output_format") and config["output_format"] is Dictionary:
+		output_format = (config["output_format"] as Dictionary).duplicate(true)
+	if config.has("mcp_servers"):
+		if config["mcp_servers"] is Dictionary:
+			mcp_servers = (config["mcp_servers"] as Dictionary).duplicate(true)
+		elif config["mcp_servers"] is String:
+			mcp_servers = str(config["mcp_servers"])
 	return self
 
 
@@ -58,11 +78,16 @@ func duplicate_options():
 		"system_prompt": system_prompt,
 		"allowed_tools": allowed_tools.duplicate(),
 		"disallowed_tools": disallowed_tools.duplicate(),
-		"permission_mode": permission_mode,
-		"max_turns": max_turns,
-		"resume": resume,
-		"session_id": session_id,
-	})
+			"permission_mode": permission_mode,
+			"max_turns": max_turns,
+			"resume": resume,
+			"session_id": session_id,
+			"hooks": _duplicate_hooks(hooks),
+			"can_use_tool": can_use_tool,
+			"include_partial_messages": include_partial_messages,
+			"output_format": output_format.duplicate(true),
+			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
+		})
 
 
 func get_effective_session_id(default_session_id: String = "default") -> String:
@@ -76,3 +101,30 @@ static func _to_string_array(values: Array) -> Array[String]:
 	for value in values:
 		result.append(str(value))
 	return result
+
+
+static func _normalize_hooks(value: Dictionary) -> Dictionary:
+	var normalized: Dictionary = {}
+	for event_variant in value.keys():
+		var event_name := str(event_variant)
+		var matchers: Array = value[event_variant] if value[event_variant] is Array else []
+		var normalized_matchers: Array = []
+		for matcher_variant in matchers:
+			if matcher_variant is ClaudeHookMatcher:
+				normalized_matchers.append((matcher_variant as ClaudeHookMatcher).duplicate_matcher())
+			elif matcher_variant is Dictionary:
+				normalized_matchers.append(ClaudeHookMatcherScript.new(matcher_variant))
+		normalized[event_name] = normalized_matchers
+	return normalized
+
+
+static func _duplicate_hooks(value: Dictionary) -> Dictionary:
+	return _normalize_hooks(value)
+
+
+static func _duplicate_mcp_servers(value: Variant) -> Variant:
+	if value is Dictionary:
+		return (value as Dictionary).duplicate(true)
+	if value is String:
+		return str(value)
+	return {}

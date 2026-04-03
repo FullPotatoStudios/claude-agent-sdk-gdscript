@@ -5,3 +5,4 @@
 addons/gdUnit4/
 reports/
 .artifacts/
+.codex-tmp/

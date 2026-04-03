@@ -102,7 +102,10 @@ These are the next parity slice after the core conversation loop is working and 
 - external MCP server config passthrough
 - signal-based adapters and optional Node wrappers
 
-These features matter, but they should not block the initial usable SDK core.
+Status note:
+
+- the first six items in this section were implemented in Phase 5
+- signal-based adapters and optional Node wrappers remain outside the runtime-only work completed so far
 
 ## Deferred
 

@@ -18,3 +18,9 @@ static func query(prompt: String, options = null, transport = null):
 	stream.retain(client)
 	stream.set_finish_callback(client.disconnect_client)
 	return stream
+
+
+static func get_auth_status(options = null, transport = null) -> Dictionary:
+	var resolved_options = options if options != null else ClaudeAgentOptionsScript.new()
+	var client = ClaudeSDKClientScript.new(resolved_options, transport)
+	return client.get_auth_status()

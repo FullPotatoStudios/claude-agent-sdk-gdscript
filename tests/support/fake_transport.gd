@@ -8,6 +8,22 @@ signal transport_error(message: String)
 
 var connected := false
 var writes: Array[String] = []
+var auth_status_result: Dictionary = {
+	"ok": true,
+	"logged_in": true,
+	"auth_method": "claude.ai",
+	"api_provider": "firstParty",
+	"email": "tester@example.com",
+	"org_id": "org-test",
+	"org_name": "Test Org",
+	"subscription_type": "max",
+	"raw": {"loggedIn": true},
+	"stdout": "",
+	"stderr": "",
+	"error_code": "",
+	"error_message": "",
+	"exit_code": 0,
+}
 var _last_error := ""
 
 
@@ -37,8 +53,16 @@ func get_last_error() -> String:
 	return _last_error
 
 
+func probe_auth_status() -> Dictionary:
+	return auth_status_result.duplicate(true)
+
+
 func emit_stdout_message(payload: Dictionary) -> void:
 	stdout_line.emit(JSON.stringify(payload))
+
+
+func emit_stdout_line(line: String) -> void:
+	stdout_line.emit(line)
 
 
 func emit_stderr_message(line: String) -> void:

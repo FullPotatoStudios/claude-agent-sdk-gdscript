@@ -13,3 +13,9 @@ The intended Phase 4 layering is:
 - `parser/`
 
 Runtime classes in this layer should default to `RefCounted`.
+
+Auth is CLI-owned in this layer:
+
+- default runtime behavior reuses the installed `claude` binary and the inherited host environment
+- the runtime should not rewrite `HOME` or `XDG_*` paths as part of normal execution
+- `ClaudeSDKClient.get_auth_status()` and `ClaudeQuery.get_auth_status()` provide a lightweight auth diagnostic without opening a full Claude session

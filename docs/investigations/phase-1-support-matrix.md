@@ -60,6 +60,7 @@ Recommended behavior:
 - allow an absolute override path when needed
 - inherit the host process environment by default so existing Claude CLI auth and shell configuration can flow through
 - treat `env` as additive overrides layered on top of the inherited environment
+- do not rewrite `HOME` or `XDG_*` paths in the normal runtime path
 
 This mirrors the most important practical behavior observed in `t3code-analysis`:
 
@@ -78,6 +79,15 @@ Earlier draft names such as `binary_path`, `inherit_environment`, and `extra_env
 - Auth and transport should be tested separately when possible.
 - Probe runs should use the cheapest model configuration by default: `haiku` with `low` effort.
 - Export validation should distinguish between headless packaged execution and interactive GUI launches.
+- Auth-sensitive validation should keep the real user environment and redirect Godot logs with `--log-file` instead of isolating `HOME`.
+
+## Auth diagnostics implication
+
+The runtime now exposes an explicit Claude auth-status probe so callers can distinguish:
+
+- a healthy authenticated Claude CLI
+- a logged-out Claude CLI caused by environment isolation or real logout
+- a transport or command-launch failure
 
 ## Local evidence worth carrying forward
 

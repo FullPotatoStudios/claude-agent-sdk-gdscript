@@ -24,7 +24,19 @@ static func parse_message(data: Dictionary) -> Variant:
 				float(data.get("total_cost_usd", 0.0)),
 				data.get("usage", {}) if data.get("usage", {}) is Dictionary else {},
 				str(data.get("result", "")),
+				data.get("structured_output"),
+				data.get("modelUsage", {}) if data.get("modelUsage", {}) is Dictionary else {},
+				data.get("permission_denials", []) if data.get("permission_denials", []) is Array else [],
+				data.get("errors", []) if data.get("errors", []) is Array else [],
 				str(data.get("uuid", ""))
+			)
+		"stream_event":
+			return ClaudeStreamEvent.new(
+				data,
+				str(data.get("session_id", "")),
+				str(data.get("uuid", "")),
+				data.get("event", {}) if data.get("event", {}) is Dictionary else {},
+				str(data.get("parent_tool_use_id", ""))
 			)
 		_:
 			return null

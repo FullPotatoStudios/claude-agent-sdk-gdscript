@@ -10,6 +10,7 @@ const ClaudeToolResultBlockScript := preload("res://addons/claude_agent_sdk/runt
 const ClaudeUserMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_user_message.gd")
 const ClaudeSystemMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_system_message.gd")
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
+const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_stream_event.gd")
 
 
 func test_parse_assistant_message_into_typed_blocks() -> void:
@@ -64,11 +65,44 @@ func test_parse_user_system_and_result_messages() -> void:
 	assert_object(system).is_instanceof(ClaudeSystemMessageScript)
 	assert_object(result).is_instanceof(ClaudeResultMessageScript)
 	assert_str(result.result).is_equal("4")
+	assert_that(result.structured_output).is_null()
+
+
+func test_parse_result_extras_and_stream_event() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-1",
+		"result": "ok",
+		"structured_output": {"ok": true},
+		"modelUsage": {"haiku": {"inputTokens": 1}},
+		"permission_denials": [{"tool": "Write"}],
+		"errors": ["none"],
+	})
+	var stream_event: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "stream_event",
+		"session_id": "session-1",
+		"uuid": "stream-1",
+		"parent_tool_use_id": "tool-1",
+		"event": {"type": "content_block_delta"},
+	})
+
+	assert_object(message).is_instanceof(ClaudeResultMessageScript)
+	assert_dict(message.structured_output).is_equal({"ok": true})
+	assert_dict(message.model_usage).contains_keys(["haiku"])
+	assert_array(message.permission_denials).is_equal([{"tool": "Write"}])
+	assert_array(message.errors).is_equal(["none"])
+	assert_object(stream_event).is_instanceof(ClaudeStreamEventScript)
+	assert_str(stream_event.parent_tool_use_id).is_equal("tool-1")
 
 
 func test_skip_unknown_top_level_message_types() -> void:
 	var message: Variant = ClaudeMessageParserScript.parse_message({
-		"type": "stream_event",
+		"type": "rate_limit_event",
 		"event": {},
 	})
 

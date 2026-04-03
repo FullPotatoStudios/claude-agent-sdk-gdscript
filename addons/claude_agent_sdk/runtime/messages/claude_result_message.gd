@@ -11,6 +11,10 @@ var stop_reason: String = ""
 var total_cost_usd: float = 0.0
 var usage: Dictionary = {}
 var result: String = ""
+var structured_output: Variant = null
+var model_usage: Dictionary = {}
+var permission_denials: Array = []
+var errors: Array = []
 var uuid: String = ""
 
 
@@ -26,6 +30,10 @@ func _init(
 	value_total_cost_usd: float = 0.0,
 	value_usage: Dictionary = {},
 	value_result: String = "",
+	value_structured_output: Variant = null,
+	value_model_usage: Dictionary = {},
+	value_permission_denials: Array = [],
+	value_errors: Array = [],
 	value_uuid: String = ""
 ) -> void:
 	super._init("result", raw)
@@ -39,4 +47,8 @@ func _init(
 	total_cost_usd = value_total_cost_usd
 	usage = value_usage.duplicate(true)
 	result = value_result
+	structured_output = value_structured_output
+	model_usage = value_model_usage.duplicate(true)
+	permission_denials = value_permission_denials.duplicate(true)
+	errors = value_errors.duplicate(true)
 	uuid = value_uuid

@@ -68,7 +68,7 @@ The local probe observed all of the following in one run:
 - `assistant`
 - `result`
 
-The run ended with authentication failure, but that did not prevent validation of the subprocess and message-stream mechanics.
+The initial sandbox-safe run ended with authentication failure, but later validation showed that this was caused by the temporary `HOME` and `XDG_*` overrides rather than by the transport itself.
 
 ## Important caveat
 
@@ -85,31 +85,32 @@ This appears to be a local execution-environment constraint, not a project archi
 
 ## Auth findings
 
-The auth issue is real, but it is not a clean signal about transport viability.
+The transport is able to reuse the locally installed Claude CLI auth state when Godot is launched with the real user environment.
 
 Observed behavior:
 
-- With `HOME` redirected to a temporary directory, the Claude CLI reports: `Not logged in · Please run /login`.
-- With the normal home directory, the Claude CLI reaches more of its normal startup state but fails here with an OAuth `401` authentication error.
-- In the Codex sandbox, the CLI also reports startup-hook failures trying to create files under `~/.claude/session-env/`.
+- With `HOME` redirected to a temporary directory, the Claude CLI reports a logged-out state.
+- With the real user environment and Godot logs redirected via `--log-file`, the runtime-level auth probe reports `logged_in = true`.
+- With the real user environment and `--log-file`, the Phase 5 runtime smoke completes a real Claude turn successfully.
+- In the Codex sandbox, the CLI can still emit non-fatal hook warnings when it tries to touch `~/.claude/session-env/`.
 
 Current interpretation:
 
-- Redirecting `HOME` changes Claude's login state because it also changes where the CLI looks for local user state.
-- The `401` failure in this environment appears separate from the Godot subprocess mechanics.
-- Since another local project reportedly uses the installed `claude` binary successfully, the safest conclusion is that the current auth failure is environment-specific and should not be treated as evidence against the transport architecture.
+- Redirecting `HOME` changes Claude's login state because it changes where the CLI looks for local user state.
+- The earlier auth failures were validation-harness artifacts, not evidence that the Godot transport cannot reuse Claude auth.
+- The correct default model matches the Python SDK and other SDK clients: inherit the host environment and let the installed Claude CLI own auth and settings.
 
-Cross-check from a sibling project:
+Cross-check from sibling SDK clients:
 
-- `../t3code-analysis` uses the Claude Agent SDK with a configured Claude binary path.
-- Its adapter forwards the host environment to the SDK runtime (`env: process.env`).
+- `../claude-agent-sdk-python` inherits the parent environment and layers additive `env` overrides on top of it.
+- `../t3code-analysis` forwards `env: process.env` into the TypeScript Agent SDK and relies on the user's existing Claude CLI login.
 - That is consistent with using the locally installed Claude CLI and its existing auth state instead of introducing a separate auth layer.
 
 Implication for Phase 1:
 
 - keep transport feasibility and auth behavior as separate concerns
-- prefer probe success criteria that focus on process launch and streamed message flow
-- document that real local validation should be repeated outside this restricted sandbox
+- treat isolated `HOME` runs as special sandbox diagnostics, not as the default validation path
+- prefer auth-sensitive validation runs that keep the real user environment and redirect Godot logs with `--log-file`
 
 ## Export validation status
 
@@ -153,6 +154,7 @@ Implications:
 - exported desktop validation is now proven for the packaged macOS executable in headless mode
 - the addon should not assume the project root is the current working directory in exported builds
 - resource and path handling should rely on explicit configuration and Godot path APIs, not bundle-relative process assumptions
+- auth-sensitive exported validation should prefer `--log-file` over `HOME`/`XDG_*` rewrites so Claude can still see the user's real login state
 
 ## Recommendation after the first probe
 

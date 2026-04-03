@@ -3,6 +3,8 @@ class_name ClaudeSubprocessCLITransport
 
 const POLL_INTERVAL_SEC := 0.02
 const POLL_INTERVAL_MSEC := 20
+const SDK_ENTRYPOINT := "sdk-gd"
+const SDK_VERSION := "0.0.0-dev"
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 
 signal stdout_line(line: String)
@@ -57,12 +59,111 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--session-id", _options.session_id])
 	if not _options.effort.is_empty():
 		args.append_array(["--effort", _options.effort])
+	if _options.include_partial_messages:
+		args.append("--include-partial-messages")
+	if _options.can_use_tool.is_valid():
+		args.append_array(["--permission-prompt-tool", "stdio"])
+	var json_schema := _build_json_schema_argument()
+	if not json_schema.is_empty():
+		args.append_array(["--json-schema", json_schema])
+	var mcp_config := _build_mcp_config_argument()
+	if not mcp_config.is_empty():
+		args.append_array(["--mcp-config", mcp_config])
 	args.append_array(["--input-format", "stream-json"])
 	return args
 
 
 func build_process_spec() -> Dictionary:
 	var logical_args := build_command_args()
+	return _build_process_spec_for_args(logical_args)
+
+
+func build_environment_overrides() -> Dictionary:
+	var overrides := {
+		"CLAUDE_CODE_ENTRYPOINT": SDK_ENTRYPOINT,
+		"CLAUDE_AGENT_SDK_VERSION": SDK_VERSION,
+	}
+	if not _options.cwd.is_empty():
+		overrides["PWD"] = _options.cwd
+	for key_variant in _options.env.keys():
+		overrides[str(key_variant)] = str(_options.env[key_variant])
+	return overrides
+
+
+func filters_inherited_claudecode() -> bool:
+	return not _options.env.has("CLAUDECODE")
+
+
+func probe_auth_status() -> Dictionary:
+	if not _validate_supported_options():
+		return _build_auth_status_error_result("command_failed", _last_error, -1, "", "")
+
+	var spec := _build_process_spec_for_args(PackedStringArray(["auth", "status"]))
+	var process := OS.execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()), false)
+	if process.is_empty():
+		return _build_auth_status_error_result("command_failed", "Failed to launch Claude auth status command", -1, "", "")
+
+	var stdio: FileAccess = process.get("stdio")
+	var stderr: FileAccess = process.get("stderr")
+	var pid := int(process.get("pid", 0))
+	if stdio != null:
+		stdio.flush()
+
+	while pid > 0 and OS.is_process_running(pid):
+		OS.delay_msec(POLL_INTERVAL_MSEC)
+
+	var stdout_text := _read_pipe_text(stdio)
+	var stderr_text := _read_pipe_text(stderr)
+	var exit_code := OS.get_process_exit_code(pid) if pid > 0 else 0
+	var parsed: Variant = JSON.parse_string(stdout_text)
+	if parsed is Dictionary and (parsed as Dictionary).has("loggedIn"):
+		var payload: Dictionary = parsed
+		var logged_in := bool(payload.get("loggedIn", false))
+		var result := {
+			"ok": logged_in,
+			"error_code": "" if logged_in else "logged_out",
+			"error_message": "" if logged_in else "Claude CLI is not logged in",
+			"exit_code": exit_code,
+			"logged_in": logged_in,
+			"auth_method": str(payload.get("authMethod", "")),
+			"api_provider": str(payload.get("apiProvider", "")),
+			"email": str(payload.get("email", "")),
+			"org_id": str(payload.get("orgId", "")),
+			"org_name": str(payload.get("orgName", "")),
+			"subscription_type": str(payload.get("subscriptionType", "")),
+			"raw": payload.duplicate(true),
+			"stdout": stdout_text,
+			"stderr": stderr_text,
+		}
+		return result
+
+	if exit_code != 0:
+		return _build_auth_status_error_result(
+			_classify_auth_probe_failure(exit_code, stdout_text, stderr_text),
+			_build_command_failure_message(exit_code, stderr_text, stdout_text),
+			exit_code,
+			stdout_text,
+			stderr_text
+		)
+
+	if parsed is not Dictionary:
+		return _build_auth_status_error_result(
+			"json_parse_failed",
+			"Failed to parse Claude auth status JSON output",
+			exit_code,
+			stdout_text,
+			stderr_text
+		)
+	return _build_auth_status_error_result(
+		"json_parse_failed",
+		"Claude auth status output did not contain a loggedIn field",
+		exit_code,
+		stdout_text,
+		stderr_text
+	)
+
+
+func _build_process_spec_for_args(logical_args: PackedStringArray) -> Dictionary:
 	if OS.get_name() == "Windows":
 		return {
 			"path": "cmd.exe",
@@ -84,6 +185,8 @@ func open_transport() -> bool:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
 		_set_last_error("ClaudeSubprocessCLITransport requires an active SceneTree")
+		return false
+	if not _validate_supported_options():
 		return false
 
 	_stop_requested = false
@@ -152,12 +255,16 @@ func _build_posix_shell_script(logical_args: PackedStringArray) -> String:
 	var parts: Array[String] = []
 	if not _options.cwd.is_empty():
 		parts.append("cd %s &&" % _quote_posix(_options.cwd))
-	if not _options.env.is_empty():
-		parts.append("env")
-		for key_variant in _options.env.keys():
-			var key := str(key_variant)
-			parts.append("%s=%s" % [key, _quote_posix(str(_options.env[key_variant]))])
+	var env_overrides := build_environment_overrides()
 	parts.append("exec")
+	if filters_inherited_claudecode() or not env_overrides.is_empty():
+		parts.append("env")
+		if filters_inherited_claudecode():
+			parts.append("-u")
+			parts.append("CLAUDECODE")
+		for key_variant in env_overrides.keys():
+			var key := str(key_variant)
+			parts.append("%s=%s" % [key, _quote_posix(str(env_overrides[key_variant]))])
 	parts.append(_quote_posix(_options.cli_path))
 	for argument in logical_args:
 		parts.append(_quote_posix(argument))
@@ -168,9 +275,12 @@ func _build_windows_shell_script(logical_args: PackedStringArray) -> String:
 	var commands: Array[String] = []
 	if not _options.cwd.is_empty():
 		commands.append("cd /d %s" % _quote_windows(_options.cwd))
-	for key_variant in _options.env.keys():
+	if filters_inherited_claudecode():
+		commands.append("set CLAUDECODE=")
+	var env_overrides := build_environment_overrides()
+	for key_variant in env_overrides.keys():
 		var key := str(key_variant)
-		commands.append("set %s=%s" % [_quote_windows_assignment(key), _quote_windows_assignment(str(_options.env[key_variant]))])
+		commands.append("set %s=%s" % [_quote_windows_assignment(key), _quote_windows_assignment(str(env_overrides[key_variant]))])
 	var command_parts: Array[String] = [_quote_windows(_options.cli_path)]
 	for argument in logical_args:
 		command_parts.append(_quote_windows(argument))
@@ -188,6 +298,37 @@ func _quote_windows(value: String) -> String:
 
 func _quote_windows_assignment(value: String) -> String:
 	return value.replace("^", "^^").replace("&", "^&").replace("|", "^|").replace("<", "^<").replace(">", "^>")
+
+
+func _validate_supported_options() -> bool:
+	if _options.mcp_servers is Dictionary:
+		for server_name_variant in _options.mcp_servers.keys():
+			var server_config: Variant = _options.mcp_servers[server_name_variant]
+			if server_config is Dictionary and str((server_config as Dictionary).get("type", "")) == "sdk":
+				_set_last_error("SDK-hosted MCP servers are not supported yet: %s" % str(server_name_variant))
+				return false
+	return true
+
+
+func _build_json_schema_argument() -> String:
+	if _options.output_format.is_empty():
+		return ""
+	if str(_options.output_format.get("type", "")) != "json_schema":
+		return ""
+	var schema: Variant = _options.output_format.get("schema")
+	if schema == null:
+		return ""
+	return JSON.stringify(schema)
+
+
+func _build_mcp_config_argument() -> String:
+	if _options.mcp_servers is Dictionary and not _options.mcp_servers.is_empty():
+		return JSON.stringify({
+			"mcpServers": (_options.mcp_servers as Dictionary).duplicate(true),
+		})
+	if _options.mcp_servers is String and not str(_options.mcp_servers).is_empty():
+		return str(_options.mcp_servers)
+	return ""
 
 
 func _start_reader_threads() -> void:
@@ -306,7 +447,47 @@ func _emit_closed_once() -> void:
 func _set_last_error(message: String) -> void:
 	_last_error = message
 	push_error(message)
-	transport_error.emit(message)
+
+
+func _read_pipe_text(pipe: FileAccess) -> String:
+	if pipe == null:
+		return ""
+	var text := pipe.get_as_text()
+	pipe.close()
+	return text.strip_edges()
+
+
+func _classify_auth_probe_failure(exit_code: int, stdout_text: String, stderr_text: String) -> String:
+	var combined := "%s\n%s" % [stdout_text.to_lower(), stderr_text.to_lower()]
+	if exit_code == 127 or combined.contains("not found") or combined.contains("is not recognized"):
+		return "binary_not_found"
+	return "command_failed"
+
+
+func _build_command_failure_message(exit_code: int, stderr_text: String, stdout_text: String) -> String:
+	var detail := stderr_text if not stderr_text.is_empty() else stdout_text
+	if detail.is_empty():
+		return "Claude auth status command failed with exit code %d" % exit_code
+	return "Claude auth status command failed with exit code %d: %s" % [exit_code, detail]
+
+
+func _build_auth_status_error_result(error_code: String, error_message: String, exit_code: int, stdout_text: String, stderr_text: String) -> Dictionary:
+	return {
+		"ok": false,
+		"error_code": error_code,
+		"error_message": error_message,
+		"exit_code": exit_code,
+		"logged_in": false,
+		"auth_method": "",
+		"api_provider": "",
+		"email": "",
+		"org_id": "",
+		"org_name": "",
+		"subscription_type": "",
+		"raw": {},
+		"stdout": stdout_text,
+		"stderr": stderr_text,
+	}
 
 
 func _close_pipes() -> void:

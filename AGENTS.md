@@ -8,6 +8,7 @@ Then use these files as the source of truth:
 - `docs/investigations/phase-1-feasibility.md`
 - `docs/investigations/phase-1-findings.md`
 - `docs/investigations/phase-1-support-matrix.md`
+- `docs/investigations/phase-5-validation.md`
 - `docs/adr/0001-core-architecture.md`
 - `docs/adr/0002-upstream-tracking.md`
 - `docs/adr/0003-godot-version-policy.md`

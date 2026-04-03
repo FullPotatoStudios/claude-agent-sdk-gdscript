@@ -2,6 +2,14 @@
 extends GdUnitTestSuite
 
 const FakeTransportScript := preload("res://tests/support/fake_transport.gd")
+const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
+const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_stream_event.gd")
+const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
+const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
+
+
+func _client_hook_callback(input_data: Dictionary, _tool_use_id: String, _context) -> Dictionary:
+	return {"continue": true, "echo": input_data}
 
 
 func test_client_receive_messages_runs_until_disconnect() -> void:
@@ -45,6 +53,48 @@ func test_client_receive_messages_runs_until_disconnect() -> void:
 	transport.close()
 	var all_messages: Array = await all_stream.collect()
 	assert_int(all_messages.size()).is_equal(2)
+
+
+func test_client_receive_response_yields_stream_events_in_order() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query("Hi")
+	var response_stream = client.receive_response()
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-1",
+		"event": {"type": "content_block_delta"},
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Hello"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "Hello",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeStreamEventScript)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
 
 
 func test_client_rejects_second_query_while_response_is_active() -> void:
@@ -143,6 +193,55 @@ func test_one_shot_query_returns_pull_stream() -> void:
 	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
 
 
+func test_one_shot_query_supports_hook_configuration_for_string_prompts() -> void:
+	var transport = FakeTransportScript.new()
+	var options = ClaudeAgentOptions.new({
+		"hooks": {
+			"PreToolUse": [
+				ClaudeHookMatcherScript.new({
+					"matcher": "Bash",
+					"hooks": [Callable(self, "_client_hook_callback")],
+				}),
+			],
+		},
+	})
+	var stream = ClaudeQuery.query("Hi", options, transport)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hooks_config: Dictionary = (init_request.get("request", {}) as Dictionary).get("hooks", {})
+	var hook_callback_id := str(((hooks_config.get("PreToolUse", []) as Array)[0] as Dictionary).get("hookCallbackIds", [])[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "hook-1",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"input": {"tool_name": "Bash"},
+		},
+	})
+	await get_tree().process_frame
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "ok",
+	})
+
+	assert_str(str((JSON.parse_string(transport.writes[-1]) as Dictionary).get("type", ""))).is_equal("control_response")
+	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+
+
 func test_one_shot_query_fails_when_initialize_fails() -> void:
 	var transport = FakeTransportScript.new()
 	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new(), transport)
@@ -158,3 +257,23 @@ func test_one_shot_query_fails_when_initialize_fails() -> void:
 
 	assert_str(stream.get_error()).contains("init denied")
 	assert_that(await stream.next_message()).is_null()
+
+
+func test_client_exposes_context_usage_and_mcp_control_methods() -> void:
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+
+	assert_bool(Callable(client, "get_context_usage").is_valid()).is_true()
+	assert_bool(Callable(client, "get_mcp_status").is_valid()).is_true()
+	assert_bool(Callable(client, "reconnect_mcp_server").is_valid()).is_true()
+	assert_bool(Callable(client, "toggle_mcp_server").is_valid()).is_true()
+
+
+func test_client_options_force_stdio_permission_prompt_when_can_use_tool_is_configured() -> void:
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
+		return ClaudePermissionResultAllowScript.new()
+	var options = ClaudeAgentOptions.new({"can_use_tool": permission_callback})
+	var transport = ClaudeSubprocessCLITransportScript.new(options)
+	var args = transport.build_command_args()
+
+	assert_bool(args.has("--permission-prompt-tool")).is_true()
+	assert_bool(args.has("stdio")).is_true()

@@ -82,12 +82,15 @@ Implementation order:
 Goal:
 - implement the highest-value parity features beyond the core conversation loop
 
-Candidate areas:
+Delivered areas:
 - hooks
 - permission handling
 - structured output support
 - context-usage queries
 - MCP status/reconnect/toggle
+- partial-message / `stream_event` support
+
+Still deferred within runtime parity:
 - sessions
 - custom tool support, if feasible in Godot
 
@@ -123,4 +126,4 @@ Outputs:
 
 ## Current focus
 
-Work should currently prioritize Phase 4.
+Work should currently prioritize Phase 6.
