@@ -11,8 +11,17 @@ config_version=5
 [application]
 
 config/name="Claude Agent SDK GDScript"
-run/main_scene="res://tools/spikes/export_probe_runner.tscn"
+run/main_scene="res://demo/phase7_demo.tscn"
 config/features=PackedStringArray("4.6")
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
 
 [rendering]
 

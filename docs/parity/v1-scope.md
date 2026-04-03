@@ -106,6 +106,7 @@ Status note:
 
 - the first six items in this section were implemented in Phase 5
 - signal-based adapters and optional Node wrappers were implemented in Phase 6
+- a reusable chat panel and demo were implemented in Phase 7 as additive Godot UX layers rather than part of the upstream core-parity surface
 
 ## Deferred
 
@@ -123,6 +124,11 @@ These capabilities are intentionally outside the first public release:
 - demo validation project
 
 Deferred does not mean rejected. It means the feature is real, tracked, and intentionally held back so the first public release stays implementable and testable.
+
+Status note:
+
+- the reusable chat panel and demo validation project were delivered in Phase 7
+- they remain listed here because they are outside the upstream-inspired core runtime parity target, not because they are absent from the repository
 
 ## Not Applicable
 

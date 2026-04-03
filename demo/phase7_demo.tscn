@@ -1,0 +1,82 @@
+[gd_scene format=3 uid="uid://dlw05nkb2gpi2"]
+
+[ext_resource type="Script" uid="uid://cibqwr7oqg1ak" path="res://demo/phase7_demo.gd" id="1_t4chy"]
+[ext_resource type="PackedScene" uid="uid://c8er4n7mo8c5m" path="res://addons/claude_agent_sdk/ui/claude_chat_panel.tscn" id="2_1jg0c"]
+
+[node name="Phase7Demo" type="Control" unique_id=812361396]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_t4chy")
+
+[node name="Backdrop" type="ColorRect" parent="." unique_id=2142809222]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0235294, 0.0352941, 0.0627451, 1)
+
+[node name="Layout" type="MarginContainer" parent="." unique_id=587706189]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 28.0
+offset_top = 28.0
+offset_right = -28.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Shell" type="PanelContainer" parent="Layout" unique_id=115579625]
+layout_mode = 2
+
+[node name="Body" type="VBoxContainer" parent="Layout/Shell" unique_id=1578993139]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Hero" type="MarginContainer" parent="Layout/Shell/Body" unique_id=1434392381]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 0
+
+[node name="HeroBody" type="VBoxContainer" parent="Layout/Shell/Body/Hero" unique_id=1428253289]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Eyebrow" type="Label" parent="Layout/Shell/Body/Hero/HeroBody" unique_id=272004679]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.392157, 0.839216, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "Phase 7 demo"
+
+[node name="Title" type="Label" parent="Layout/Shell/Body/Hero/HeroBody" unique_id=1823596264]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.952941, 0.968627, 1, 1)
+theme_override_font_sizes/font_size = 28
+text = "Reusable Claude chat panel"
+
+[node name="Summary" type="Label" parent="Layout/Shell/Body/Hero/HeroBody" unique_id=1220297111]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.658824, 0.709804, 0.811765, 1)
+theme_override_font_sizes/font_size = 15
+text = "This scene validates the shipped addon UI directly. The panel below uses ClaudeClientNode internally, and your own projects can replace it with custom UI built on ClaudeClientAdapter or ClaudeSDKClient."
+autowrap_mode = 3
+
+[node name="PanelWrap" type="MarginContainer" parent="Layout/Shell/Body" unique_id=1958223651]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="ClaudeChatPanel" parent="Layout/Shell/Body/PanelWrap" unique_id=1687341491 instance=ExtResource("2_1jg0c")]
+layout_mode = 2

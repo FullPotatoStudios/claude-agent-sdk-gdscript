@@ -9,7 +9,7 @@ Port the Claude Agent SDK from Python to GDScript as a Godot addon, while adapti
 - The core SDK should be scene-free and not depend on `Node` lifecycle.
 - Godot-native adapters may expose signals and optional Node wrappers.
 - The addon payload should stay self-contained under `addons/claude_agent_sdk/`.
-- The demo project should validate the addon, but should not be required to consume it.
+- Demo content under `demo/` should validate the addon, but should not be required to consume it.
 - The Python SDK is tracked as an upstream reference, not a runtime dependency.
 
 ## Phases
@@ -116,8 +116,14 @@ Goal:
 
 Outputs:
 - reusable chat panel scene in the addon
-- separate demo project
+- root-project demo scenes and scripts under `demo/`
 - documentation for using the panel and replacing it
+
+Delivered:
+- `ClaudeChatPanel` under `addons/claude_agent_sdk/ui/`
+- root-project demo scene under `demo/` that uses the shipped panel directly
+- panel-focused UI tests and demo-scene validation tests
+- runtime smoke validation kept intact for `baseline`, `structured`, and `partial`
 
 ### Phase 8: Packaging, release, and parity maintenance
 
@@ -131,4 +137,4 @@ Outputs:
 
 ## Current focus
 
-Work should currently prioritize Phase 7.
+Work should currently prioritize Phase 8.

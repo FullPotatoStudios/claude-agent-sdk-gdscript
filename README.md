@@ -7,13 +7,15 @@ The intended end state is:
 - a reusable runtime addon under `addons/claude_agent_sdk/`
 - a Godot-native API for building Claude-powered tools and UIs
 - an optional fully featured chat panel scene included in the addon
-- a separate minimal demo project used to validate the addon end to end
+- demo scenes and scripts under `demo/` used to validate the addon end to end
 
 ## Current status
 
 The project now has a working Phase 6 runtime and integration layer under `addons/claude_agent_sdk/runtime/`.
 
-The current focus has moved from the first Godot integration layer toward the reusable chat panel and demo validation phase.
+Phase 7 is now implemented: the addon ships a reusable `ClaudeChatPanel` under `addons/claude_agent_sdk/ui/`, and the root Godot project opens a demo scene under `demo/` that exercises that shipped panel directly.
+
+The current focus has moved from the first reusable UI phase toward packaging, release, and parity maintenance.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
@@ -21,6 +23,7 @@ Phase 3 locked the repo structure, addon boundary, and GdUnit4-based development
 Phase 4 delivered the first scene-free runtime with subprocess transport, control-protocol initialization, typed message parsing, a one-shot query API, and an interactive client backed by automated tests.
 Phase 5 added hook callbacks, tool-permission callbacks, partial-message parsing, structured-output/result fields, context/MCP control operations, and an explicit CLI auth-status probe, with runtime validation recorded in `docs/investigations/phase-5-validation.md`.
 Phase 6 added `ClaudeClientAdapter` and `ClaudeClientNode` as thin Godot-native wrappers over the scene-free core, plus adapter-focused tests and lightweight integration examples.
+Phase 7 added the addon-owned `ClaudeChatPanel`, a demo scene that uses it directly, dedicated UI tests, and end-to-end validation coverage for baseline chat, structured output, and partial-message rendering.
 
 Because `Object` and `RefCounted` already reserve names such as `connect()`, `disconnect()`, and `is_connected()` for Godot's own signal API, the Godot-facing integration layer uses names such as `connect_client()`, `disconnect_client()`, and `is_client_connected()` where needed.
 
@@ -46,7 +49,7 @@ The current recommended architecture is:
 - no required autoload
 - no required Python SDK git submodule
 
-The addon should be distributed as a self-contained `addons/claude_agent_sdk/` tree. The demo project should remain separate from the distributable addon payload.
+The addon should be distributed as a self-contained `addons/claude_agent_sdk/` tree. The `demo/` content should remain separate from the distributable addon payload.
 
 ## Planned repository structure
 
@@ -89,6 +92,8 @@ tools/
 - Contributor workflow: `docs/contributing/workflow.md`
 - Testing workflow: `docs/contributing/testing.md`
 - Integration guide: `docs/contributing/integration.md`
+- Chat panel guide: `docs/contributing/ui-panel.md`
+- Phase 7 validation: `docs/investigations/phase-7-validation.md`
 
 ## Planned process
 
@@ -100,6 +105,7 @@ tools/
 6. Implement the core transport/protocol/types layers.
 7. Expand runtime parity for high-value non-UI features.
 8. Add Godot adapters, then the reusable chat panel, then the demo project.
+9. Package the addon cleanly and establish an upstream parity maintenance flow.
 
 ## Important constraints
 

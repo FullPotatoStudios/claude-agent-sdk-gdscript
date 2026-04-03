@@ -9,6 +9,7 @@ Then use these files as the source of truth:
 - `docs/investigations/phase-1-findings.md`
 - `docs/investigations/phase-1-support-matrix.md`
 - `docs/investigations/phase-5-validation.md`
+- `docs/investigations/phase-7-validation.md`
 - `docs/adr/0001-core-architecture.md`
 - `docs/adr/0002-upstream-tracking.md`
 - `docs/adr/0003-godot-version-policy.md`
@@ -19,6 +20,8 @@ Then use these files as the source of truth:
 - `docs/parity/feature-matrix.md`
 - `docs/parity/v1-scope.md`
 - `docs/contributing/testing.md`
+- `docs/contributing/integration.md`
+- `docs/contributing/ui-panel.md`
 
 Keep this file minimal. Put durable project knowledge in the docs above instead of expanding `AGENTS.md`.
 
@@ -34,3 +37,4 @@ Current rule of thumb:
 - use `RefCounted` for scene-free runtime classes by default
 - prefer the Phase 2 `cli_path` and `env` option shape over earlier draft naming
 - keep the addon payload separate from demo-only content
+- use the shipped chat panel as a reference UI, not as a replacement for the lower runtime layers

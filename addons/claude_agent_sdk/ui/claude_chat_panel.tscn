@@ -1,0 +1,208 @@
+[gd_scene format=3 uid="uid://c8er4n7mo8c5m"]
+
+[ext_resource type="Script" uid="uid://d4df5lb52qj0u" path="res://addons/claude_agent_sdk/ui/claude_chat_panel.gd" id="1_ajxjg"]
+[ext_resource type="Theme" path="res://addons/claude_agent_sdk/ui/claude_chat_theme.tres" id="2_tl5od"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_eyt4p"]
+font_size = 22
+font_color = Color(0.952941, 0.968627, 1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_bjn48"]
+font_size = 13
+font_color = Color(0.6, 0.662745, 0.776471, 1)
+
+[node name="ClaudeChatPanel" type="Control" unique_id=748174326]
+custom_minimum_size = Vector2(680, 640)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_tl5od")
+script = ExtResource("1_ajxjg")
+
+[node name="Shell" type="PanelContainer" parent="." unique_id=1528863159]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="Shell" unique_id=1999488089]
+layout_mode = 2
+theme_override_constants/margin_left = 26
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 26
+theme_override_constants/margin_bottom = 24
+
+[node name="Body" type="VBoxContainer" parent="Shell/Margin" unique_id=467149562]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Header" type="VBoxContainer" parent="Shell/Margin/Body" unique_id=690782266]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TopRow" type="HBoxContainer" parent="Shell/Margin/Body/Header" unique_id=1963065966]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 18
+
+[node name="StatusCluster" type="HBoxContainer" parent="Shell/Margin/Body/Header/TopRow" unique_id=1881529578]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="StatusBadge" type="PanelContainer" parent="Shell/Margin/Body/Header/TopRow/StatusCluster" unique_id=121663030]
+layout_mode = 2
+
+[node name="StatusBadgeLabel" type="Label" parent="Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge" unique_id=1625416685]
+layout_mode = 2
+text = "Ready"
+
+[node name="StatusText" type="VBoxContainer" parent="Shell/Margin/Body/Header/TopRow/StatusCluster" unique_id=804869648]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="StatusTitleLabel" type="Label" parent="Shell/Margin/Body/Header/TopRow/StatusCluster/StatusText" unique_id=1862926545]
+layout_mode = 2
+text = "Claude CLI is authenticated"
+label_settings = SubResource("LabelSettings_eyt4p")
+
+[node name="StatusDetailLabel" type="Label" parent="Shell/Margin/Body/Header/TopRow/StatusCluster/StatusText" unique_id=694397623]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Auth status will appear here."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="ActionButtons" type="HBoxContainer" parent="Shell/Margin/Body/Header/TopRow" unique_id=644559256]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="RefreshAuthButton" type="Button" parent="Shell/Margin/Body/Header/TopRow/ActionButtons" unique_id=471486544]
+layout_mode = 2
+text = "Refresh auth"
+
+[node name="ConnectButton" type="Button" parent="Shell/Margin/Body/Header/TopRow/ActionButtons" unique_id=1989434377]
+layout_mode = 2
+text = "Connect"
+
+[node name="DisconnectButton" type="Button" parent="Shell/Margin/Body/Header/TopRow/ActionButtons" unique_id=1239381037]
+layout_mode = 2
+text = "Disconnect"
+
+[node name="ControlRow" type="PanelContainer" parent="Shell/Margin/Body/Header" unique_id=1908615743]
+layout_mode = 2
+
+[node name="ControlMargin" type="MarginContainer" parent="Shell/Margin/Body/Header/ControlRow" unique_id=2120035982]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="SettingsRow" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin" unique_id=789839819]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SettingsLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=1375529655]
+layout_mode = 2
+text = "Session controls"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="SettingsGrid" type="GridContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=562908444]
+layout_mode = 2
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 10
+columns = 2
+
+[node name="ModelGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid" unique_id=73849189]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ModelLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup" unique_id=967093094]
+layout_mode = 2
+text = "Model"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ModelInput" type="LineEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup" unique_id=253882446]
+layout_mode = 2
+placeholder_text = "haiku"
+
+[node name="PermissionGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid" unique_id=743331917]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PermissionLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=1001712538]
+layout_mode = 2
+text = "Permission mode"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="PermissionModeOption" type="OptionButton" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=984920834]
+layout_mode = 2
+
+[node name="TranscriptCard" type="PanelContainer" parent="Shell/Margin/Body" unique_id=1296873614]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TranscriptScroll" type="ScrollContainer" parent="Shell/Margin/Body/TranscriptCard" unique_id=1515415309]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="TranscriptList" type="VBoxContainer" parent="Shell/Margin/Body/TranscriptCard/TranscriptScroll" unique_id=766989441]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="ComposerCard" type="PanelContainer" parent="Shell/Margin/Body" unique_id=278262466]
+layout_mode = 2
+
+[node name="ComposerMargin" type="MarginContainer" parent="Shell/Margin/Body/ComposerCard" unique_id=1805394124]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="ComposerBody" type="VBoxContainer" parent="Shell/Margin/Body/ComposerCard/ComposerMargin" unique_id=1537552482]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ComposerLabel" type="Label" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody" unique_id=244026021]
+layout_mode = 2
+text = "Prompt"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="PromptInput" type="TextEdit" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody" unique_id=2119860714]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_horizontal = 3
+wrap_mode = 1
+
+[node name="ComposerActions" type="HBoxContainer" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody" unique_id=722186853]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ComposerHintLabel" type="Label" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=1666686512]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Connect the authenticated Claude CLI to start chatting."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="InterruptButton" type="Button" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=817448029]
+layout_mode = 2
+text = "Interrupt"
+
+[node name="SendButton" type="Button" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=1785729174]
+layout_mode = 2
+text = "Send"

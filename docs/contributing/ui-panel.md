@@ -1,0 +1,89 @@
+# Chat Panel Guide
+
+`ClaudeChatPanel` is the addon's reusable reference UI for the SDK.
+
+It lives at:
+
+- `res://addons/claude_agent_sdk/ui/claude_chat_panel.tscn`
+
+The panel owns one internal `ClaudeClientNode`. In Phase 7 it does not support external client injection.
+
+## When to use it
+
+Use `ClaudeChatPanel` when:
+
+- you want a ready-made Claude chat surface in a Godot project
+- you want auth-state, connect/disconnect controls, transcript rendering, and a composer without building UI glue first
+- you want a reference for building your own UI on top of `ClaudeClientAdapter` or `ClaudeClientNode`
+
+Use the lower layers instead when:
+
+- you want a very custom UX
+- you want to own scene layout, transcript rendering, or message presentation yourself
+- you do not want the panel to own the client lifecycle
+
+## Basic usage
+
+Instantiate the scene and optionally call `setup()` before the panel connects:
+
+```gdscript
+var panel: ClaudeChatPanel = preload("res://addons/claude_agent_sdk/ui/claude_chat_panel.tscn").instantiate()
+panel.setup(ClaudeAgentOptions.new({
+	"model": "haiku",
+	"effort": "low",
+}))
+add_child(panel)
+```
+
+`setup(options, transport)` is intended for:
+
+- pre-tree option configuration
+- tests
+- custom transport injection during development
+
+`setup()` must be called before the first successful `connect_client()`.
+
+## Public panel API
+
+Signals:
+
+- `auth_status_changed(status)`
+- `prompt_submitted(prompt)`
+- `message_received(message)`
+- `turn_finished(result_message)`
+- `error_occurred(message)`
+
+Methods:
+
+- `connect_client()`
+- `disconnect_client()`
+- `submit_prompt(prompt)`
+- `refresh_auth_status()`
+- `clear_transcript()`
+- `get_client_node()`
+
+## Default lifecycle
+
+- auth status is probed on `_ready()`
+- connection is manual
+- prompt submission is disabled until connected
+- the panel renders typed runtime messages and partial stream events from the internal client node
+
+## Current scope
+
+The shipped panel currently includes:
+
+- auth/status header
+- model field
+- permission mode control
+- connect/disconnect controls
+- transcript rendering for user, assistant, system, tool, thinking, stream, and result output
+- interrupt support during active turns
+
+The panel intentionally does not yet include:
+
+- saved transcript/history browsing
+- session listing or mutation
+- task-specific UI beyond the generic typed messages
+- SDK-hosted MCP/custom-tool UX
+- editor-plugin workflows

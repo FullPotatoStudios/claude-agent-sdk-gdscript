@@ -136,10 +136,10 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Scene-free core mirroring upstream concepts | project ADRs, roadmap | Keeps parity work testable and portable | core SDK implementation | `v1 core` | Godot-specific architectural rule |
-| Signal-based adapters | project roadmap, ADR 0001 | Godot-native integration surface for games/tools | scene-free core | `v1 later` | Separate layer from the core parity target |
-| Optional Node wrappers | project roadmap, ADR 0001 | Convenience for scene-tree users | adapters | `v1 later` | Add only after adapter semantics are clear |
-| Reusable chat panel | project roadmap | Validation UI and reference implementation | adapters | `deferred` | Important project output, but not part of the core parity target |
-| Demo validation project | project roadmap | End-to-end validation and onboarding | core SDK, adapters, chat panel | `deferred` | Ships after the SDK core is usable |
+| Signal-based adapters | project roadmap, ADR 0001 | Godot-native integration surface for games/tools | scene-free core | `v1 later` | Implemented in Phase 6; still additive rather than part of the upstream core-parity target |
+| Optional Node wrappers | project roadmap, ADR 0001 | Convenience for scene-tree users | adapters | `v1 later` | Implemented in Phase 6 |
+| Reusable chat panel | project roadmap | Validation UI and reference implementation | adapters | `deferred` | Implemented in Phase 7 as addon UI; still outside the upstream core-parity target |
+| Demo validation project | project roadmap | End-to-end validation and onboarding | core SDK, adapters, chat panel | `deferred` | Implemented in Phase 7 as root-project demo content outside the addon payload |
 
 ## Current Phase 2 conclusion
 
@@ -149,3 +149,8 @@ The first implementation target should stay narrow:
 - implement subprocess transport, initialize/control routing, and typed message parsing first
 - keep hooks, permissions, structured output, and MCP status work as the next parity slice
 - leave session tooling, SDK MCP helpers, broad agent/settings parity, and UI work outside the first public release
+
+Status note:
+
+- that first public-release core has now been extended with Phase 5 runtime parity work, Phase 6 adapters, and Phase 7 UI/demo work
+- the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

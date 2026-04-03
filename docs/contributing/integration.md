@@ -5,6 +5,7 @@ The addon now exposes three layers for integrating Claude into Godot projects:
 - `ClaudeQuery` for one-shot string prompts where you are happy to `await` a `ClaudeMessageStream`
 - `ClaudeSDKClient` for scene-free interactive control over a long-lived Claude session
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-native signal-driven integration
+- `ClaudeChatPanel` for a ready-to-drop-in reference UI built on the Node layer
 
 ## Which layer to use
 
@@ -25,6 +26,12 @@ Use `ClaudeClientNode` when:
 - you want scene-tree lifecycle hooks such as `_ready()` and `_exit_tree()`
 - you want signal-based integration from a scene script with minimal glue code
 - you want optional `auto_connect_on_ready` and `auto_disconnect_on_exit`
+
+Use `ClaudeChatPanel` when:
+
+- you want a working Claude chat UI with auth-state, connect controls, transcript rendering, and a composer immediately
+- you want a reference implementation for custom UI work
+- you are happy with the panel owning its own internal `ClaudeClientNode`
 
 Because `Object` already defines `is_connected(signal_name, callable)`, the Godot-facing adapter layer uses `is_client_connected()` rather than `is_connected()`.
 
@@ -55,6 +62,6 @@ The integration layer is intentionally thin.
 - It does not add transcript/history caches
 - It does not add task-specific fanout signals
 - It does not add custom-tool or SDK-hosted MCP abstractions
-- It does not include the reusable chat panel yet
+- It does not replace the reusable chat panel for users who want a drop-in UI
 
-Those remain later-phase work built on top of the runtime and adapter layers.
+For panel-specific setup and usage guidance, see `docs/contributing/ui-panel.md`.
