@@ -22,17 +22,19 @@ Use this document for normal commit preparation, release preparation, and versio
 3. Keep distributable addon code under `addons/claude_agent_sdk/`.
 4. Keep tests under `tests/` and validation/probe code under `tools/`.
 5. Prefer the existing scripts for validation instead of ad hoc commands where possible.
+6. Install repo-managed hooks if you want automatic local validation:
+   - `./tools/dev/install_git_hooks.sh`
 
 ## Before creating a normal commit
 
 Run the checks appropriate to the change:
 
-- Always run:
-  - `./tools/dev/run_tests.sh`
-- Run runtime smokes when runtime, adapters, or UI behavior changed:
-  - `tools/spikes/phase5_runtime_smoke.gd` modes `baseline`, `structured`, and `partial`
-- Run packaged-consumer validation when packaging, install flow, release docs, or addon payload shape changed:
-  - `./tools/release/validate_release.sh`
+- Fast local validation:
+  - `./tools/dev/run_fast_checks.sh`
+- Full deterministic push-ready validation:
+  - `./tools/dev/run_push_checks.sh`
+- Local authenticated Claude validation when preparing a release or checking live runtime behavior:
+  - `./tools/release/validate_live_cli.sh`
 
 Also confirm:
 
@@ -79,27 +81,29 @@ When a release is being prepared, keep these in sync:
    - `addons/claude_agent_sdk/VERSION`
    - `CHANGELOG.md`
    - `docs/parity/upstream-ledger.md`
-3. Run:
-   - `./tools/dev/run_tests.sh`
-   - `./tools/release/build_release.sh`
-   - `./tools/release/validate_release.sh`
-   - `./tools/release/check_upstream_diff.sh`
-4. Run the manual authenticated clean-project checklist from `docs/release/release-process.md`.
-5. Prepare release notes from `docs/release/release-notes-template.md`.
+3. Run local release prep:
+   - `./tools/release/prepare_release.sh --tag vX.Y.Z`
+4. Create the annotated tag:
+   - `./tools/release/prepare_release.sh --tag vX.Y.Z --create-tag`
+5. Push `main`.
+6. Push the version tag.
+7. Let GitHub publish the release automatically.
 
 ## Publish flow
 
 Use `docs/release/release-process.md` as the canonical publishing checklist. The normal publish sequence is:
 
-1. build the canonical ZIP and checksum
-2. validate the packaged addon in a fresh temporary project
-3. validate the real authenticated CLI path manually
-4. publish the GitHub Release with the ZIP, checksum, and release notes
-5. update the Asset Library listing metadata to point at the GitHub Release ZIP
+1. run local release prep, including the authenticated Claude check
+2. create the annotated release tag
+3. push `main`
+4. push the version tag
+5. let GitHub publish the GitHub Release ZIP, checksum, and notes
+6. update the Asset Library listing using the generated summary
 
 Asset Library submission details live in:
 
 - `docs/release/asset-library.md`
+- `docs/contributing/automation.md`
 
 ## Upstream parity maintenance
 
@@ -118,10 +122,7 @@ Record each reviewed release baseline in `docs/parity/upstream-ledger.md`, inclu
 
 ## Automation policy
 
-The project should automate repetitive validation and publishing steps where practical, but this slice does not add hooks or CI/release workflow automation yet.
-
-Current rule of thumb:
-
 - prefer scripts over ad hoc manual commands
-- keep human review over release gating
-- treat local hooks and GitHub release automation as the next execution slice, not an assumed current capability
+- use repo-managed hooks for local automation when available
+- let GitHub Actions own CI and GitHub Release publishing
+- keep local live Claude validation and final Asset Library submission as the remaining manual boundaries

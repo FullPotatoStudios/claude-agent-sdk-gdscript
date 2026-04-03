@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+run_branch_checks=0
+tag_names=()
+
+while read -r local_ref _local_sha remote_ref _remote_sha; do
+	if [[ -z "${local_ref}" ]]; then
+		continue
+	fi
+	if [[ "${local_ref}" == refs/tags/v* ]]; then
+		tag_names+=("${local_ref#refs/tags/}")
+	else
+		run_branch_checks=1
+	fi
+	if [[ "${remote_ref}" == refs/heads/* ]]; then
+		run_branch_checks=1
+	fi
+done
+
+if [[ "${run_branch_checks}" -eq 1 ]]; then
+	echo "Running pre-push validation..."
+	"${repo_root}/tools/dev/run_push_checks.sh"
+fi
+
+for tag_name in "${tag_names[@]}"; do
+	echo "Verifying release metadata for tag ${tag_name}..."
+	"${repo_root}/tools/release/verify_release_metadata.sh" --tag "${tag_name}"
+done
+
+echo "Pre-push checks passed."
+echo "Bypass only in emergencies with: git push --no-verify"

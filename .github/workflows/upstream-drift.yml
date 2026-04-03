@@ -1,0 +1,33 @@
+name: Upstream Drift
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone upstream reference
+        run: |
+          git clone --filter=blob:none https://github.com/anthropics/claude-agent-sdk-python.git "${RUNNER_TEMP}/claude-agent-sdk-python"
+
+      - name: Check upstream drift
+        env:
+          UPSTREAM_CLAUDE_AGENT_SDK_PYTHON_DIR: ${{ runner.temp }}/claude-agent-sdk-python
+        run: |
+          mkdir -p .artifacts
+          ./tools/release/check_upstream_diff.sh --fail-on-drift --summary-file .artifacts/upstream-drift.txt
+
+      - name: Upload drift summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-drift
+          path: .artifacts/upstream-drift.txt

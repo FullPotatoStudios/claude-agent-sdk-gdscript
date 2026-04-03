@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c8er4n7mo8c5m"]
 
 [ext_resource type="Script" uid="uid://d4df5lb52qj0u" path="res://addons/claude_agent_sdk/ui/claude_chat_panel.gd" id="1_ajxjg"]
-[ext_resource type="Theme" path="res://addons/claude_agent_sdk/ui/claude_chat_theme.tres" id="2_tl5od"]
+[ext_resource type="Theme" uid="uid://dvl6an7djgicy" path="res://addons/claude_agent_sdk/ui/claude_chat_theme.tres" id="2_tl5od"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_eyt4p"]
 font_size = 22

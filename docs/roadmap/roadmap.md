@@ -135,6 +135,18 @@ Outputs:
 - parity update checklist in active use
 - upstream ledger updates per sync cycle
 
+### Phase 9: Hooks, scripted validation, and GitHub release automation
+
+Goal:
+- make validation and release publishing automation-first while keeping repo scripts as the source of truth
+
+Outputs:
+- repo-managed git hooks
+- canonical validation and release-prep wrapper scripts
+- GitHub Actions CI on pull requests and `main`
+- tag-driven GitHub Release publishing
+- automated Asset Library metadata preparation with a manual final submission boundary
+
 ## Current focus
 
-Work should currently prioritize Phase 8.
+Work should currently prioritize Phase 9.

@@ -35,6 +35,13 @@ Run the test suite with:
 ./tools/dev/run_tests.sh
 ```
 
+Automation wrappers:
+
+```bash
+./tools/dev/run_fast_checks.sh
+./tools/dev/run_push_checks.sh
+```
+
 `run_tests.sh` resolves the Godot binary in this order:
 
 1. `GODOT_BIN`
@@ -71,6 +78,12 @@ Use probes for:
 Current probe entrypoints live under:
 
 - `tools/spikes/`
+
+The canonical local authenticated runtime smoke is:
+
+```bash
+./tools/release/validate_live_cli.sh
+```
 
 ## Phase 4 test targets
 

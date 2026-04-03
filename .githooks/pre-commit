@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+echo "Running pre-commit fast checks..."
+"${repo_root}/tools/dev/run_fast_checks.sh"
+
+echo "Pre-commit checks passed."
+echo "Bypass only in emergencies with: git commit --no-verify"

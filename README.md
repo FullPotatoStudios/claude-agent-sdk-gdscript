@@ -14,7 +14,7 @@ The shipped demo scene uses the same `ClaudeChatPanel` that is included in the a
 
 ### GitHub Release ZIP
 
-1. Download the latest release ZIP.
+1. Download the latest tested GitHub Release ZIP.
 2. Extract it into your Godot project root.
 3. Confirm the addon is installed at `res://addons/claude_agent_sdk/`.
 
@@ -34,9 +34,9 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 
 ## Compatibility
 
-- Desktop/editor workflows are the supported path for the first release.
-- Exported macOS support is currently limited to the validated unsandboxed scenarios.
-- Mobile, web, and App Store-sandboxed macOS workflows remain out of scope.
+- desktop/editor workflows supported
+- exported macOS support limited to the validated unsandboxed scenarios
+- mobile, web, and App Store-sandboxed macOS workflows remain out of scope
 
 ## What Ships
 
@@ -66,6 +66,7 @@ for message in messages:
 		for block in message.content:
 			if block is ClaudeTextBlock:
 				print(block.text)
+```
 ```
 
 ### Godot node integration
@@ -131,6 +132,7 @@ Use these as the canonical sources of truth for compatibility and parity status:
 ### Maintainer docs
 
 - `docs/contributing/workflow.md`
+- `docs/contributing/automation.md`
 - `docs/contributing/maintainer-workflow.md`
 - `docs/contributing/testing.md`
 

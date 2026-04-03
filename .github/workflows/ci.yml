@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/godot
+          key: godot-${{ runner.os }}-4.6-stable
+
+      - name: Install Godot
+        run: ./tools/ci/install_godot.sh
+
+      - name: Cache GdUnit4
+        uses: actions/cache@v4
+        with:
+          path: addons/gdUnit4
+          key: gdunit4-${{ runner.os }}-6.1.2
+
+      - name: Install GdUnit4
+        run: ./tools/dev/install_gdunit4.sh
+
+      - name: Run fast checks
+        run: ./tools/dev/run_fast_checks.sh
+
+      - name: Run push checks
+        run: ./tools/dev/run_push_checks.sh --artifact-dir .artifacts/ci
+
+      - name: Upload CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: |
+            .artifacts/ci
+            .artifacts/gdunit

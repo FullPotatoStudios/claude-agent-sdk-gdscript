@@ -2,6 +2,7 @@
 
 Prepare these assets for each public release:
 
+- `addon-icon.svg` as the current square addon/listing icon
 - one square addon/listing icon
 - one wide README/public-project preview visual
 - one wide screenshot of the reusable chat panel in the demo scene

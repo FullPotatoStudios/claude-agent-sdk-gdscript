@@ -6,6 +6,7 @@ Then use these files as the source of truth:
 
 - `docs/roadmap/roadmap.md`
 - `docs/contributing/workflow.md`
+- `docs/contributing/automation.md`
 - `docs/contributing/maintainer-workflow.md`
 - `docs/contributing/testing.md`
 - `docs/contributing/integration.md`
@@ -36,6 +37,7 @@ Routing notes:
 
 - use `README.md` for the public project shape and supported usage
 - use `docs/contributing/workflow.md` for day-to-day repo workflow
+- use `docs/contributing/automation.md` for hooks, script entrypoints, and GitHub workflow behavior
 - use `docs/contributing/maintainer-workflow.md` before preparing commits or releases
 - use `docs/release/release-process.md` before publishing a version
 - use `docs/parity/upstream-ledger.md` before making parity or upstream-sync claims

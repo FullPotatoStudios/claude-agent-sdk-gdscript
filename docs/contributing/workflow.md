@@ -17,11 +17,12 @@ For commit and release preparation, use:
 
 ## Near-term emphasis
 
-During Phase 8:
+During Phase 9:
 
 - keep the addon payload limited to `addons/claude_agent_sdk/`
+- keep repo-managed shell scripts as the source of truth for hooks and GitHub workflows
 - use the GitHub Release ZIP as the canonical install artifact
-- keep Asset Library submission aligned with that same ZIP via a custom download provider
+- keep Asset Library submission aligned with that same ZIP via generated metadata and a manual final submission step
 - validate the packaged addon in a fresh temporary Godot project, not only inside this dev repo
 - track the local addon version alongside the pinned upstream Python SDK commit
-- defer deeper upstream parity work until the release and maintenance flow is proven
+- defer deeper upstream parity work until the automation-backed release flow is proven

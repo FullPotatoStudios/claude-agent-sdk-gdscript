@@ -2,21 +2,14 @@
 
 set -eu
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../common.sh"
+
 if [ ! -d "addons/gdUnit4" ]; then
 	echo "GdUnit4 is not installed. Run ./tools/dev/install_gdunit4.sh first."
 	exit 1
 fi
 
-godot_binary="${GODOT_BIN:-}"
-if [ -z "${godot_binary}" ] && [ -x "/Applications/Godot.app/Contents/MacOS/Godot" ]; then
-	godot_binary="/Applications/Godot.app/Contents/MacOS/Godot"
-fi
-if [ -z "${godot_binary}" ] && command -v godot4 >/dev/null 2>&1; then
-	godot_binary="$(command -v godot4)"
-fi
-if [ -z "${godot_binary}" ] && command -v godot >/dev/null 2>&1; then
-	godot_binary="$(command -v godot)"
-fi
+godot_binary="$(resolve_godot_binary || true)"
 
 if [ -z "${godot_binary}" ]; then
 	echo "Godot binary not found. Set GODOT_BIN or install Godot 4.6."

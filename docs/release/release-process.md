@@ -11,18 +11,17 @@ Phase 8 release work treats the GitHub Release ZIP as the canonical install arti
    - `addons/claude_agent_sdk/VERSION`
    - `CHANGELOG.md`
    - `docs/parity/upstream-ledger.md`
-3. Run repo regression checks:
-   - `./tools/dev/run_tests.sh`
-4. Build the release artifact:
-   - `./tools/release/build_release.sh`
-5. Validate the packaged addon in a fresh temp project:
-   - `./tools/release/validate_release.sh`
-6. Run the manual authenticated CLI checklist in a clean Godot project.
-7. Prepare GitHub release notes from `docs/release/release-notes-template.md`.
-8. Upload:
+3. Run local release prep:
+   - `./tools/release/prepare_release.sh --tag vX.Y.Z`
+4. Create the annotated tag:
+   - `./tools/release/prepare_release.sh --tag vX.Y.Z --create-tag`
+5. Push `main`.
+6. Push the version tag.
+7. Let GitHub Actions publish:
    - the ZIP artifact
    - `SHA256SUMS.txt`
-9. Update the Asset Library listing metadata so it points at the GitHub Release ZIP through the custom download provider flow.
+   - generated release notes
+8. Update the Asset Library listing metadata using the generated summary and custom download provider flow.
 
 For normal commit preparation, use `docs/contributing/maintainer-workflow.md`.
 
@@ -37,14 +36,11 @@ Use this wording unless a release changes the support claim:
 
 ## Manual authenticated validation
 
-1. Create a clean Godot project outside this repo.
-2. Install the packaged addon under `res://addons/claude_agent_sdk/`.
-3. Instantiate `ClaudeChatPanel`.
-4. Verify auth status renders correctly.
-5. Connect a live session.
-6. Send a baseline prompt.
-7. Confirm partial-message rendering still works.
-8. Confirm structured-output rendering still works.
+Run this locally before creating or pushing the release tag:
+
+```bash
+./tools/release/validate_live_cli.sh
+```
 
 ## Known limitations section
 
@@ -57,8 +53,6 @@ Each public release note should include a concise limitations section covering:
 
 ## Automation direction
 
-The project should keep reducing manual release work over time, but local hooks and GitHub release workflow automation are still a follow-up slice. For now:
-
 - prefer the checked-in release scripts over ad hoc commands
-- keep human review over release gating
-- treat hook and CI/release automation as planned work, not as a current requirement
+- keep local live Claude validation as the explicit pre-tag check
+- keep final Asset Library submission as the last manual step

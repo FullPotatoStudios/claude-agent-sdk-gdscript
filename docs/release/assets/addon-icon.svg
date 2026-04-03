@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Claude Agent SDK for GDScript icon</title>
+  <desc id="desc">A rounded square addon icon with a chat panel motif for the Claude Agent SDK for GDScript project.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1728"/>
+      <stop offset="100%" stop-color="#1d355c"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5eb8ff"/>
+      <stop offset="100%" stop-color="#7de3c3"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <rect x="36" y="40" width="184" height="132" rx="24" fill="#13223a" stroke="#3d67ab" stroke-width="6"/>
+  <rect x="54" y="58" width="62" height="30" rx="12" fill="#173b2b" stroke="#48b184" stroke-width="4"/>
+  <rect x="128" y="62" width="58" height="10" rx="5" fill="#edf4ff" opacity="0.9"/>
+  <rect x="128" y="82" width="42" height="8" rx="4" fill="#95a8cd"/>
+  <rect x="56" y="106" width="144" height="38" rx="18" fill="url(#bubble)" opacity="0.92"/>
+  <rect x="68" y="186" width="120" height="22" rx="11" fill="#0b1322" stroke="#325289" stroke-width="4"/>
+  <circle cx="204" cy="198" r="18" fill="#274f9b"/>
+  <path d="M198 198h12" stroke="#eef5ff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M204 192v12" stroke="#eef5ff" stroke-width="4" stroke-linecap="round"/>
+</svg>

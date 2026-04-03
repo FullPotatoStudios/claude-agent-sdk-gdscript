@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag commit is reachable from main
+        run: |
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/godot
+          key: godot-${{ runner.os }}-4.6-stable
+
+      - name: Install Godot
+        run: ./tools/ci/install_godot.sh
+
+      - name: Cache GdUnit4
+        uses: actions/cache@v4
+        with:
+          path: addons/gdUnit4
+          key: gdunit4-${{ runner.os }}-6.1.2
+
+      - name: Install GdUnit4
+        run: ./tools/dev/install_gdunit4.sh
+
+      - name: Verify release metadata
+        run: ./tools/release/verify_release_metadata.sh --allow-non-main --tag "$GITHUB_REF_NAME"
+
+      - name: Run release validation
+        run: ./tools/dev/run_push_checks.sh --artifact-dir ".artifacts/release/${GITHUB_REF_NAME}"
+
+      - name: Render release metadata
+        run: |
+          ./tools/release/render_release_metadata.sh \
+            --tag "$GITHUB_REF_NAME" \
+            --output-dir ".artifacts/release/${GITHUB_REF_NAME}" \
+            --download-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/claude-agent-sdk-gdscript-${GITHUB_REF_NAME}.zip"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET_DIR=".artifacts/release/${GITHUB_REF_NAME}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "${ASSET_DIR}/claude-agent-sdk-gdscript-${GITHUB_REF_NAME}.zip" \
+              "${ASSET_DIR}/SHA256SUMS.txt" \
+              --clobber
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+              gh release edit "$GITHUB_REF_NAME" \
+                --title "Claude Agent SDK for GDScript ${GITHUB_REF_NAME}" \
+                --notes-file "${ASSET_DIR}/RELEASE_NOTES.md" \
+                --prerelease
+            else
+              gh release edit "$GITHUB_REF_NAME" \
+                --title "Claude Agent SDK for GDScript ${GITHUB_REF_NAME}" \
+                --notes-file "${ASSET_DIR}/RELEASE_NOTES.md"
+            fi
+          elif [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            gh release create "$GITHUB_REF_NAME" \
+              "${ASSET_DIR}/claude-agent-sdk-gdscript-${GITHUB_REF_NAME}.zip" \
+              "${ASSET_DIR}/SHA256SUMS.txt" \
+              --title "Claude Agent SDK for GDScript ${GITHUB_REF_NAME}" \
+              --notes-file "${ASSET_DIR}/RELEASE_NOTES.md" \
+              --prerelease
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "${ASSET_DIR}/claude-agent-sdk-gdscript-${GITHUB_REF_NAME}.zip" \
+              "${ASSET_DIR}/SHA256SUMS.txt" \
+              --title "Claude Agent SDK for GDScript ${GITHUB_REF_NAME}" \
+              --notes-file "${ASSET_DIR}/RELEASE_NOTES.md"
+          fi

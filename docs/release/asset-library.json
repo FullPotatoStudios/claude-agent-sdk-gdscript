@@ -1,0 +1,19 @@
+{
+  "title": "Claude Agent SDK for GDScript",
+  "short_description": "Scene-free Claude runtime, Godot adapters, and a reusable chat panel for Godot 4.6.",
+  "compatibility": [
+    "Godot `4.6`",
+    "desktop/editor workflows supported",
+    "exported macOS support limited to the validated unsandboxed scenarios",
+    "requires a user-installed `claude` CLI",
+    "mobile, web, and App Store-sandboxed macOS workflows remain out of scope"
+  ],
+  "repository_url": "https://github.com/FullPotatoStudios/claude-agent-sdk-gdscript",
+  "support_url": "https://github.com/FullPotatoStudios/claude-agent-sdk-gdscript/issues",
+  "license_url": "https://github.com/FullPotatoStudios/claude-agent-sdk-gdscript/blob/main/LICENSE",
+  "icon_path": "docs/release/assets/addon-icon.svg",
+  "screenshot_paths": [
+    "docs/release/assets/chat-panel-preview.png"
+  ],
+  "download_url_pattern": "https://github.com/FullPotatoStudios/claude-agent-sdk-gdscript/releases/download/v{version}/claude-agent-sdk-gdscript-v{version}.zip"
+}

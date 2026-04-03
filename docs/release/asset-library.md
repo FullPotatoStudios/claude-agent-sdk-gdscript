@@ -12,6 +12,16 @@ The intended flow is:
 
 This keeps GitHub and Asset Library installs aligned to one tested payload.
 
+Machine-readable listing metadata lives in:
+
+- `docs/release/asset-library.json`
+
+Release automation renders:
+
+- `.artifacts/release/vX.Y.Z/ASSET_LIBRARY_SUMMARY.md`
+
+Use that generated summary as the source for the final manual listing update.
+
 ## Listing requirements to prepare
 
 - title and short description
@@ -22,6 +32,8 @@ This keeps GitHub and Asset Library installs aligned to one tested payload.
 - addon icon
 - screenshots captured from the shipped demo/panel
 - download URL for the GitHub Release ZIP
+
+These values should stay aligned with `docs/release/asset-library.json` and the generated summary.
 
 ## Packaging rule
 
@@ -37,6 +49,7 @@ The submitted/installable content must resolve to:
 - if Asset Library review proves `plugin.cfg` is mandatory for this submission type, revisit that decision in a follow-up phase rather than silently changing the addon shape here
 - the Asset Library install path must remain identical to the GitHub Release ZIP install path
 - `demo/` content is not part of the submitted addon payload
+- final Asset Library submission remains manual in this slice; only the metadata preparation is automated
 
 ## Compatibility/support wording
 
@@ -44,6 +57,6 @@ Use this baseline wording for the listing unless a release changes it:
 
 - Godot `4.6`
 - desktop/editor workflows supported
-- exported macOS support limited to validated unsandboxed scenarios
+- exported macOS support limited to the validated unsandboxed scenarios
 - requires a user-installed `claude` CLI
 - mobile, web, and App Store-sandboxed macOS workflows are out of scope
