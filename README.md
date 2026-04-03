@@ -15,7 +15,9 @@ The project now has a working Phase 6 runtime and integration layer under `addon
 
 Phase 7 is now implemented: the addon ships a reusable `ClaudeChatPanel` under `addons/claude_agent_sdk/ui/`, and the root Godot project opens a demo scene under `demo/` that exercises that shipped panel directly.
 
-The current focus has moved from the first reusable UI phase toward packaging, release, and parity maintenance.
+Phase 8 is now underway: the repo includes canonical addon versioning, release packaging scripts, a fresh-project packaged-consumer validation flow, and release/parity maintenance docs.
+
+The current focus is packaging, release, and parity maintenance.
 
 Phase 1 established that Godot can drive the Claude CLI in a way that supports the Python SDK's streaming control protocol model, including a packaged macOS headless validation run.
 Phase 2 cut the upstream SDK into a concrete v1 scope for the first implementation target.
@@ -50,6 +52,33 @@ The current recommended architecture is:
 - no required Python SDK git submodule
 
 The addon should be distributed as a self-contained `addons/claude_agent_sdk/` tree. The `demo/` content should remain separate from the distributable addon payload.
+
+## Install
+
+### GitHub Release ZIP
+
+1. Download the release ZIP produced by `./tools/release/build_release.sh`.
+2. Unzip it into the target Godot project's root so the addon lands at `res://addons/claude_agent_sdk/`.
+3. Use the runtime, adapters, or `ClaudeChatPanel` directly from your project scenes/scripts.
+
+No `plugin.cfg` or editor-plugin enablement is required for the current runtime/UI addon shape.
+
+### Godot Asset Library
+
+The intended Asset Library flow is to reference the same GitHub Release ZIP through a custom download provider.
+
+Consumers should end up with the same installed layout:
+
+- `res://addons/claude_agent_sdk/`
+
+See `docs/release/asset-library.md` for the submission and metadata strategy.
+
+## Known limitations
+
+- Godot support target is `4.6` only.
+- The addon depends on a user-installed `claude` CLI and reuses its existing login/config state.
+- Desktop/editor use is the supported path for the first release.
+- Exported macOS support remains limited to the unsandboxed scenarios validated so far.
 
 ## Planned repository structure
 
@@ -89,11 +118,16 @@ tools/
 - Upstream ledger: `docs/parity/upstream-ledger.md`
 - Feature matrix: `docs/parity/feature-matrix.md`
 - v1 scope: `docs/parity/v1-scope.md`
+- Release install guide: `docs/release/install.md`
+- Release packaging guide: `docs/release/packaging.md`
+- Release process: `docs/release/release-process.md`
+- Asset Library guide: `docs/release/asset-library.md`
 - Contributor workflow: `docs/contributing/workflow.md`
 - Testing workflow: `docs/contributing/testing.md`
 - Integration guide: `docs/contributing/integration.md`
 - Chat panel guide: `docs/contributing/ui-panel.md`
 - Phase 7 validation: `docs/investigations/phase-7-validation.md`
+- Phase 8 validation: `docs/investigations/phase-8-validation.md`
 
 ## Planned process
 

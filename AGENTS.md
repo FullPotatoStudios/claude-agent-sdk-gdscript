@@ -19,9 +19,14 @@ Then use these files as the source of truth:
 - `docs/parity/upstream-ledger.md`
 - `docs/parity/feature-matrix.md`
 - `docs/parity/v1-scope.md`
+- `docs/release/install.md`
+- `docs/release/packaging.md`
+- `docs/release/release-process.md`
+- `docs/release/asset-library.md`
 - `docs/contributing/testing.md`
 - `docs/contributing/integration.md`
 - `docs/contributing/ui-panel.md`
+- `docs/investigations/phase-8-validation.md`
 
 Keep this file minimal. Put durable project knowledge in the docs above instead of expanding `AGENTS.md`.
 

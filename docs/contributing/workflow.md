@@ -12,11 +12,11 @@
 
 ## Near-term emphasis
 
-During Phase 3:
+During Phase 8:
 
-- lock architecture and scaffolding decisions before core implementation starts
-- target Godot `4.6` only
-- use `RefCounted` for the scene-free runtime by default
-- keep GdUnit4 as a development-only dependency
-- do not add demo-project scaffolding yet
-- do not add editor-plugin or autoload requirements yet
+- keep the addon payload limited to `addons/claude_agent_sdk/`
+- use the GitHub Release ZIP as the canonical install artifact
+- keep Asset Library submission aligned with that same ZIP via a custom download provider
+- validate the packaged addon in a fresh temporary Godot project, not only inside this dev repo
+- track the local addon version alongside the pinned upstream Python SDK commit
+- defer deeper upstream parity work until the release and maintenance flow is proven

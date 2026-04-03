@@ -30,6 +30,22 @@ This parity cut classifies the current upstream SDK surface into:
 
 The first public implementation target is the scene-free core conversation loop, not full upstream breadth.
 
+## Local release baseline
+
+- Local addon version: `0.1.0`
+- Release channels:
+  - GitHub Release ZIP
+  - Godot Asset Library via custom download provider pointing at that ZIP
+- Release-prep reviewed on: `2026-04-04`
+- Compatibility/support claim:
+  - Godot `4.6`
+  - desktop/editor workflows supported
+  - exported macOS support limited to currently validated unsandboxed scenarios
+- Deferred beyond release prep:
+  - sessions
+  - custom tool hosting
+  - deeper upstream parity slices beyond the current runtime/UI surface
+
 ## Update process
 
 For each future upstream sync review:
@@ -44,3 +60,5 @@ For each future upstream sync review:
 4. Update `docs/parity/feature-matrix.md`.
 5. Update `docs/parity/v1-scope.md` if the parity cut or implementation order changes.
 6. Update ADRs or roadmap docs if upstream changes alter assumptions.
+7. Record the local addon version and release date if the sync is shipped publicly.
+8. Update `docs/release/release-process.md` and the changelog if the sync changes the support claim or release notes.

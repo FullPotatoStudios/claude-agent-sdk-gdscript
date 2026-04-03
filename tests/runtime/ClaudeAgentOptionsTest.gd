@@ -1,6 +1,7 @@
 # GdUnit generated TestSuite
 extends GdUnitTestSuite
 
+const ClaudeSDKVersionScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_version.gd")
 
 func test_duplicate_options_preserves_phase_4_fields() -> void:
 	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
@@ -140,7 +141,7 @@ func test_subprocess_transport_builds_default_environment_overrides() -> void:
 	assert_bool(transport.filters_inherited_claudecode()).is_true()
 	assert_dict(transport.build_environment_overrides()).is_equal({
 		"CLAUDE_CODE_ENTRYPOINT": "sdk-gd",
-		"CLAUDE_AGENT_SDK_VERSION": "0.0.0-dev",
+		"CLAUDE_AGENT_SDK_VERSION": ClaudeSDKVersionScript.get_version(),
 		"PWD": "/tmp/project",
 		"CUSTOM_FLAG": "1",
 	})
@@ -161,3 +162,7 @@ func test_subprocess_transport_allows_explicit_claudecode_override() -> void:
 		"CLAUDE_AGENT_SDK_VERSION": "custom-version",
 		"CLAUDECODE": "1",
 	})
+
+
+func test_sdk_version_reads_canonical_version_file() -> void:
+	assert_str(ClaudeSDKVersionScript.get_version()).is_equal("0.1.0")

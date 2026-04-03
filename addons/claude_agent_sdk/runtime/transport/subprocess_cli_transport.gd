@@ -4,8 +4,8 @@ class_name ClaudeSubprocessCLITransport
 const POLL_INTERVAL_SEC := 0.02
 const POLL_INTERVAL_MSEC := 20
 const SDK_ENTRYPOINT := "sdk-gd"
-const SDK_VERSION := "0.0.0-dev"
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
+const ClaudeSDKVersionScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_version.gd")
 
 signal stdout_line(line: String)
 signal stderr_line(line: String)
@@ -81,7 +81,7 @@ func build_process_spec() -> Dictionary:
 func build_environment_overrides() -> Dictionary:
 	var overrides := {
 		"CLAUDE_CODE_ENTRYPOINT": SDK_ENTRYPOINT,
-		"CLAUDE_AGENT_SDK_VERSION": SDK_VERSION,
+		"CLAUDE_AGENT_SDK_VERSION": ClaudeSDKVersionScript.get_version(),
 	}
 	if not _options.cwd.is_empty():
 		overrides["PWD"] = _options.cwd
