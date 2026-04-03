@@ -26,10 +26,12 @@ if [[ "${run_branch_checks}" -eq 1 ]]; then
 	"${repo_root}/tools/dev/run_push_checks.sh"
 fi
 
-for tag_name in "${tag_names[@]}"; do
-	echo "Verifying release metadata for tag ${tag_name}..."
-	"${repo_root}/tools/release/verify_release_metadata.sh" --tag "${tag_name}"
-done
+if [[ "${#tag_names[@]}" -gt 0 ]]; then
+	for tag_name in "${tag_names[@]}"; do
+		echo "Verifying release metadata for tag ${tag_name}..."
+		"${repo_root}/tools/release/verify_release_metadata.sh" --tag "${tag_name}"
+	done
+fi
 
 echo "Pre-push checks passed."
 echo "Bypass only in emergencies with: git push --no-verify"
