@@ -8,7 +8,7 @@ const ClaudeAssistantMessageScript := preload("res://addons/claude_agent_sdk/run
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 
 
-func test_adapter_emits_session_and_turn_signals_from_continuous_stream() -> void:
+func test_adapter_emits_session_and_turn_signals_from_initialize_and_continuous_stream() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
 	var busy_events: Array[bool] = []
@@ -32,13 +32,11 @@ func test_adapter_emits_session_and_turn_signals_from_continuous_stream() -> voi
 		"response": {
 			"subtype": "success",
 			"request_id": str(init_request.get("request_id", "")),
-			"response": {"output_style": "default"},
+			"response": {
+				"output_style": "default",
+				"commands": [{"name": "/help"}],
+			},
 		},
-	})
-	transport.emit_stdout_message({
-		"type": "system",
-		"subtype": "init",
-		"commands": [{"name": "/help"}],
 	})
 	await _await_frames(2)
 
@@ -62,17 +60,81 @@ func test_adapter_emits_session_and_turn_signals_from_continuous_stream() -> voi
 
 	assert_array(busy_events).is_equal([true, false])
 	assert_array(ready_payloads).has_size(1)
+	assert_dict(ready_payloads[0]).contains_keys(["commands", "output_style"])
 	assert_array(turn_starts).is_equal([{"prompt": "Hi", "session_id": "session-1"}])
-	assert_int(all_messages.size()).is_equal(3)
-	assert_object(all_messages[0]).is_instanceof(ClaudeSystemMessageScript)
-	assert_object(all_messages[1]).is_instanceof(ClaudeAssistantMessageScript)
-	assert_object(all_messages[2]).is_instanceof(ClaudeResultMessageScript)
+	assert_int(all_messages.size()).is_equal(2)
+	assert_object(all_messages[0]).is_instanceof(ClaudeAssistantMessageScript)
+	assert_object(all_messages[1]).is_instanceof(ClaudeResultMessageScript)
 	assert_int(turn_messages.size()).is_equal(2)
 	assert_object(turn_messages[0]).is_instanceof(ClaudeAssistantMessageScript)
 	assert_object(turn_messages[1]).is_instanceof(ClaudeResultMessageScript)
 	assert_int(turn_results.size()).is_equal(1)
 	assert_object(turn_results[0]).is_instanceof(ClaudeResultMessageScript)
 	assert_bool(adapter.is_busy()).is_false()
+
+
+func test_adapter_emits_session_ready_once_even_if_system_init_arrives_after_initialize() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var ready_payloads: Array = []
+
+	adapter.session_ready.connect(func(server_info: Dictionary): ready_payloads.append(server_info))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "hook_started",
+		"hook_event": "SessionStart",
+	})
+	await _await_frames(1)
+	assert_array(ready_payloads).is_empty()
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(1)
+	assert_array(ready_payloads).has_size(1)
+
+
+func test_adapter_does_not_emit_session_ready_when_initialize_fails() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var ready_payloads: Array = []
+	var errors: Array[String] = []
+
+	adapter.session_ready.connect(func(server_info: Dictionary): ready_payloads.append(server_info))
+	adapter.error_occurred.connect(func(message: String): errors.append(message))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(init_request.get("request_id", "")),
+			"error": "initialize failed",
+		},
+	})
+	await _await_frames(2)
+
+	assert_array(ready_payloads).is_empty()
+	assert_bool(adapter.is_client_connected()).is_false()
+	assert_str(errors[-1]).contains("initialize failed")
+
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "init",
+		"commands": [{"name": "/help"}],
+	})
+	await _await_frames(1)
+
+	assert_array(ready_payloads).is_empty()
 
 
 func test_adapter_can_run_second_turn_after_first_result() -> void:

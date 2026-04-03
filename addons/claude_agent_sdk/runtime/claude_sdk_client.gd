@@ -1,6 +1,8 @@
 extends RefCounted
 class_name ClaudeSDKClient
 
+signal session_initialized(server_info: Dictionary)
+
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeQuerySessionScript := preload("res://addons/claude_agent_sdk/runtime/protocol/query_session.gd")
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
@@ -21,6 +23,7 @@ func connect_client() -> void:
 	if _session != null:
 		return
 	_session = ClaudeQuerySessionScript.new(_transport, options)
+	_session.session_initialized.connect(_on_session_initialized)
 	_session.open_session()
 	_last_error = _session.get_last_error()
 
@@ -52,6 +55,8 @@ func receive_response():
 func disconnect_client() -> void:
 	if _session == null:
 		return
+	if _session.session_initialized.is_connected(_on_session_initialized):
+		_session.session_initialized.disconnect(_on_session_initialized)
 	_session.close()
 	_session = null
 
@@ -138,3 +143,7 @@ func get_last_error() -> String:
 func _set_last_error(message: String) -> void:
 	_last_error = message
 	push_error(message)
+
+
+func _on_session_initialized(server_info: Dictionary) -> void:
+	session_initialized.emit(server_info.duplicate(true))

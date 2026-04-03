@@ -2,6 +2,7 @@ extends RefCounted
 class_name ClaudeQuerySession
 
 signal control_request_completed(request_id: String)
+signal session_initialized(server_info: Dictionary)
 
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
@@ -293,6 +294,7 @@ func _handle_control_response(data: Dictionary) -> void:
 		_server_info = response_payload
 		_initialized = true
 		_initialize_request_id = ""
+		session_initialized.emit(_server_info.duplicate(true))
 		_flush_pending_prompt()
 
 	if await_response:

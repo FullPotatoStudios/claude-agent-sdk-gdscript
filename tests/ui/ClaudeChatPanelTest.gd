@@ -81,6 +81,79 @@ func test_panel_shows_connection_failure_in_header_even_when_auth_is_ready() -> 
 	await get_tree().process_frame
 
 
+func test_panel_connects_and_enables_composer_after_initialize_without_system_init() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	await _await_frames(1)
+
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "hook_started",
+		"hook_event": "SessionStart",
+	})
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "hook_response",
+		"hook_event": "SessionStart",
+	})
+	await _await_frames(2)
+
+	assert_str(_status_badge(panel).text).is_equal("Connecting")
+	assert_bool(_prompt_input(panel).editable).is_false()
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(2)
+
+	assert_str(_status_badge(panel).text).is_equal("Connected")
+	assert_bool(_prompt_input(panel).editable).is_true()
+	assert_bool(_button(panel, "ConnectButton").disabled).is_true()
+	assert_int(_count_entries(panel, "system_card")).is_equal(2)
+
+	panel.queue_free()
+	await get_tree().process_frame
+
+
+func test_panel_shows_issue_and_keeps_composer_disabled_when_initialize_fails() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(init_request.get("request_id", "")),
+			"error": "initialize failed",
+		},
+	})
+	await _await_frames(2)
+
+	assert_str(_status_badge(panel).text).is_equal("Issue")
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("initialize failed")
+	assert_bool(_prompt_input(panel).editable).is_false()
+	assert_bool(_button(panel, "ConnectButton").disabled).is_false()
+
+	panel.queue_free()
+	await get_tree().process_frame
+
+
 func test_panel_submit_prompt_renders_user_assistant_and_result_entries() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
@@ -273,11 +346,6 @@ func _connected_panel(transport, options = null):
 			"response": {"commands": [{"name": "/help"}]},
 		},
 	})
-	transport.emit_stdout_message({
-		"type": "system",
-		"subtype": "init",
-		"commands": [{"name": "/help"}],
-	})
 	await _await_frames(3)
 	return panel
 
@@ -292,6 +360,10 @@ func _button(panel, node_name: String) -> Button:
 
 func _label(panel, node_name: String) -> Label:
 	return panel.find_child(node_name, true, false) as Label
+
+
+func _prompt_input(panel) -> TextEdit:
+	return panel.find_child("PromptInput", true, false) as TextEdit
 
 
 func _transcript_list(panel) -> VBoxContainer:

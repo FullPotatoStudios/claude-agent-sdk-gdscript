@@ -29,11 +29,6 @@ func test_node_defaults_auto_connect_off_and_reemits_adapter_signals() -> void:
 			"response": {"output_style": "default"},
 		},
 	})
-	transport.emit_stdout_message({
-		"type": "system",
-		"subtype": "init",
-		"commands": [{"name": "/help"}],
-	})
 	await _await_frames(2)
 
 	node.query("Hi")

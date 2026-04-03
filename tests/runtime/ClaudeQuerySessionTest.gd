@@ -19,6 +19,9 @@ func _async_hook_callback(input_data: Dictionary, tool_use_id: String, _context)
 func test_initialize_caches_server_info_and_sends_control_request() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
+	var initialized_payloads: Array = []
+
+	session.session_initialized.connect(func(server_info: Dictionary): initialized_payloads.append(server_info))
 
 	session.open_session()
 
@@ -41,6 +44,8 @@ func test_initialize_caches_server_info_and_sends_control_request() -> void:
 	})
 
 	assert_dict(session.get_server_info()).contains_keys(["commands", "output_style"])
+	assert_array(initialized_payloads).has_size(1)
+	assert_dict(initialized_payloads[0]).contains_keys(["commands", "output_style"])
 
 
 func test_initialize_includes_hook_matchers_with_generated_callback_ids() -> void:

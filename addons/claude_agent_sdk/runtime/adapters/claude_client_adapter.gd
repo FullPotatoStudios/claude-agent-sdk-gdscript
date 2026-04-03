@@ -23,6 +23,7 @@ var _closed_token := -1
 
 func _init(initial_options = null, transport = null) -> void:
 	_client = ClaudeSDKClientScript.new(initial_options, transport)
+	_client.session_initialized.connect(_on_client_session_initialized)
 
 
 func connect_client() -> void:
@@ -142,9 +143,7 @@ func _run_message_drain(token: int, stream) -> void:
 			break
 
 		message_received.emit(message)
-
-		var is_session_init: bool = _handle_session_ready(message)
-		if _busy and not is_session_init:
+		if _busy:
 			turn_message_received.emit(message)
 			if message is ClaudeResultMessage:
 				_set_busy(false)
@@ -157,20 +156,6 @@ func _run_message_drain(token: int, stream) -> void:
 	_sync_client_error()
 	_set_busy(false)
 	_emit_session_closed_once(token)
-
-
-func _handle_session_ready(message: Variant) -> bool:
-	if _session_ready_emitted:
-		return false
-	if not (message is ClaudeSystemMessage):
-		return false
-	if message.subtype != "init":
-		return false
-
-	_session_ready_emitted = true
-	session_ready.emit(_client.get_server_info())
-	return true
-
 
 func _set_busy(value: bool) -> void:
 	if _busy == value:
@@ -192,3 +177,10 @@ func _sync_client_error() -> void:
 		return
 	_last_error = message
 	error_occurred.emit(message)
+
+
+func _on_client_session_initialized(server_info: Dictionary) -> void:
+	if not _connected or _session_ready_emitted:
+		return
+	_session_ready_emitted = true
+	session_ready.emit(server_info.duplicate(true))
