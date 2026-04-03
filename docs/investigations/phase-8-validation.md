@@ -48,3 +48,11 @@ Date reviewed: 2026-04-04
 - the packaged-consumer validation intentionally uses a temporary fake transport so it validates installability independently of local Claude auth state
 - manual real-CLI validation should still be run in a clean Godot project before publishing a public release
 - Godot still emits non-blocking ObjectDB/resource warnings at process exit in headless validation runs; these did not prevent packaging or consumer validation success
+
+## Review status
+
+- A follow-up Phase 8 review did not identify a release-blocking packaging or versioning defect in the current implementation.
+- The main remaining follow-up work is documentation and maintainer-workflow polish:
+  - make the root `README.md` user-facing instead of roadmap-heavy
+  - add a canonical maintainer workflow doc for commit and release preparation
+  - keep automation as a planned next slice rather than implying local hooks or GitHub release workflows already exist

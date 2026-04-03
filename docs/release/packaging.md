@@ -8,6 +8,8 @@ The canonical install artifact is a ZIP containing only:
 
 Nothing else from the repository should ship inside the release archive.
 
+The root-project `demo/` remains validation/reference content and does not ship inside the addon payload.
+
 ## Included content
 
 The packaging flow includes the verbatim addon subtree, including:
@@ -57,3 +59,12 @@ The addon version is sourced from:
 - `addons/claude_agent_sdk/VERSION`
 
 Release scripts should read this file instead of accepting an ad hoc version override.
+
+## Compatibility wording
+
+Use the same baseline wording across README, addon README, release notes, and Asset Library metadata:
+
+- Godot `4.6`
+- desktop/editor workflows supported
+- exported macOS support limited to the validated unsandboxed scenarios
+- requires a user-installed `claude` CLI and existing Claude auth state

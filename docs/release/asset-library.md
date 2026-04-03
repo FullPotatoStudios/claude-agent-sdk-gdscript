@@ -35,6 +35,8 @@ The submitted/installable content must resolve to:
 
 - `plugin.cfg` is still intentionally absent because the addon is currently a runtime/UI payload rather than an editor plugin
 - if Asset Library review proves `plugin.cfg` is mandatory for this submission type, revisit that decision in a follow-up phase rather than silently changing the addon shape here
+- the Asset Library install path must remain identical to the GitHub Release ZIP install path
+- `demo/` content is not part of the submitted addon payload
 
 ## Compatibility/support wording
 

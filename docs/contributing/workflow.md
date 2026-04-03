@@ -10,6 +10,11 @@
 6. Keep scene-free runtime code under `addons/claude_agent_sdk/runtime/`.
 7. Keep test code under `tests/`, not under the distributable addon tree.
 
+For commit and release preparation, use:
+
+- `docs/contributing/maintainer-workflow.md`
+- `docs/release/release-process.md`
+
 ## Near-term emphasis
 
 During Phase 8:

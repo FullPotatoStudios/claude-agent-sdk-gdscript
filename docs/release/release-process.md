@@ -24,6 +24,8 @@ Phase 8 release work treats the GitHub Release ZIP as the canonical install arti
    - `SHA256SUMS.txt`
 9. Update the Asset Library listing metadata so it points at the GitHub Release ZIP through the custom download provider flow.
 
+For normal commit preparation, use `docs/contributing/maintainer-workflow.md`.
+
 ## Compatibility statement
 
 Use this wording unless a release changes the support claim:
@@ -52,3 +54,11 @@ Each public release note should include a concise limitations section covering:
 - Godot `4.6` support target
 - unsupported mobile/web/App Store-sandboxed workflows
 - any still-deferred parity areas relevant to consumers
+
+## Automation direction
+
+The project should keep reducing manual release work over time, but local hooks and GitHub release workflow automation are still a follow-up slice. For now:
+
+- prefer the checked-in release scripts over ad hoc commands
+- keep human review over release gating
+- treat hook and CI/release automation as planned work, not as a current requirement
