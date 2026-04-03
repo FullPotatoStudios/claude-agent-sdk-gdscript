@@ -67,6 +67,51 @@ func test_client_rejects_second_query_while_response_is_active() -> void:
 	assert_str(client.get_last_error()).contains("still in flight")
 
 
+func test_client_disconnect_releases_transport_signal_listeners_before_reconnect() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+
+	client.connect_client()
+	assert_int(transport.stdout_listener_count()).is_equal(1)
+	assert_int(transport.stderr_listener_count()).is_equal(1)
+	assert_int(transport.closed_listener_count()).is_equal(1)
+	assert_int(transport.error_listener_count()).is_equal(1)
+
+	client.disconnect_client()
+	assert_int(transport.stdout_listener_count()).is_equal(0)
+	assert_int(transport.stderr_listener_count()).is_equal(0)
+	assert_int(transport.closed_listener_count()).is_equal(0)
+	assert_int(transport.error_listener_count()).is_equal(0)
+
+	client.connect_client()
+	assert_int(transport.stdout_listener_count()).is_equal(1)
+	assert_int(transport.stderr_listener_count()).is_equal(1)
+	assert_int(transport.closed_listener_count()).is_equal(1)
+	assert_int(transport.error_listener_count()).is_equal(1)
+
+
+func test_client_disconnect_finishes_active_streams() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query("Hi")
+	var stream = client.receive_response()
+	client.disconnect_client()
+
+	assert_that(await stream.next_message()).is_null()
+	assert_bool(stream.is_finished()).is_true()
+
+
 func test_one_shot_query_returns_pull_stream() -> void:
 	var transport = FakeTransportScript.new()
 	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new(), transport)
@@ -96,3 +141,20 @@ func test_one_shot_query_returns_pull_stream() -> void:
 
 	assert_object(await stream.next_message()).is_instanceof(ClaudeAssistantMessage)
 	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+
+
+func test_one_shot_query_fails_when_initialize_fails() -> void:
+	var transport = FakeTransportScript.new()
+	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new(), transport)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(init_request.get("request_id", "")),
+			"error": "init denied",
+		},
+	})
+
+	assert_str(stream.get_error()).contains("init denied")
+	assert_that(await stream.next_message()).is_null()

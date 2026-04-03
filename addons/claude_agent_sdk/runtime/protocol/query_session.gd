@@ -8,6 +8,7 @@ var _server_info: Dictionary = {}
 var _connected := false
 var _closed := false
 var _initialized := false
+var _initialize_request_id := ""
 var _request_counter := 0
 var _pending_control_responses: Dictionary = {}
 var _message_stream = ClaudeMessageStreamScript.new(false)
@@ -19,10 +20,7 @@ var _last_error := ""
 
 func _init(transport) -> void:
 	_transport = transport
-	_transport.stdout_line.connect(_on_transport_stdout_line)
-	_transport.stderr_line.connect(_on_transport_stderr_line)
-	_transport.transport_closed.connect(_on_transport_closed)
-	_transport.transport_error.connect(_on_transport_error)
+	_connect_transport_signals()
 
 
 func open_session() -> void:
@@ -33,16 +31,21 @@ func open_session() -> void:
 		_message_stream.fail(_last_error)
 		return
 	_connected = true
-	_send_control_request({
+	_initialize_request_id = _send_control_request({
 		"subtype": "initialize",
 		"hooks": null,
 	})
+	if _initialize_request_id.is_empty():
+		_fail_session(_last_error if not _last_error.is_empty() else "Failed to initialize Claude session")
 
 
 func close() -> void:
 	if _closed:
 		return
 	_closed = true
+	_connected = false
+	_finish_streams()
+	_disconnect_transport_signals()
 	_transport.close()
 
 
@@ -173,9 +176,9 @@ func _on_transport_stderr_line(_line: String) -> void:
 
 func _on_transport_closed() -> void:
 	_closed = true
-	_message_stream.finish()
-	if _current_response_stream != null:
-		_current_response_stream.finish()
+	_connected = false
+	_disconnect_transport_signals()
+	_finish_streams()
 
 
 func _on_transport_error(message: String) -> void:
@@ -191,19 +194,71 @@ func _handle_control_response(data: Dictionary) -> void:
 	if request_id.is_empty():
 		return
 
-	if _pending_control_responses.has(request_id):
-		_pending_control_responses.erase(request_id)
+	var pending_request: Dictionary = _pending_control_responses.get(request_id, {}) if _pending_control_responses.get(request_id, {}) is Dictionary else {}
+	if pending_request.is_empty():
+		return
+	_pending_control_responses.erase(request_id)
+	var request: Dictionary = pending_request.get("request", {}) if pending_request.get("request", {}) is Dictionary else {}
+	var request_subtype := str(request.get("subtype", ""))
 
 	if str(response.get("subtype", "")) == "error":
-		_set_last_error(str(response.get("error", "Unknown control error")))
+		var error_message := str(response.get("error", "Unknown control error"))
+		_set_last_error(error_message)
+		if request_subtype == "initialize":
+			_fail_session(error_message)
 		return
 
-	if not _initialized:
+	if request_id == _initialize_request_id:
 		_server_info = response.get("response", {}) if response.get("response", {}) is Dictionary else {}
 		_initialized = true
+		_initialize_request_id = ""
 		_flush_pending_prompt()
 
 
 func _set_last_error(message: String) -> void:
 	_last_error = message
 	push_error(message)
+
+
+func _fail_session(message: String) -> void:
+	if _last_error != message:
+		_set_last_error(message)
+	_message_stream.fail(message)
+	if _current_response_stream != null:
+		_current_response_stream.fail(message)
+	_current_response_stream = null
+	_connected = false
+	close()
+
+
+func _connect_transport_signals() -> void:
+	if _transport == null:
+		return
+	if not _transport.stdout_line.is_connected(_on_transport_stdout_line):
+		_transport.stdout_line.connect(_on_transport_stdout_line)
+	if not _transport.stderr_line.is_connected(_on_transport_stderr_line):
+		_transport.stderr_line.connect(_on_transport_stderr_line)
+	if not _transport.transport_closed.is_connected(_on_transport_closed):
+		_transport.transport_closed.connect(_on_transport_closed)
+	if not _transport.transport_error.is_connected(_on_transport_error):
+		_transport.transport_error.connect(_on_transport_error)
+
+
+func _disconnect_transport_signals() -> void:
+	if _transport == null:
+		return
+	if _transport.stdout_line.is_connected(_on_transport_stdout_line):
+		_transport.stdout_line.disconnect(_on_transport_stdout_line)
+	if _transport.stderr_line.is_connected(_on_transport_stderr_line):
+		_transport.stderr_line.disconnect(_on_transport_stderr_line)
+	if _transport.transport_closed.is_connected(_on_transport_closed):
+		_transport.transport_closed.disconnect(_on_transport_closed)
+	if _transport.transport_error.is_connected(_on_transport_error):
+		_transport.transport_error.disconnect(_on_transport_error)
+
+
+func _finish_streams() -> void:
+	_message_stream.finish()
+	if _current_response_stream != null:
+		_current_response_stream.finish()
+		_current_response_stream = null

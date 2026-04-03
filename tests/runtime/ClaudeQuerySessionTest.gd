@@ -31,6 +31,30 @@ func test_initialize_caches_server_info_and_sends_control_request() -> void:
 	assert_dict(session.get_server_info()).contains_keys(["commands", "output_style"])
 
 
+func test_initialize_error_fails_pending_streams() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	session.send_user_prompt("Hi")
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request_id := str(initialize_request.get("request_id", ""))
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": request_id,
+			"error": "initialize failed",
+		},
+	})
+
+	assert_str(session.get_last_error()).contains("initialize failed")
+	assert_str(response_stream.get_error()).contains("initialize failed")
+	assert_that(await response_stream.next_message()).is_null()
+	assert_bool(transport.connected).is_false()
+
+
 func test_receive_response_finishes_on_first_result_but_message_stream_keeps_history() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -77,6 +101,45 @@ func test_receive_response_finishes_on_first_result_but_message_stream_keeps_his
 	assert_object(result).is_instanceof(ClaudeResultMessage)
 	assert_that(response_end).is_null()
 	assert_int(all_messages.size()).is_equal(2)
+
+
+func test_non_initialize_control_response_does_not_complete_initialization() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	session.send_user_prompt("Hi")
+
+	assert_int(transport.writes.size()).is_equal(1)
+	session.interrupt()
+	assert_int(transport.writes.size()).is_equal(2)
+
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var interrupt_request: Dictionary = JSON.parse_string(transport.writes[1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(interrupt_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	assert_dict(session.get_server_info()).is_empty()
+	assert_int(transport.writes.size()).is_equal(2)
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {"output_style": "default"},
+		},
+	})
+
+	assert_dict(session.get_server_info()).contains_keys(["output_style"])
+	assert_int(transport.writes.size()).is_equal(3)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[2])
+	assert_str(str(prompt_payload.get("type", ""))).is_equal("user")
 
 
 func test_dynamic_controls_send_expected_control_requests() -> void:

@@ -22,6 +22,8 @@ Phase 4 delivered the first scene-free runtime with subprocess transport, contro
 
 Because `RefCounted` already reserves `connect()` and `disconnect()` for Godot's signal API, the current GDScript-facing client uses `connect_client()` and `disconnect_client()` instead of the upstream-style method names.
 
+The runtime stays scene-free at the API level, but the subprocess transport still requires an active Godot `SceneTree` so it can dispatch pipe events back onto the main loop safely.
+
 The current upstream reference target is:
 
 - Upstream repo: `https://github.com/anthropics/claude-agent-sdk-python`

@@ -34,6 +34,7 @@ GDScript naming note:
 
 - the conceptual upstream methods remain `connect` and `disconnect`
 - the concrete `RefCounted` implementation uses `connect_client()` and `disconnect_client()` because Godot already reserves `connect()` and `disconnect()` on `Object`/`RefCounted` for signal wiring
+- the runtime surface remains scene-free, but the subprocess transport still expects an active `SceneTree` so it can dispatch process output back through the Godot main loop
 
 ### Core runtime capabilities
 

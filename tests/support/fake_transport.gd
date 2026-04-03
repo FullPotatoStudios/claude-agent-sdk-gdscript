@@ -49,6 +49,22 @@ func emit_transport_failure(message: String) -> void:
 	_set_last_error(message)
 
 
+func stdout_listener_count() -> int:
+	return stdout_line.get_connections().size()
+
+
+func stderr_listener_count() -> int:
+	return stderr_line.get_connections().size()
+
+
+func closed_listener_count() -> int:
+	return transport_closed.get_connections().size()
+
+
+func error_listener_count() -> int:
+	return transport_error.get_connections().size()
+
+
 func _set_last_error(message: String) -> void:
 	_last_error = message
 	push_error(message)

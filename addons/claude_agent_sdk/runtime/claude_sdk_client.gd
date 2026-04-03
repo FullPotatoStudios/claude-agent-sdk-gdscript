@@ -27,7 +27,7 @@ func connect_client() -> void:
 
 func query(prompt: String, session_id: String = "default") -> void:
 	if _session == null:
-		_set_last_error("Call connect() before query()")
+		_set_last_error("Call connect_client() before query()")
 		return
 	_session.send_user_prompt(prompt, session_id)
 	_last_error = _session.get_last_error()
@@ -36,7 +36,7 @@ func query(prompt: String, session_id: String = "default") -> void:
 func receive_messages():
 	if _session == null:
 		var stream = ClaudeMessageStreamScript.new(false)
-		stream.fail("Call connect() before receive_messages()")
+		stream.fail("Call connect_client() before receive_messages()")
 		return stream
 	return _session.receive_messages()
 
@@ -44,7 +44,7 @@ func receive_messages():
 func receive_response():
 	if _session == null:
 		var stream = ClaudeMessageStreamScript.new(true)
-		stream.fail("Call connect() before receive_response()")
+		stream.fail("Call connect_client() before receive_response()")
 		return stream
 	return _session.receive_response()
 
@@ -58,7 +58,7 @@ func disconnect_client() -> void:
 
 func interrupt() -> void:
 	if _session == null:
-		_set_last_error("Call connect() before interrupt()")
+		_set_last_error("Call connect_client() before interrupt()")
 		return
 	_session.interrupt()
 	_last_error = _session.get_last_error()
@@ -66,7 +66,7 @@ func interrupt() -> void:
 
 func set_permission_mode(mode: String) -> void:
 	if _session == null:
-		_set_last_error("Call connect() before set_permission_mode()")
+		_set_last_error("Call connect_client() before set_permission_mode()")
 		return
 	_session.set_permission_mode(mode)
 	_last_error = _session.get_last_error()
@@ -74,7 +74,7 @@ func set_permission_mode(mode: String) -> void:
 
 func set_model(model: String = "") -> void:
 	if _session == null:
-		_set_last_error("Call connect() before set_model()")
+		_set_last_error("Call connect_client() before set_model()")
 		return
 	_session.set_model(model)
 	_last_error = _session.get_last_error()

@@ -81,6 +81,10 @@ func build_process_spec() -> Dictionary:
 func open_transport() -> bool:
 	if _connected:
 		return true
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		_set_last_error("ClaudeSubprocessCLITransport requires an active SceneTree")
+		return false
 
 	_stop_requested = false
 	_close_emitted = false
@@ -101,7 +105,7 @@ func open_transport() -> bool:
 	_pid = int(_process.get("pid", 0))
 	_connected = true
 	_start_reader_threads()
-	_run_dispatch_loop()
+	_run_dispatch_loop(tree)
 	return true
 
 
@@ -122,14 +126,12 @@ func write(payload: String) -> bool:
 
 func close() -> void:
 	_stop_requested = true
+	_close_pipes()
+	_wait_for_reader_threads()
+	_wait_for_process_exit()
 	if _pid > 0 and OS.is_process_running(_pid):
 		OS.kill(_pid)
-	if _stdout_thread != null:
-		_stdout_thread.wait_to_finish()
-		_stdout_thread = null
-	if _stderr_thread != null:
-		_stderr_thread.wait_to_finish()
-		_stderr_thread = null
+	_wait_for_reader_threads()
 	_connected = false
 	_emit_closed_once()
 
@@ -244,16 +246,13 @@ func _mark_pipe_done(stream_name: String) -> void:
 	_queue_mutex.unlock()
 
 
-func _run_dispatch_loop() -> void:
+func _run_dispatch_loop(tree: SceneTree) -> void:
 	if _dispatch_running:
 		return
 	_dispatch_running = true
 	while true:
 		_drain_pending_events()
 		if _should_finish_dispatch_loop():
-			break
-		var tree := Engine.get_main_loop() as SceneTree
-		if tree == null:
 			break
 		await tree.create_timer(POLL_INTERVAL_SEC).timeout
 	_drain_pending_events()
@@ -308,3 +307,32 @@ func _set_last_error(message: String) -> void:
 	_last_error = message
 	push_error(message)
 	transport_error.emit(message)
+
+
+func _close_pipes() -> void:
+	_io_mutex.lock()
+	if _stdio != null:
+		_stdio.close()
+		_stdio = null
+	if _stderr != null:
+		_stderr.close()
+		_stderr = null
+	_io_mutex.unlock()
+
+
+func _wait_for_reader_threads() -> void:
+	if _stdout_thread != null:
+		_stdout_thread.wait_to_finish()
+		_stdout_thread = null
+	if _stderr_thread != null:
+		_stderr_thread.wait_to_finish()
+		_stderr_thread = null
+
+
+func _wait_for_process_exit() -> void:
+	if _pid <= 0:
+		return
+	var attempts := 0
+	while attempts < 10 and OS.is_process_running(_pid):
+		OS.delay_msec(POLL_INTERVAL_MSEC)
+		attempts += 1
