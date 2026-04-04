@@ -102,8 +102,8 @@ Phase 1 findings that constrain this matrix:
 
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Session listing | `_internal/sessions.py`, `tests/test_sessions.py` | Useful for history browsers and chat restoration | Claude local storage knowledge | `deferred` | Separate concern from live SDK runtime |
-| Session transcript reading | `_internal/sessions.py`, `tests/test_sessions.py` | Needed for conversation history tooling | session listing, transcript parsing | `deferred` | Not required for first runtime addon release |
+| Session listing | `_internal/sessions.py`, `tests/test_sessions.py` | Useful for history browsers and chat restoration | Claude local storage knowledge | `v1 later` | Delivered in Phase 10A through `ClaudeSessions.list_sessions()` |
+| Session transcript reading | `_internal/sessions.py`, `tests/test_sessions.py` | Needed for conversation history tooling | session listing, transcript parsing | `v1 later` | Delivered in Phase 10A through `ClaudeSessions.get_session_messages()` |
 | Rename/tag/delete session helpers | `_internal/session_mutations.py`, `tests/test_session_mutations.py` | Useful for history management UIs | session file layout and mutation rules | `deferred` | Clear post-v1 feature family |
 | Session forking helpers | `_internal/session_mutations.py` | Advanced workflow for branching conversation history | session transcript mutation | `deferred` | Too much surface for first release |
 
@@ -153,4 +153,5 @@ The first implementation target should stay narrow:
 Status note:
 
 - that first public-release core has now been extended with Phase 5 runtime parity work, Phase 6 adapters, and Phase 7 UI/demo work
+- Phase 10A now adds read-only session history support through `ClaudeSessions`, while keeping session mutations deferred
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

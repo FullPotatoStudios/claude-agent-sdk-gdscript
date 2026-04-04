@@ -147,6 +147,30 @@ Outputs:
 - tag-driven GitHub Release publishing
 - automated Asset Library metadata preparation with a manual final submission boundary
 
+### Phase 10: Post-v1 parity expansion
+
+Goal:
+- keep extending upstream parity in small, reviewable runtime slices after the `0.1.x` release baseline is established
+
+Outputs:
+- read-only local session history support
+- future session mutation helpers
+- future custom-tool / broader parity slices tracked against the upstream ledger
+
+Active slice:
+- Phase 10A: read-only session history support
+
+Delivered in Phase 10A:
+- `ClaudeSessions` as a scene-free static runtime utility
+- `ClaudeSessionInfo` and `ClaudeSessionMessage` typed history models
+- read-only session listing, metadata lookup, and transcript reading against local Claude session storage
+- project-path sanitization, long-path fallback, and git-worktree-aware lookup
+
+Still deferred within Phase 10:
+- session mutations such as rename, tag, delete, and fork
+- SDK-hosted MCP/custom-tool helpers
+- broader settings and agent-definition parity
+
 ## Current focus
 
-Work should currently prioritize Phase 9.
+Work should currently prioritize Phase 10A.

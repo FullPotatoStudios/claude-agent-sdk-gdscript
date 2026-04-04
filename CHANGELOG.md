@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog style headings and uses Semantic Versioning for addon releases.
 
+## [Unreleased]
+
+### Added
+
+- read-only local session history support through `ClaudeSessions`, including session listing, metadata lookup, and transcript reading
+
 ## [0.1.0] - 2026-04-04
 
 ### Added

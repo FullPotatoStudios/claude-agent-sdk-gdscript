@@ -29,6 +29,7 @@ This payload includes:
 
 - the scene-free runtime core
 - `ClaudeSDKClient`
+- `ClaudeSessions`
 - `ClaudeClientAdapter`
 - `ClaudeClientNode`
 - `ClaudeChatPanel`
@@ -40,4 +41,5 @@ Development-only content such as `demo/`, `tests/`, `tools/`, and `addons/gdUnit
 ## More docs
 
 - See the root repository `README.md` for the public project overview.
+- See the repository docs, especially `docs/contributing/session-history.md`, for read-only local session-history usage.
 - See the repository docs for install, integration, release, and parity details.

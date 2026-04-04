@@ -42,9 +42,21 @@ The first public implementation target is the scene-free core conversation loop,
   - desktop/editor workflows supported
   - exported macOS support limited to currently validated unsandboxed scenarios
 - Deferred beyond release prep:
-  - sessions
   - custom tool hosting
   - deeper upstream parity slices beyond the current runtime/UI surface
+
+## Post-v1 parity progress
+
+- Active roadmap slice: Phase 10A read-only session history support
+- Delivered after `0.1.0`:
+  - `ClaudeSessions.list_sessions()`
+  - `ClaudeSessions.get_session_info()`
+  - `ClaudeSessions.get_session_messages()`
+  - typed read-only history models `ClaudeSessionInfo` and `ClaudeSessionMessage`
+- Still deferred:
+  - rename, tag, delete, and fork session helpers
+  - SDK-hosted custom-tool / MCP helper parity
+  - broader settings and agent-definition parity slices
 
 ## Update process
 

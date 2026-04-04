@@ -43,6 +43,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - A scene-free runtime core under `addons/claude_agent_sdk/runtime/`
 - `ClaudeQuery` for one-shot usage
 - `ClaudeSDKClient` for interactive runtime usage
+- `ClaudeSessions` for read-only local session history access
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration
 - `ClaudeChatPanel` as a reusable reference chat UI
 - A root-project demo under `demo/` for validation and onboarding
@@ -66,7 +67,6 @@ for message in messages:
 		for block in message.content:
 			if block is ClaudeTextBlock:
 				print(block.text)
-```
 ```
 
 ### Godot node integration
@@ -101,6 +101,7 @@ func _ready() -> void:
 - Claude CLI subprocess transport with inherited environment and explicit overrides
 - Typed message parsing for user, assistant, system, result, and partial stream events
 - One-shot queries plus interactive connected sessions
+- Read-only local session history access for session listing, metadata lookup, and transcript reading
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
 - Godot-native adapter and node layers
@@ -110,7 +111,6 @@ func _ready() -> void:
 
 The current release still defers some broader upstream parity areas, including:
 
-- session listing and transcript/history tooling
 - session mutation helpers such as rename, tag, delete, and fork
 - SDK-hosted MCP/custom-tool hosting
 - broader settings/agent-definition parity beyond the current runtime surface
@@ -126,6 +126,7 @@ Use these as the canonical sources of truth for compatibility and parity status:
 ### User docs
 
 - `docs/contributing/integration.md`
+- `docs/contributing/session-history.md`
 - `docs/contributing/ui-panel.md`
 - `docs/release/install.md`
 
