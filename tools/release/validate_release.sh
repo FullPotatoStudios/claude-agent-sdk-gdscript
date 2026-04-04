@@ -154,6 +154,7 @@ func _run() -> bool:
 	await process_frame
 	if adapter_ready_events.size() != 1:
 		push_error("Adapter did not become ready in consumer smoke project")
+		await _teardown(adapter, null, null)
 		return false
 
 	var node_transport = FakeTransportScript.new()
@@ -172,6 +173,7 @@ func _run() -> bool:
 	await process_frame
 	if not client_node.is_client_connected():
 		push_error("ClaudeClientNode did not stay connected in consumer smoke project")
+		await _teardown(adapter, client_node, null)
 		return false
 
 	var panel_transport = FakeTransportScript.new()
@@ -194,19 +196,47 @@ func _run() -> bool:
 	var prompt_input := panel.find_child("PromptInput", true, false) as TextEdit
 	if prompt_input == null or not prompt_input.editable:
 		push_error("ClaudeChatPanel did not unlock the composer in consumer smoke project")
+		await _teardown(adapter, client_node, panel)
 		return false
 
+	await _teardown(adapter, client_node, panel)
 	return true
+
+
+func _teardown(adapter, client_node: ClaudeClientNode, panel: Control) -> void:
+	if panel != null:
+		panel.disconnect_client()
+	if client_node != null:
+		client_node.disconnect_client()
+	if adapter != null:
+		adapter.disconnect_client()
+
+	await process_frame
+	await process_frame
+
+	if panel != null and is_instance_valid(panel):
+		if panel.get_parent() == root:
+			root.remove_child(panel)
+		panel.queue_free()
+	if client_node != null and is_instance_valid(client_node):
+		if client_node.get_parent() == root:
+			root.remove_child(client_node)
+		client_node.queue_free()
+
+	await process_frame
+	await process_frame
 EOF
 
-HOME="${test_home}" \
-XDG_DATA_HOME="${test_home}" \
-XDG_CONFIG_HOME="${test_config}" \
-XDG_CACHE_HOME="${test_cache}" \
-"${godot_binary}" \
-	--headless \
-	--path "${temp_project}" \
-	--import
+run_godot_import_filtered \
+	env \
+		HOME="${test_home}" \
+		XDG_DATA_HOME="${test_home}" \
+		XDG_CONFIG_HOME="${test_config}" \
+		XDG_CACHE_HOME="${test_cache}" \
+		"${godot_binary}" \
+		--headless \
+		--path "${temp_project}" \
+		--import
 
 HOME="${test_home}" \
 XDG_DATA_HOME="${test_home}" \

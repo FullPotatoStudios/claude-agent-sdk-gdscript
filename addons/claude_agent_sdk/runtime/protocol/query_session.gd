@@ -3,6 +3,7 @@ class_name ClaudeQuerySession
 
 signal control_request_completed(request_id: String)
 signal session_initialized(server_info: Dictionary)
+signal error_occurred(message: String)
 
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
@@ -41,7 +42,11 @@ func open_session() -> void:
 	if _connected:
 		return
 	if not _transport.open_transport():
-		_set_last_error(_transport.get_last_error())
+		var transport_error: String = _transport.get_last_error()
+		if _last_error != transport_error:
+			_emit_error(transport_error)
+		else:
+			_set_last_error(transport_error)
 		_message_stream.fail(_last_error)
 		return
 	_connected = true
@@ -64,10 +69,10 @@ func close() -> void:
 
 func send_user_prompt(prompt: String, session_id: String = "default") -> void:
 	if not _connected:
-		_set_last_error("Cannot query before connect() completes")
+		_emit_error("Cannot query before connect() completes")
 		return
 	if _current_response_stream != null and not _current_response_stream.is_finished():
-		_set_last_error("Cannot start a new query while another response is still in flight")
+		_emit_error("Cannot start a new query while another response is still in flight")
 		return
 
 	_current_response_stream = ClaudeMessageStreamScript.new(true)
@@ -149,7 +154,7 @@ func get_last_error() -> String:
 
 func _send_control_request(request: Dictionary, await_response: bool = false) -> String:
 	if not _connected:
-		_set_last_error("Cannot send control request before the session is connected")
+		_emit_error("Cannot send control request before the session is connected")
 		return ""
 
 	_request_counter += 1
@@ -165,7 +170,7 @@ func _send_control_request(request: Dictionary, await_response: bool = false) ->
 		"request": request,
 	})
 	if not _transport.write(payload):
-		_set_last_error(_transport.get_last_error())
+		_emit_error(_transport.get_last_error())
 		_pending_control_responses.erase(request_id)
 		return ""
 	return request_id
@@ -199,7 +204,7 @@ func _flush_pending_prompt() -> void:
 	if _pending_prompt_payload.is_empty():
 		return
 	if not _transport.write(_pending_prompt_payload):
-		_set_last_error(_transport.get_last_error())
+		_emit_error(_transport.get_last_error())
 		if _current_response_stream != null:
 			_current_response_stream.fail(_last_error)
 		return
@@ -211,7 +216,9 @@ func _on_transport_stdout_line(line: String) -> void:
 		return
 	var parsed: Variant = JSON.parse_string(line)
 	if parsed is not Dictionary:
-		_set_last_error("Failed to parse Claude CLI stdout as JSON: %s" % line)
+		var parse_error := "Failed to parse Claude CLI stdout as JSON: %s" % line
+		push_error(parse_error)
+		_emit_error(parse_error)
 		_message_stream.fail(_last_error)
 		if _current_response_stream != null:
 			_current_response_stream.fail(_last_error)
@@ -254,7 +261,7 @@ func _on_transport_closed() -> void:
 
 
 func _on_transport_error(message: String) -> void:
-	_set_last_error(message)
+	_emit_error(message)
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests(message)
 	_message_stream.fail(message)
@@ -278,6 +285,7 @@ func _handle_control_response(data: Dictionary) -> void:
 
 	if str(response.get("subtype", "")) == "error":
 		var error_message := str(response.get("error", "Unknown control error"))
+		_emit_error(error_message)
 		if await_response:
 			pending_request["completed"] = true
 			pending_request["error"] = error_message
@@ -285,7 +293,6 @@ func _handle_control_response(data: Dictionary) -> void:
 			control_request_completed.emit(request_id)
 		else:
 			_pending_control_responses.erase(request_id)
-			_set_last_error(error_message)
 		if request_subtype == "initialize":
 			_fail_session(error_message)
 		return
@@ -308,7 +315,11 @@ func _handle_control_response(data: Dictionary) -> void:
 
 func _set_last_error(message: String) -> void:
 	_last_error = message
-	push_error(message)
+
+
+func _emit_error(message: String) -> void:
+	_set_last_error(message)
+	error_occurred.emit(message)
 
 
 func _fail_session(message: String) -> void:

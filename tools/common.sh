@@ -72,3 +72,73 @@ make_temp_dir() {
 	local prefix="${1:-codex-temp}"
 	mktemp -d "${TMPDIR:-/tmp}/${prefix}.XXXXXX"
 }
+
+search_regex_in_file() {
+	local pattern="$1"
+	local file_path="$2"
+	if command -v rg >/dev/null 2>&1; then
+		rg -q -- "${pattern}" "${file_path}"
+		return $?
+	fi
+	grep -Eq -- "${pattern}" "${file_path}"
+}
+
+search_fixed_in_file() {
+	local needle="$1"
+	local file_path="$2"
+	if command -v rg >/dev/null 2>&1; then
+		rg -F -q -- "${needle}" "${file_path}"
+		return $?
+	fi
+	grep -Fq -- "${needle}" "${file_path}"
+}
+
+extract_first_backtick_value() {
+	local prefix="$1"
+	local file_path="$2"
+
+	awk -v prefix="${prefix}" '
+		index($0, prefix) == 1 {
+			split($0, parts, "`")
+			if (length(parts) >= 3) {
+				print parts[2]
+				exit
+			}
+		}
+	' "${file_path}"
+}
+
+run_godot_import_filtered() {
+	local output_file
+	output_file="$(mktemp "${TMPDIR:-/tmp}/godot-import.XXXXXX")"
+	local status=0
+
+	if "$@" >"${output_file}" 2>&1; then
+		python3 - "${output_file}" <<'PY'
+import sys
+from pathlib import Path
+
+lines = Path(sys.argv[1]).read_text().splitlines()
+filtered = []
+index = 0
+while index < len(lines):
+    line = lines[index]
+    if line.startswith("ERROR: Could not create ObjectDB Snapshots directory:"):
+        next_line = lines[index + 1] if index + 1 < len(lines) else ""
+        if "_get_and_create_snapshot_storage_dir" in next_line:
+            index += 2
+            continue
+    filtered.append(line)
+    index += 1
+
+for line in filtered:
+    print(line)
+PY
+	else
+		status=$?
+		cat "${output_file}"
+	fi
+
+	rm -f "${output_file}"
+	return "${status}"
+}

@@ -2,6 +2,7 @@ extends RefCounted
 class_name ClaudeSDKClient
 
 signal session_initialized(server_info: Dictionary)
+signal error_occurred(message: String)
 
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeQuerySessionScript := preload("res://addons/claude_agent_sdk/runtime/protocol/query_session.gd")
@@ -24,13 +25,14 @@ func connect_client() -> void:
 		return
 	_session = ClaudeQuerySessionScript.new(_transport, options)
 	_session.session_initialized.connect(_on_session_initialized)
+	_session.error_occurred.connect(_on_session_error_occurred)
 	_session.open_session()
 	_last_error = _session.get_last_error()
 
 
 func query(prompt: String, session_id: String = "default") -> void:
 	if _session == null:
-		_set_last_error("Call connect_client() before query()")
+		_emit_error("Call connect_client() before query()")
 		return
 	_session.send_user_prompt(prompt, session_id)
 	_last_error = _session.get_last_error()
@@ -57,13 +59,15 @@ func disconnect_client() -> void:
 		return
 	if _session.session_initialized.is_connected(_on_session_initialized):
 		_session.session_initialized.disconnect(_on_session_initialized)
+	if _session.error_occurred.is_connected(_on_session_error_occurred):
+		_session.error_occurred.disconnect(_on_session_error_occurred)
 	_session.close()
 	_session = null
 
 
 func interrupt() -> void:
 	if _session == null:
-		_set_last_error("Call connect_client() before interrupt()")
+		_emit_error("Call connect_client() before interrupt()")
 		return
 	_session.interrupt()
 	_last_error = _session.get_last_error()
@@ -71,7 +75,7 @@ func interrupt() -> void:
 
 func set_permission_mode(mode: String) -> void:
 	if _session == null:
-		_set_last_error("Call connect_client() before set_permission_mode()")
+		_emit_error("Call connect_client() before set_permission_mode()")
 		return
 	_session.set_permission_mode(mode)
 	_last_error = _session.get_last_error()
@@ -79,7 +83,7 @@ func set_permission_mode(mode: String) -> void:
 
 func set_model(model: String = "") -> void:
 	if _session == null:
-		_set_last_error("Call connect_client() before set_model()")
+		_emit_error("Call connect_client() before set_model()")
 		return
 	_session.set_model(model)
 	_last_error = _session.get_last_error()
@@ -96,13 +100,13 @@ func get_auth_status() -> Dictionary:
 		var result: Dictionary = _transport.probe_auth_status()
 		_last_error = str(result.get("error_message", ""))
 		return result
-	_set_last_error("Current transport does not support auth status probing")
+	_emit_error("Current transport does not support auth status probing")
 	return {}
 
 
 func get_context_usage() -> Dictionary:
 	if _session == null:
-		_set_last_error("Call connect_client() before get_context_usage()")
+		_emit_error("Call connect_client() before get_context_usage()")
 		return {}
 	var result: Dictionary = await _session.get_context_usage()
 	_last_error = _session.get_last_error()
@@ -111,7 +115,7 @@ func get_context_usage() -> Dictionary:
 
 func get_mcp_status() -> Dictionary:
 	if _session == null:
-		_set_last_error("Call connect_client() before get_mcp_status()")
+		_emit_error("Call connect_client() before get_mcp_status()")
 		return {}
 	var result: Dictionary = await _session.get_mcp_status()
 	_last_error = _session.get_last_error()
@@ -120,7 +124,7 @@ func get_mcp_status() -> Dictionary:
 
 func reconnect_mcp_server(server_name: String) -> void:
 	if _session == null:
-		_set_last_error("Call connect_client() before reconnect_mcp_server()")
+		_emit_error("Call connect_client() before reconnect_mcp_server()")
 		return
 	await _session.reconnect_mcp_server(server_name)
 	_last_error = _session.get_last_error()
@@ -128,7 +132,7 @@ func reconnect_mcp_server(server_name: String) -> void:
 
 func toggle_mcp_server(server_name: String, enabled: bool) -> void:
 	if _session == null:
-		_set_last_error("Call connect_client() before toggle_mcp_server()")
+		_emit_error("Call connect_client() before toggle_mcp_server()")
 		return
 	await _session.toggle_mcp_server(server_name, enabled)
 	_last_error = _session.get_last_error()
@@ -142,8 +146,17 @@ func get_last_error() -> String:
 
 func _set_last_error(message: String) -> void:
 	_last_error = message
-	push_error(message)
+
+
+func _emit_error(message: String) -> void:
+	_set_last_error(message)
+	error_occurred.emit(message)
 
 
 func _on_session_initialized(server_info: Dictionary) -> void:
 	session_initialized.emit(server_info.duplicate(true))
+
+
+func _on_session_error_occurred(message: String) -> void:
+	_last_error = message
+	error_occurred.emit(message)

@@ -75,6 +75,25 @@ func test_subprocess_auth_probe_surfaces_logged_out_payload() -> void:
 	assert_str(str(result.get("error_code", ""))).is_equal("logged_out")
 
 
+func test_subprocess_auth_probe_prefers_structured_json_payload_even_on_non_zero_exit() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var script_path := _write_auth_probe_script(
+		"logged_out_non_zero",
+		"printf '%s\\n' '{\"loggedIn\":false,\"authMethod\":\"none\",\"apiProvider\":\"firstParty\"}'\nexit 1"
+	)
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"cli_path": script_path,
+	}))
+
+	var result = transport.probe_auth_status()
+
+	assert_bool(bool(result.get("ok", true))).is_false()
+	assert_bool(bool(result.get("logged_in", true))).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("logged_out")
+	assert_int(int(result.get("exit_code", 0))).is_equal(1)
+
+
 func test_subprocess_auth_probe_reports_missing_binary() -> void:
 	if OS.get_name() == "Windows":
 		return

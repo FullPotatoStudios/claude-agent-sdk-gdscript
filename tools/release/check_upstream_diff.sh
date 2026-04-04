@@ -39,7 +39,7 @@ if [ ! -d "${upstream_dir}/.git" ]; then
 	exit 1
 fi
 
-pinned_commit="$(rg -o --replace '$1' '^- Commit: `([0-9a-f]+)`' "${repo_root}/docs/parity/upstream-ledger.md" | head -n 1)"
+pinned_commit="$(extract_first_backtick_value "- Commit: " "${repo_root}/docs/parity/upstream-ledger.md")"
 if [ -z "${pinned_commit}" ]; then
 	echo "Could not read pinned upstream commit from docs/parity/upstream-ledger.md" >&2
 	exit 1

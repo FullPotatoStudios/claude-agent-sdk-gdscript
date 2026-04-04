@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -26,7 +26,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y unzip
 
       - name: Cache Godot
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/godot
           key: godot-${{ runner.os }}-4.6-stable
@@ -35,7 +35,7 @@ jobs:
         run: ./tools/ci/install_godot.sh
 
       - name: Cache GdUnit4
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: addons/gdUnit4
           key: gdunit4-${{ runner.os }}-6.1.2

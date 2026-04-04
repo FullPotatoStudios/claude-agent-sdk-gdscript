@@ -35,6 +35,8 @@ Run the test suite with:
 ./tools/dev/run_tests.sh
 ```
 
+`run_tests.sh` performs an editor `--import` step before the gdUnit run. The script now filters the known non-fatal Godot editor-build warning about the ObjectDB snapshots directory so real import failures stay visible without burying the logs in environment-specific noise.
+
 Automation wrappers:
 
 ```bash
@@ -84,6 +86,13 @@ The canonical local authenticated runtime smoke is:
 ```bash
 ./tools/release/validate_live_cli.sh
 ```
+
+## Logging expectations
+
+- expected negative-path coverage should stay observable through assertions, signals, and `get_last_error()`
+- expected recoverable failures should not print Godot engine `ERROR:` backtraces during passing tests
+- malformed Claude stdout or other truly unexpected protocol/runtime corruption should still surface loudly
+- leak warnings at process exit are treated as real cleanup regressions and should be fixed, not accepted as normal output
 
 ## Phase 4 test targets
 

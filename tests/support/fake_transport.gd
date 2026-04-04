@@ -95,5 +95,4 @@ func error_listener_count() -> int:
 
 func _set_last_error(message: String) -> void:
 	_last_error = message
-	push_error(message)
 	transport_error.emit(message)

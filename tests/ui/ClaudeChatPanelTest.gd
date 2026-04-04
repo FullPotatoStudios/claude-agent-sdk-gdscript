@@ -19,8 +19,7 @@ func test_panel_setup_creates_internal_client_and_shows_ready_auth_state() -> vo
 	assert_bool(_button(panel, "ConnectButton").disabled).is_false()
 	assert_bool(_button(panel, "SendButton").disabled).is_true()
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_auth_states_cover_logged_out_and_transport_issue() -> void:
@@ -39,8 +38,7 @@ func test_panel_auth_states_cover_logged_out_and_transport_issue() -> void:
 	assert_str(_status_badge(logged_out_panel).text).is_equal("Logged out")
 	assert_bool(_button(logged_out_panel, "ConnectButton").disabled).is_true()
 
-	logged_out_panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(logged_out_panel)
 
 	var issue_transport = FakeTransportScript.new()
 	issue_transport.auth_status_result = {
@@ -57,8 +55,7 @@ func test_panel_auth_states_cover_logged_out_and_transport_issue() -> void:
 	assert_str(_status_badge(issue_panel).text).is_equal("Issue")
 	assert_str(_label(issue_panel, "StatusDetailLabel").text).contains("Claude binary not found")
 
-	issue_panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(issue_panel)
 
 
 func test_panel_shows_connection_failure_in_header_even_when_auth_is_ready() -> void:
@@ -77,8 +74,7 @@ func test_panel_shows_connection_failure_in_header_even_when_auth_is_ready() -> 
 	assert_str(_label(panel, "StatusDetailLabel").text).contains("transport unavailable")
 	assert_bool(_button(panel, "ConnectButton").disabled).is_false()
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_connects_and_enables_composer_after_initialize_without_system_init() -> void:
@@ -122,8 +118,7 @@ func test_panel_connects_and_enables_composer_after_initialize_without_system_in
 	assert_bool(_button(panel, "ConnectButton").disabled).is_true()
 	assert_int(_count_entries(panel, "system_card")).is_equal(2)
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_shows_issue_and_keeps_composer_disabled_when_initialize_fails() -> void:
@@ -150,8 +145,7 @@ func test_panel_shows_issue_and_keeps_composer_disabled_when_initialize_fails() 
 	assert_bool(_prompt_input(panel).editable).is_false()
 	assert_bool(_button(panel, "ConnectButton").disabled).is_false()
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_submit_prompt_renders_user_assistant_and_result_entries() -> void:
@@ -188,8 +182,7 @@ func test_panel_submit_prompt_renders_user_assistant_and_result_entries() -> voi
 	assert_int(_count_entries(panel, "result_card")).is_equal(1)
 	assert_bool(_button(panel, "InterruptButton").disabled).is_true()
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_coalesces_partial_stream_events_into_single_assistant_bubble() -> void:
@@ -231,8 +224,7 @@ func test_panel_coalesces_partial_stream_events_into_single_assistant_bubble() -
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_str(_last_assistant_text(panel)).contains("1, 2, 3, 4")
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_ignores_non_text_stream_event_payloads_in_assistant_bubble() -> void:
@@ -269,8 +261,7 @@ func test_panel_ignores_non_text_stream_event_payloads_in_assistant_bubble() -> 
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_str(_last_assistant_text(panel)).is_equal("Plain text only")
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_renders_result_errors_and_structured_output() -> void:
@@ -300,8 +291,7 @@ func test_panel_renders_result_errors_and_structured_output() -> void:
 	assert_str(str(structured_output_label.text)).contains("\"answer\": \"4\"")
 	assert_str(str(result_errors_label.text)).contains("soft warning")
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func test_panel_interrupt_button_tracks_busy_state() -> void:
@@ -327,8 +317,7 @@ func test_panel_interrupt_button_tracks_busy_state() -> void:
 
 	assert_bool(_button(panel, "InterruptButton").disabled).is_true()
 
-	panel.queue_free()
-	await get_tree().process_frame
+	await _cleanup_panel(panel)
 
 
 func _connected_panel(transport, options = null):
@@ -348,6 +337,15 @@ func _connected_panel(transport, options = null):
 	})
 	await _await_frames(3)
 	return panel
+
+
+func _cleanup_panel(panel) -> void:
+	if panel == null:
+		return
+	panel.disconnect_client()
+	await _await_frames(2)
+	panel.queue_free()
+	await _await_frames(2)
 
 
 func _status_badge(panel) -> Label:

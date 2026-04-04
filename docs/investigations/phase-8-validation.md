@@ -47,7 +47,10 @@ Date reviewed: 2026-04-04
 
 - the packaged-consumer validation intentionally uses a temporary fake transport so it validates installability independently of local Claude auth state
 - manual real-CLI validation should still be run in a clean Godot project before publishing a public release
-- Godot still emits non-blocking ObjectDB/resource warnings at process exit in headless validation runs; these did not prevent packaging or consumer validation success
+- follow-up cleanup work tightened validation output:
+  - the known non-fatal Godot `ObjectDB Snapshots directory` import warning is filtered at the script layer during successful `--import` runs
+  - packaged-consumer teardown is now explicit, so exit-time ObjectDB/resource leak warnings are treated as regressions rather than expected noise
+  - expected negative-path auth/runtime tests no longer emit engine `ERROR:` backtraces during passing runs
 
 ## Review status
 

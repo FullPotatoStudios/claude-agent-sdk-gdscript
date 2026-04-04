@@ -53,12 +53,12 @@ if [ -n "${tag_name}" ] && [ "$(strip_tag_prefix "${tag_name}")" != "${version}"
 	exit 1
 fi
 
-if ! rg -q "^## \\[${version//./\\.}\\]" "${repo_root}/CHANGELOG.md"; then
+if ! search_regex_in_file "^## \\[${version//./\\.}\\]" "${repo_root}/CHANGELOG.md"; then
 	echo "CHANGELOG.md is missing a section for version ${version}." >&2
 	exit 1
 fi
 
-if ! rg -q "^- Local addon version: \`${version}\`" "${repo_root}/docs/parity/upstream-ledger.md"; then
+if ! search_fixed_in_file "- Local addon version: \`${version}\`" "${repo_root}/docs/parity/upstream-ledger.md"; then
 	echo "docs/parity/upstream-ledger.md does not record local addon version ${version}." >&2
 	exit 1
 fi
@@ -110,7 +110,7 @@ doc_targets=(
 
 for phrase in "${required_phrases[@]}"; do
 	for path in "${doc_targets[@]}"; do
-		if ! rg -F -q "${phrase}" "${repo_root}/${path}"; then
+		if ! search_fixed_in_file "${phrase}" "${repo_root}/${path}"; then
 			echo "Missing required release wording in ${path}: ${phrase}" >&2
 			exit 1
 		fi

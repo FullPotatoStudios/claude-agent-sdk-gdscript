@@ -24,17 +24,18 @@ var _closed_token := -1
 func _init(initial_options = null, transport = null) -> void:
 	_client = ClaudeSDKClientScript.new(initial_options, transport)
 	_client.session_initialized.connect(_on_client_session_initialized)
+	_client.error_occurred.connect(_on_client_error_occurred)
 
 
 func connect_client() -> void:
 	if _connected:
 		return
 
+	_last_error = ""
 	_client.connect_client()
 	var stream = _client.receive_messages()
 	if not stream.get_error().is_empty():
 		_client.disconnect_client()
-		_sync_client_error()
 		return
 
 	_connected = true
@@ -60,7 +61,6 @@ func disconnect_client() -> void:
 func query(prompt: String, session_id: String = "default") -> void:
 	if not _connected or _busy:
 		_client.query(prompt, session_id)
-		_sync_client_error()
 		return
 
 	_client.query(prompt, session_id)
@@ -70,17 +70,14 @@ func query(prompt: String, session_id: String = "default") -> void:
 
 func interrupt() -> void:
 	_client.interrupt()
-	_sync_client_error()
 
 
 func set_permission_mode(mode: String) -> void:
 	_client.set_permission_mode(mode)
-	_sync_client_error()
 
 
 func set_model(model: String = "") -> void:
 	_client.set_model(model)
-	_sync_client_error()
 
 
 func get_server_info() -> Dictionary:
@@ -95,25 +92,19 @@ func get_auth_status() -> Dictionary:
 
 
 func get_context_usage() -> Dictionary:
-	var result: Dictionary = await _client.get_context_usage()
-	_sync_client_error()
-	return result
+	return await _client.get_context_usage()
 
 
 func get_mcp_status() -> Dictionary:
-	var result: Dictionary = await _client.get_mcp_status()
-	_sync_client_error()
-	return result
+	return await _client.get_mcp_status()
 
 
 func reconnect_mcp_server(server_name: String) -> void:
 	await _client.reconnect_mcp_server(server_name)
-	_sync_client_error()
 
 
 func toggle_mcp_server(server_name: String, enabled: bool) -> void:
 	await _client.toggle_mcp_server(server_name, enabled)
-	_sync_client_error()
 
 
 func get_last_error() -> String:
@@ -153,7 +144,6 @@ func _run_message_drain(token: int, stream) -> void:
 		return
 
 	_connected = false
-	_sync_client_error()
 	_set_busy(false)
 	_emit_session_closed_once(token)
 
@@ -171,16 +161,19 @@ func _emit_session_closed_once(token: int) -> void:
 	session_closed.emit()
 
 
-func _sync_client_error() -> void:
-	var message: String = _client.get_last_error()
-	if message.is_empty():
-		return
-	_last_error = message
-	error_occurred.emit(message)
-
-
 func _on_client_session_initialized(server_info: Dictionary) -> void:
 	if not _connected or _session_ready_emitted:
 		return
 	_session_ready_emitted = true
 	session_ready.emit(server_info.duplicate(true))
+
+
+func _on_client_error_occurred(message: String) -> void:
+	_emit_error(message)
+
+
+func _emit_error(message: String) -> void:
+	if message.is_empty():
+		return
+	_last_error = message
+	error_occurred.emit(message)

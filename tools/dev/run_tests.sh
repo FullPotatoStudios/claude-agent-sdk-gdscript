@@ -23,14 +23,16 @@ test_config="${TMPDIR:-/tmp}/claude-agent-sdk-gdscript-godot-config"
 test_cache="${TMPDIR:-/tmp}/claude-agent-sdk-gdscript-godot-cache"
 mkdir -p "${test_home}" "${test_config}" "${test_cache}"
 
-HOME="${test_home}" \
-XDG_DATA_HOME="${test_home}" \
-XDG_CONFIG_HOME="${test_config}" \
-XDG_CACHE_HOME="${test_cache}" \
-"${godot_binary}" \
-	--headless \
-	--path . \
-	--import
+run_godot_import_filtered \
+	env \
+		HOME="${test_home}" \
+		XDG_DATA_HOME="${test_home}" \
+		XDG_CONFIG_HOME="${test_config}" \
+		XDG_CACHE_HOME="${test_cache}" \
+		"${godot_binary}" \
+		--headless \
+		--path . \
+		--import
 
 HOME="${test_home}" \
 XDG_DATA_HOME="${test_home}" \

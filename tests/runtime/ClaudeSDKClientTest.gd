@@ -53,6 +53,7 @@ func test_client_receive_messages_runs_until_disconnect() -> void:
 	transport.close()
 	var all_messages: Array = await all_stream.collect()
 	assert_int(all_messages.size()).is_equal(2)
+	client.disconnect_client()
 
 
 func test_client_receive_response_yields_stream_events_in_order() -> void:
@@ -95,6 +96,8 @@ func test_client_receive_response_yields_stream_events_in_order() -> void:
 	assert_object(await response_stream.next_message()).is_instanceof(ClaudeStreamEventScript)
 	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
 	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	client.disconnect_client()
 
 
 func test_client_rejects_second_query_while_response_is_active() -> void:
@@ -115,6 +118,18 @@ func test_client_rejects_second_query_while_response_is_active() -> void:
 	client.query("Second")
 
 	assert_str(client.get_last_error()).contains("still in flight")
+	client.disconnect_client()
+
+
+func test_client_emits_error_signal_for_query_before_connect() -> void:
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+
+	client.query("Hi")
+
+	assert_array(errors).contains(["Call connect_client() before query()"])
+	assert_str(client.get_last_error()).contains("Call connect_client() before query()")
 
 
 func test_client_disconnect_releases_transport_signal_listeners_before_reconnect() -> void:
@@ -126,6 +141,7 @@ func test_client_disconnect_releases_transport_signal_listeners_before_reconnect
 	assert_int(transport.stderr_listener_count()).is_equal(1)
 	assert_int(transport.closed_listener_count()).is_equal(1)
 	assert_int(transport.error_listener_count()).is_equal(1)
+	client.disconnect_client()
 
 	client.disconnect_client()
 	assert_int(transport.stdout_listener_count()).is_equal(0)
@@ -162,6 +178,39 @@ func test_client_disconnect_finishes_active_streams() -> void:
 	assert_bool(stream.is_finished()).is_true()
 
 
+func test_client_emits_error_signal_for_async_control_response_failure() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.set_model("sonnet")
+	var model_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(model_request.get("request_id", "")),
+			"error": "model denied",
+		},
+	})
+	await get_tree().process_frame
+
+	assert_array(errors).contains(["model denied"])
+	assert_str(client.get_last_error()).contains("model denied")
+	client.disconnect_client()
+
+
 func test_one_shot_query_returns_pull_stream() -> void:
 	var transport = FakeTransportScript.new()
 	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new(), transport)
@@ -191,6 +240,8 @@ func test_one_shot_query_returns_pull_stream() -> void:
 
 	assert_object(await stream.next_message()).is_instanceof(ClaudeAssistantMessage)
 	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await stream.next_message()).is_null()
+	await get_tree().process_frame
 
 
 func test_one_shot_query_supports_hook_configuration_for_string_prompts() -> void:
@@ -240,6 +291,8 @@ func test_one_shot_query_supports_hook_configuration_for_string_prompts() -> voi
 
 	assert_str(str((JSON.parse_string(transport.writes[-1]) as Dictionary).get("type", ""))).is_equal("control_response")
 	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await stream.next_message()).is_null()
+	await get_tree().process_frame
 
 
 func test_one_shot_query_fails_when_initialize_fails() -> void:

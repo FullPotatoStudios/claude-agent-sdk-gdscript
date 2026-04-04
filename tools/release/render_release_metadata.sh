@@ -71,8 +71,8 @@ changelog_section="$(awk -v version="${version}" '
 	capture { print }
 ' CHANGELOG.md)"
 
-upstream_version="$(rg -o --replace '$1' '^- Version: `([^`]+)`' docs/parity/upstream-ledger.md | head -n 1)"
-upstream_commit="$(rg -o --replace '$1' '^- Commit: `([0-9a-f]+)`' docs/parity/upstream-ledger.md | head -n 1)"
+upstream_version="$(extract_first_backtick_value "- Version: " docs/parity/upstream-ledger.md)"
+upstream_commit="$(extract_first_backtick_value "- Commit: " docs/parity/upstream-ledger.md)"
 
 cat > "${release_notes_path}" <<EOF
 # Claude Agent SDK for GDScript ${tag_name}

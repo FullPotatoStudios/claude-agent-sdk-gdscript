@@ -115,7 +115,14 @@ func probe_auth_status() -> Dictionary:
 	var stdout_text := _read_pipe_text(stdio)
 	var stderr_text := _read_pipe_text(stderr)
 	var exit_code := OS.get_process_exit_code(pid) if pid > 0 else 0
-	var parsed: Variant = JSON.parse_string(stdout_text)
+	var parser := JSON.new()
+	var parse_error := ERR_PARSE_ERROR
+	var parsed: Variant = null
+	var trimmed_stdout := stdout_text.strip_edges()
+	if not trimmed_stdout.is_empty() and trimmed_stdout.begins_with("{"):
+		parse_error = parser.parse(stdout_text)
+		if parse_error == OK:
+			parsed = parser.data
 	if parsed is Dictionary and (parsed as Dictionary).has("loggedIn"):
 		var payload: Dictionary = parsed
 		var logged_in := bool(payload.get("loggedIn", false))
@@ -146,10 +153,21 @@ func probe_auth_status() -> Dictionary:
 			stderr_text
 		)
 
-	if parsed is not Dictionary:
+	if trimmed_stdout.is_empty() or not trimmed_stdout.begins_with("{"):
 		return _build_auth_status_error_result(
 			"json_parse_failed",
 			"Failed to parse Claude auth status JSON output",
+			exit_code,
+			stdout_text,
+			stderr_text
+		)
+
+	if parsed is not Dictionary:
+		return _build_auth_status_error_result(
+			"json_parse_failed",
+			"Failed to parse Claude auth status JSON output%s" % (
+				": %s" % parser.get_error_message() if parse_error != OK and not parser.get_error_message().is_empty() else ""
+			),
 			exit_code,
 			stdout_text,
 			stderr_text
@@ -184,7 +202,7 @@ func open_transport() -> bool:
 		return true
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
-		_set_last_error("ClaudeSubprocessCLITransport requires an active SceneTree")
+		_report_transport_error("ClaudeSubprocessCLITransport requires an active SceneTree", true, false)
 		return false
 	if not _validate_supported_options():
 		return false
@@ -200,7 +218,7 @@ func open_transport() -> bool:
 	var spec := build_process_spec()
 	_process = OS.execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()), false)
 	if _process.is_empty():
-		_set_last_error("Failed to launch Claude CLI process")
+		_report_transport_error("Failed to launch Claude CLI process", true, false)
 		return false
 
 	_stdio = _process["stdio"]
@@ -214,7 +232,7 @@ func open_transport() -> bool:
 
 func write(payload: String) -> bool:
 	if not _connected or _stdio == null:
-		_set_last_error("Cannot write to Claude CLI before transport is connected")
+		_report_transport_error("Cannot write to Claude CLI before transport is connected", true, false)
 		return false
 	_io_mutex.lock()
 	_stdio.store_line(payload)
@@ -222,7 +240,7 @@ func write(payload: String) -> bool:
 	var write_error: int = _stdio.get_error()
 	_io_mutex.unlock()
 	if write_error != OK:
-		_set_last_error("Failed to write to Claude CLI stdin: %s" % error_string(write_error))
+		_report_transport_error("Failed to write to Claude CLI stdin: %s" % error_string(write_error), true, false)
 		return false
 	return true
 
@@ -305,7 +323,7 @@ func _validate_supported_options() -> bool:
 		for server_name_variant in _options.mcp_servers.keys():
 			var server_config: Variant = _options.mcp_servers[server_name_variant]
 			if server_config is Dictionary and str((server_config as Dictionary).get("type", "")) == "sdk":
-				_set_last_error("SDK-hosted MCP servers are not supported yet: %s" % str(server_name_variant))
+				_report_transport_error("SDK-hosted MCP servers are not supported yet: %s" % str(server_name_variant), true, false)
 				return false
 	return true
 
@@ -421,7 +439,7 @@ func _drain_pending_events() -> void:
 	for line in stderr_lines:
 		stderr_line.emit(line)
 	for message in errors:
-		_set_last_error(message)
+		_report_transport_error(message, true, true)
 
 
 func _should_finish_dispatch_loop() -> bool:
@@ -446,7 +464,14 @@ func _emit_closed_once() -> void:
 
 func _set_last_error(message: String) -> void:
 	_last_error = message
-	push_error(message)
+
+
+func _report_transport_error(message: String, log_engine_error: bool, emit_signal: bool) -> void:
+	_set_last_error(message)
+	if log_engine_error:
+		push_error(message)
+	if emit_signal:
+		transport_error.emit(message)
 
 
 func _read_pipe_text(pipe: FileAccess) -> String:

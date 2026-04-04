@@ -48,9 +48,11 @@ func test_node_defaults_auto_connect_off_and_reemits_adapter_signals() -> void:
 	assert_int(turn_finished_messages.size()).is_equal(1)
 	assert_object(turn_finished_messages[0]).is_instanceof(ClaudeResultMessageScript)
 
+	node.disconnect_client()
+	await _await_frames(2)
 	get_tree().root.remove_child(node)
 	node.queue_free()
-	await get_tree().process_frame
+	await _await_frames(2)
 
 
 func test_node_auto_disconnects_on_exit_when_enabled() -> void:
@@ -67,6 +69,7 @@ func test_node_auto_disconnects_on_exit_when_enabled() -> void:
 
 	assert_bool(transport.connected).is_false()
 	node.queue_free()
+	await _await_frames(2)
 
 
 func _await_frames(count: int) -> void:

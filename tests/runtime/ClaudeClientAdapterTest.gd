@@ -71,6 +71,7 @@ func test_adapter_emits_session_and_turn_signals_from_initialize_and_continuous_
 	assert_int(turn_results.size()).is_equal(1)
 	assert_object(turn_results[0]).is_instanceof(ClaudeResultMessageScript)
 	assert_bool(adapter.is_busy()).is_false()
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_emits_session_ready_once_even_if_system_init_arrives_after_initialize() -> void:
@@ -100,6 +101,7 @@ func test_adapter_emits_session_ready_once_even_if_system_init_arrives_after_ini
 	})
 	await _await_frames(1)
 	assert_array(ready_payloads).has_size(1)
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_does_not_emit_session_ready_when_initialize_fails() -> void:
@@ -135,6 +137,7 @@ func test_adapter_does_not_emit_session_ready_when_initialize_fails() -> void:
 	await _await_frames(1)
 
 	assert_array(ready_payloads).is_empty()
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_can_run_second_turn_after_first_result() -> void:
@@ -166,6 +169,7 @@ func test_adapter_can_run_second_turn_after_first_result() -> void:
 
 	assert_array(turn_results).is_equal(["first", "second"])
 	assert_bool(adapter.is_busy()).is_false()
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_emits_error_for_query_while_busy_without_interrupting_current_turn() -> void:
@@ -200,6 +204,7 @@ func test_adapter_emits_error_for_query_while_busy_without_interrupting_current_
 	assert_array(busy_events).is_equal([true, false])
 	assert_int(turn_results.size()).is_equal(1)
 	assert_str(errors[-1]).contains("still in flight")
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_emits_connection_error_and_supports_auth_probe_before_connect() -> void:
@@ -226,6 +231,7 @@ func test_adapter_emits_connection_error_and_supports_auth_probe_before_connect(
 	assert_bool(adapter.is_client_connected()).is_false()
 	assert_int(errors.size()).is_equal(1)
 	assert_str(errors[0]).contains("transport unavailable")
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_can_retry_connect_after_initial_transport_failure() -> void:
@@ -263,6 +269,7 @@ func test_adapter_can_retry_connect_after_initial_transport_failure() -> void:
 	assert_int(transport.stderr_listener_count()).is_equal(1)
 	assert_int(transport.closed_listener_count()).is_equal(1)
 	assert_int(transport.error_listener_count()).is_equal(1)
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_auth_probe_clears_stale_error_on_success() -> void:
@@ -299,6 +306,36 @@ func test_adapter_auth_probe_clears_stale_error_on_success() -> void:
 	var logged_in_status := adapter.get_auth_status()
 	assert_bool(bool(logged_in_status.get("logged_in", false))).is_true()
 	assert_str(adapter.get_last_error()).is_empty()
+
+
+func test_adapter_emits_error_for_async_transport_failure() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var errors: Array[String] = []
+	var closed_events: Array[int] = []
+
+	adapter.error_occurred.connect(func(message: String): errors.append(message))
+	adapter.session_closed.connect(func(): closed_events.append(1))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	transport.emit_transport_failure("pipe died")
+	await _await_frames(2)
+
+	assert_array(errors).contains(["pipe died"])
+	assert_str(adapter.get_last_error()).contains("pipe died")
+	assert_int(closed_events.size()).is_equal(1)
+	await _cleanup_adapter(adapter)
 
 
 func test_adapter_emits_session_closed_once_per_connection() -> void:
@@ -344,6 +381,13 @@ func test_adapter_emits_session_closed_once_per_connection() -> void:
 func _await_frames(count: int) -> void:
 	for _index in range(count):
 		await get_tree().process_frame
+
+
+func _cleanup_adapter(adapter) -> void:
+	if adapter == null:
+		return
+	adapter.disconnect_client()
+	await _await_frames(2)
 
 
 func _read_last_write(transport) -> Dictionary:
