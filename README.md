@@ -43,9 +43,9 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - A scene-free runtime core under `addons/claude_agent_sdk/runtime/`
 - `ClaudeQuery` for one-shot usage
 - `ClaudeSDKClient` for interactive runtime usage
-- `ClaudeSessions` for read-only local session history access
-- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration
-- `ClaudeChatPanel` as a reusable reference chat UI
+- `ClaudeSessions` for local session history access and basic session mutations
+- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history convenience methods
+- `ClaudeChatPanel` as a reusable reference chat UI with saved-session browsing, idle-time live switching, resume, and basic session management
 - A root-project demo under `demo/` for validation and onboarding
 
 Only `addons/claude_agent_sdk/` is the distributable addon payload. The `demo/`, `tests/`, and `tools/` directories stay outside the packaged artifact.
@@ -101,17 +101,17 @@ func _ready() -> void:
 - Claude CLI subprocess transport with inherited environment and explicit overrides
 - Typed message parsing for user, assistant, system, result, and partial stream events
 - One-shot queries plus interactive connected sessions
-- Read-only local session history access for session listing, metadata lookup, and transcript reading
+- Local session history access for session listing, metadata lookup, transcript reading, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
-- Godot-native adapter and node layers
-- A reusable chat panel plus demo validation scene
+- Godot-native adapter and node layers with session-history convenience passthroughs
+- A reusable chat panel plus demo validation scene, now including session browsing, transcript restoration, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
 
 ## Current Gaps
 
 The current release still defers some broader upstream parity areas, including:
 
-- session mutation helpers such as rename, tag, delete, and fork
+- session forking helpers
 - SDK-hosted MCP/custom-tool hosting
 - broader settings/agent-definition parity beyond the current runtime surface
 

@@ -47,14 +47,21 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10A read-only session history support
+- Active roadmap slice: Phase 10C higher-layer session support and reference UI integration
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
   - `ClaudeSessions.get_session_messages()`
   - typed read-only history models `ClaudeSessionInfo` and `ClaudeSessionMessage`
+- `ClaudeSessions.rename_session()`
+- `ClaudeSessions.tag_session()`
+- `ClaudeSessions.delete_session()`
+- `ClaudeSessions.get_last_error()` for mutation failures
+- `ClaudeClientAdapter` session-history and mutation convenience methods
+- `ClaudeClientNode` session-history and mutation convenience methods
+- `ClaudeChatPanel` session browser, transcript restoration, saved-session resume, and basic session-management controls
 - Still deferred:
-  - rename, tag, delete, and fork session helpers
+  - session forking helpers
   - SDK-hosted custom-tool / MCP helper parity
   - broader settings and agent-definition parity slices
 

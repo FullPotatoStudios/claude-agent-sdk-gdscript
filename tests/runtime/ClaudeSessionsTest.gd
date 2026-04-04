@@ -268,6 +268,275 @@ func test_get_session_messages_returns_empty_for_invalid_or_missing_session() ->
 	assert_array(ClaudeSessions.get_session_messages("cccccccc-cccc-4ccc-8ccc-cccccccccccc")).is_empty()
 
 
+func test_rename_session_validates_inputs_and_updates_visible_title() -> void:
+	var config_root := _create_config_root("rename")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	assert_int(ClaudeSessions.rename_session("not-a-uuid", "Title")).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(ClaudeSessions.get_last_error()).contains("Invalid session_id")
+
+	var project_path := "/tmp/rename-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Original"}},
+		{"type": "summary", "summary": "Original summary"},
+	], 1712301200)
+
+	assert_int(ClaudeSessions.rename_session(session_id, "   ")).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(ClaudeSessions.get_last_error()).contains("title must be non-empty")
+	assert_int(
+		ClaudeSessions.rename_session("10101010-1010-4101-8101-101010101010", "Missing", project_path)
+	).is_equal(ERR_DOES_NOT_EXIST)
+	assert_str(ClaudeSessions.get_last_error()).contains("not found")
+
+	assert_int(ClaudeSessions.rename_session(session_id, "  Final Title  ", project_path)).is_equal(OK)
+	assert_str(ClaudeSessions.get_last_error()).is_empty()
+
+	var session_file := project_dir.path_join("%s.jsonl" % session_id)
+	var lines := FileAccess.get_file_as_string(session_file).strip_edges().split("\n", false)
+	assert_str(lines[-1]).is_equal(
+		'{"type":"custom-title","customTitle":"Final Title","sessionId":"%s"}' % session_id
+	)
+
+	var info = ClaudeSessions.get_session_info(session_id, project_path)
+	assert_object(info).is_not_null()
+	if info == null:
+		return
+	assert_str(info.custom_title).is_equal("Final Title")
+	assert_str(info.summary).is_equal("Final Title")
+
+
+func test_rename_session_searches_all_projects_and_skips_zero_byte_stub() -> void:
+	var config_root := _create_config_root("rename-search")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var stub_project_dir := _make_project_dir(config_root, "/aaa/project")
+	var real_project_dir := _make_project_dir(config_root, "/zzz/project")
+	var session_id := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	var stub_file := stub_project_dir.path_join("%s.jsonl" % session_id)
+	var stub := FileAccess.open(stub_file, FileAccess.WRITE)
+	stub.close()
+	_write_session_file(real_project_dir, session_id, [
+		{"type": "user", "cwd": "/zzz/project", "message": {"content": "Real prompt"}},
+		{"type": "summary", "summary": "Real summary"},
+	], 1712301300)
+
+	assert_int(ClaudeSessions.rename_session(session_id, "New Title")).is_equal(OK)
+	assert_str(ClaudeSessions.get_last_error()).is_empty()
+	assert_str(FileAccess.get_file_as_string(stub_file)).is_empty()
+	assert_str(FileAccess.get_file_as_string(real_project_dir.path_join("%s.jsonl" % session_id))).contains(
+		'"customTitle":"New Title"'
+	)
+
+
+func test_tag_session_validates_sanitizes_clears_and_updates_visible_tag() -> void:
+	var config_root := _create_config_root("tag")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	assert_int(ClaudeSessions.tag_session("not-a-uuid", "tag")).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(ClaudeSessions.get_last_error()).contains("Invalid session_id")
+
+	var project_path := "/tmp/tag-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Tagged"}},
+		{"type": "summary", "summary": "Tagged summary"},
+	], 1712301400)
+
+	assert_int(ClaudeSessions.tag_session(session_id, "   ", project_path)).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(ClaudeSessions.get_last_error()).contains("tag must be non-empty")
+	assert_int(
+		ClaudeSessions.tag_session("14141414-1414-4141-8141-141414141414", "tag", project_path)
+	).is_equal(ERR_DOES_NOT_EXIST)
+	assert_int(ClaudeSessions.tag_session(session_id, "\u200b\u200c\ufeff", project_path)).is_equal(ERR_INVALID_PARAMETER)
+
+	assert_int(ClaudeSessions.tag_session(session_id, "  clean\u200btag\ufeff  ", project_path)).is_equal(OK)
+	assert_int(ClaudeSessions.tag_session(session_id, "second", project_path)).is_equal(OK)
+	assert_int(ClaudeSessions.tag_session(session_id, null, project_path)).is_equal(OK)
+	assert_str(ClaudeSessions.get_last_error()).is_empty()
+
+	var session_file := project_dir.path_join("%s.jsonl" % session_id)
+	var lines := FileAccess.get_file_as_string(session_file).strip_edges().split("\n", false)
+	assert_str(lines[-3]).is_equal(
+		'{"type":"tag","tag":"cleantag","sessionId":"%s"}' % session_id
+	)
+	assert_str(lines[-2]).is_equal(
+		'{"type":"tag","tag":"second","sessionId":"%s"}' % session_id
+	)
+	assert_str(lines[-1]).is_equal(
+		'{"type":"tag","tag":"","sessionId":"%s"}' % session_id
+	)
+
+	var cleared_info = ClaudeSessions.get_session_info(session_id, project_path)
+	assert_object(cleared_info).is_not_null()
+	if cleared_info == null:
+		return
+	assert_that(cleared_info.tag).is_null()
+
+	assert_int(ClaudeSessions.tag_session(session_id, "Ａ\u200b", project_path)).is_equal(OK)
+	var tagged_info = ClaudeSessions.get_session_info(session_id, project_path)
+	assert_object(tagged_info).is_not_null()
+	if tagged_info == null:
+		return
+	assert_str(str(tagged_info.tag)).is_equal("A")
+
+
+func test_delete_session_removes_file_and_visibility() -> void:
+	var config_root := _create_config_root("delete")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	assert_int(ClaudeSessions.delete_session("not-a-uuid")).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(ClaudeSessions.get_last_error()).contains("Invalid session_id")
+
+	var project_path := "/tmp/delete-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "12121212-1212-4121-8121-121212121212"
+	var session_file := project_dir.path_join("%s.jsonl" % session_id)
+	assert_int(ClaudeSessions.delete_session("15151515-1515-4151-8151-151515151515", project_path)).is_equal(
+		ERR_DOES_NOT_EXIST
+	)
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Delete me"}},
+		{"type": "summary", "summary": "Delete summary"},
+	], 1712301500)
+
+	assert_bool(FileAccess.file_exists(session_file)).is_true()
+	assert_int(ClaudeSessions.delete_session(session_id)).is_equal(OK)
+	assert_str(ClaudeSessions.get_last_error()).is_empty()
+	assert_bool(FileAccess.file_exists(session_file)).is_false()
+	assert_that(ClaudeSessions.get_session_info(session_id, project_path)).is_null()
+	assert_array(ClaudeSessions.list_sessions(project_path, 0, 0, false)).is_empty()
+
+
+func test_session_mutations_remain_worktree_aware() -> void:
+	var config_root := _create_config_root("mutation-worktree")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var repo_root := _create_temp_root("git-mutation-repo")
+	var worktree_parent := _create_temp_root("git-mutation-worktree-parent")
+	var worktree_root := worktree_parent.path_join("feature-mutation")
+	_init_git_repo(repo_root)
+	_create_git_worktree(repo_root, worktree_root, "feature/mutation")
+
+	var session_id := "13131313-1313-4131-8131-131313131313"
+	var worktree_project_dir := _make_project_dir(config_root, worktree_root)
+	_write_session_file(worktree_project_dir, session_id, [
+		{"type": "user", "cwd": worktree_root, "message": {"content": "Worktree session"}},
+		{"type": "summary", "summary": "Worktree summary"},
+	], 1712301600)
+
+	assert_int(ClaudeSessions.rename_session(session_id, "Worktree title", repo_root)).is_equal(OK)
+	assert_int(ClaudeSessions.tag_session(session_id, "review", repo_root)).is_equal(OK)
+
+	var info = ClaudeSessions.get_session_info(session_id, repo_root)
+	assert_object(info).is_not_null()
+	if info == null:
+		return
+	assert_str(info.summary).is_equal("Worktree title")
+	assert_str(str(info.tag)).is_equal("review")
+
+
+func test_unscoped_mutations_target_newest_visible_duplicate_session() -> void:
+	var config_root := _create_config_root("duplicate-target")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var older_dir := _make_project_dir(config_root, "/tmp/older-project")
+	var newer_dir := _make_project_dir(config_root, "/tmp/newer-project")
+	var session_id := "20202020-2020-4202-8202-202020202020"
+	_write_session_file(older_dir, session_id, [
+		{"type": "user", "cwd": "/tmp/older-project", "message": {"content": "Older prompt"}},
+		{"type": "summary", "summary": "Older summary"},
+	], 1712301700)
+	_write_session_file(newer_dir, session_id, [
+		{"type": "user", "cwd": "/tmp/newer-project", "message": {"content": "Newer prompt"}},
+		{"type": "summary", "summary": "Newer summary"},
+	], 1712301800)
+
+	assert_int(ClaudeSessions.rename_session(session_id, "Newest title")).is_equal(OK)
+	assert_str(FileAccess.get_file_as_string(older_dir.path_join("%s.jsonl" % session_id))).contains(
+		'"summary":"Older summary"'
+	)
+	assert_str(FileAccess.get_file_as_string(newer_dir.path_join("%s.jsonl" % session_id))).contains(
+		'"customTitle":"Newest title"'
+	)
+
+	assert_int(ClaudeSessions.tag_session(session_id, "ship-it")).is_equal(OK)
+	assert_str(FileAccess.get_file_as_string(older_dir.path_join("%s.jsonl" % session_id))).not_contains(
+		'"tag":"ship-it"'
+	)
+	assert_str(FileAccess.get_file_as_string(newer_dir.path_join("%s.jsonl" % session_id))).contains(
+		'"tag":"ship-it"'
+	)
+
+	assert_int(ClaudeSessions.delete_session(session_id)).is_equal(OK)
+	assert_bool(FileAccess.file_exists(newer_dir.path_join("%s.jsonl" % session_id))).is_false()
+	assert_bool(FileAccess.file_exists(older_dir.path_join("%s.jsonl" % session_id))).is_true()
+
+
+func test_delete_session_surfaces_lookup_permission_failure() -> void:
+	var config_root := _create_config_root("delete-permission")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/delete-permission-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "21212121-2121-4212-8212-212121212121"
+	var session_file := project_dir.path_join("%s.jsonl" % session_id)
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Locked"}},
+		{"type": "summary", "summary": "Locked summary"},
+	], 1712301900)
+
+	var chmod_output: Array = []
+	OS.execute("chmod", ["000", session_file], chmod_output, true)
+	var result := ClaudeSessions.delete_session(session_id, project_path)
+	OS.execute("chmod", ["600", session_file], chmod_output, true)
+
+	assert_int(result).is_not_equal(ERR_DOES_NOT_EXIST)
+	assert_str(ClaudeSessions.get_last_error()).contains(session_file)
+
+
+func test_tag_sanitization_handles_compatibility_characters() -> void:
+	assert_str(ClaudeSessionsScript._sanitize_tag("Ⓐ①ﬃ")).is_equal("A1ffi")
+	assert_str(ClaudeSessionsScript._sanitize_tag("Ⅳ")).is_equal("IV")
+	assert_str(ClaudeSessionsScript._sanitize_tag("a\u2066Ⓑ\u2069")).is_equal("aB")
+
+
+func test_scoped_mutation_falls_through_primary_access_error_to_worktree_session() -> void:
+	var config_root := _create_config_root("worktree-fallback")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var repo_root := _create_temp_root("git-fallback-repo")
+	var worktree_parent := _create_temp_root("git-fallback-worktree-parent")
+	var worktree_root := worktree_parent.path_join("feature-fallback")
+	_init_git_repo(repo_root)
+	_create_git_worktree(repo_root, worktree_root, "feature/fallback")
+
+	var session_id := "23232323-2323-4232-8232-232323232323"
+	var repo_project_dir := _make_project_dir(config_root, repo_root)
+	var worktree_project_dir := _make_project_dir(config_root, worktree_root)
+	var repo_file := repo_project_dir.path_join("%s.jsonl" % session_id)
+	var worktree_file := worktree_project_dir.path_join("%s.jsonl" % session_id)
+	_write_session_file(repo_project_dir, session_id, [
+		{"type": "user", "cwd": repo_root, "message": {"content": "Repo copy"}},
+		{"type": "summary", "summary": "Repo summary"},
+	], 1712302300)
+	_write_session_file(worktree_project_dir, session_id, [
+		{"type": "user", "cwd": worktree_root, "message": {"content": "Worktree copy"}},
+		{"type": "summary", "summary": "Worktree summary"},
+	], 1712302400)
+
+	var chmod_output: Array = []
+	OS.execute("chmod", ["000", repo_file], chmod_output, true)
+	var result := ClaudeSessions.rename_session(session_id, "Worktree title", repo_root)
+	OS.execute("chmod", ["600", repo_file], chmod_output, true)
+
+	assert_int(result).is_equal(OK)
+	assert_bool(FileAccess.get_file_as_string(repo_file).contains('"customTitle":"Worktree title"')).is_false()
+	assert_bool(FileAccess.get_file_as_string(worktree_file).contains('"customTitle":"Worktree title"')).is_true()
+
+
 func _create_config_root(label: String) -> String:
 	var root_path := _create_temp_root("claude-config-%s" % label)
 	DirAccess.make_dir_recursive_absolute(root_path.path_join("projects"))

@@ -12,7 +12,7 @@ font_size = 13
 font_color = Color(0.6, 0.662745, 0.776471, 1)
 
 [node name="ClaudeChatPanel" type="Control" unique_id=748174326]
-custom_minimum_size = Vector2(680, 640)
+custom_minimum_size = Vector2(980, 680)
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -149,60 +149,228 @@ label_settings = SubResource("LabelSettings_bjn48")
 [node name="PermissionModeOption" type="OptionButton" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=984920834]
 layout_mode = 2
 
-[node name="TranscriptCard" type="PanelContainer" parent="Shell/Margin/Body" unique_id=1296873614]
+[node name="SplitRow" type="HSplitContainer" parent="Shell/Margin/Body" unique_id=1314554121]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="TranscriptScroll" type="ScrollContainer" parent="Shell/Margin/Body/TranscriptCard" unique_id=1515415309]
+[node name="SessionPane" type="PanelContainer" parent="Shell/Margin/Body/SplitRow" unique_id=454553211]
+custom_minimum_size = Vector2(290, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SessionMargin" type="MarginContainer" parent="Shell/Margin/Body/SplitRow/SessionPane" unique_id=175877002]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="SessionBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin" unique_id=106367532]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SessionHeader" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=188415572]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SessionTitleGroup" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader" unique_id=143032808]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="SessionEyebrow" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionTitleGroup" unique_id=1050566771]
+layout_mode = 2
+text = "Sessions"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="SessionSummaryLabel" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionTitleGroup" unique_id=874172776]
+layout_mode = 2
+text = "Browse saved Claude conversations"
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="SessionActions" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader" unique_id=157110626]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SessionRefreshButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions" unique_id=1871760004]
+layout_mode = 2
+text = "Refresh"
+
+[node name="NewChatButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions" unique_id=546893590]
+layout_mode = 2
+text = "New chat"
+
+[node name="SessionList" type="ItemList" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=708564280]
+custom_minimum_size = Vector2(0, 240)
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+auto_height = true
+
+[node name="SelectedSessionCard" type="PanelContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=171704247]
+layout_mode = 2
+
+[node name="SelectedSessionMargin" type="MarginContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard" unique_id=709545735]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="SelectedSessionBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin" unique_id=1201547033]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SelectedSessionTitleLabel" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1879801791]
+layout_mode = 2
+text = "Selected session"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="SelectedSessionSummaryValue" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1458429141]
+layout_mode = 2
+text = "No saved session selected."
+autowrap_mode = 3
+
+[node name="SelectedSessionMetaValue" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=118583123]
+layout_mode = 2
+text = "Choose a saved transcript to inspect it."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="SelectedSessionBranchValue" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1950838857]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="SelectedSessionCwdValue" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=595155734]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="SessionTitleGroup" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1328971596]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SessionTitleFieldLabel" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionTitleGroup" unique_id=1567829722]
+layout_mode = 2
+text = "Rename"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="SessionTitleInput" type="LineEdit" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionTitleGroup" unique_id=2058336263]
+layout_mode = 2
+placeholder_text = "Session title"
+
+[node name="SessionTagGroup" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=926575245]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SessionTagFieldLabel" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionTagGroup" unique_id=1694573724]
+layout_mode = 2
+text = "Tag"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="SessionTagInput" type="LineEdit" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionTagGroup" unique_id=774735425]
+layout_mode = 2
+placeholder_text = "review"
+
+[node name="SessionActionGrid" type="GridContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1135350695]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="RenameSessionButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid" unique_id=1767152351]
+layout_mode = 2
+text = "Rename"
+
+[node name="ApplyTagButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid" unique_id=1505005832]
+layout_mode = 2
+text = "Set tag"
+
+[node name="ClearTagButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid" unique_id=557796659]
+layout_mode = 2
+text = "Clear tag"
+
+[node name="DeleteSessionButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid" unique_id=1898013709]
+layout_mode = 2
+text = "Delete"
+
+[node name="DeleteConfirmRow" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1545263050]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ConfirmDeleteButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow" unique_id=1906293100]
+visible = false
+layout_mode = 2
+text = "Confirm delete"
+
+[node name="CancelDeleteButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow" unique_id=402281373]
+visible = false
+layout_mode = 2
+text = "Cancel"
+
+[node name="ChatColumn" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow" unique_id=984109634]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+
+[node name="TranscriptCard" type="PanelContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn" unique_id=1296873614]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TranscriptScroll" type="ScrollContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard" unique_id=1515415309]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="TranscriptList" type="VBoxContainer" parent="Shell/Margin/Body/TranscriptCard/TranscriptScroll" unique_id=766989441]
+[node name="TranscriptList" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptScroll" unique_id=766989441]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="ComposerCard" type="PanelContainer" parent="Shell/Margin/Body" unique_id=278262466]
+[node name="ComposerCard" type="PanelContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn" unique_id=278262466]
 layout_mode = 2
 
-[node name="ComposerMargin" type="MarginContainer" parent="Shell/Margin/Body/ComposerCard" unique_id=1805394124]
+[node name="ComposerMargin" type="MarginContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard" unique_id=1805394124]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="ComposerBody" type="VBoxContainer" parent="Shell/Margin/Body/ComposerCard/ComposerMargin" unique_id=1537552482]
+[node name="ComposerBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin" unique_id=1537552482]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="ComposerLabel" type="Label" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody" unique_id=244026021]
+[node name="ComposerLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody" unique_id=244026021]
 layout_mode = 2
 text = "Prompt"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="PromptInput" type="TextEdit" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody" unique_id=2119860714]
+[node name="PromptInput" type="TextEdit" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody" unique_id=2119860714]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 size_flags_horizontal = 3
 wrap_mode = 1
 
-[node name="ComposerActions" type="HBoxContainer" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody" unique_id=722186853]
+[node name="ComposerActions" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody" unique_id=722186853]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="ComposerHintLabel" type="Label" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=1666686512]
+[node name="ComposerHintLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=1666686512]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Connect the authenticated Claude CLI to start chatting."
 label_settings = SubResource("LabelSettings_bjn48")
 autowrap_mode = 3
 
-[node name="InterruptButton" type="Button" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=817448029]
+[node name="InterruptButton" type="Button" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=817448029]
 layout_mode = 2
 text = "Interrupt"
 
-[node name="SendButton" type="Button" parent="Shell/Margin/Body/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=1785729174]
+[node name="SendButton" type="Button" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerActions" unique_id=1785729174]
 layout_mode = 2
 text = "Send"

@@ -9,6 +9,9 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 ### Added
 
 - read-only local session history support through `ClaudeSessions`, including session listing, metadata lookup, and transcript reading
+- basic `ClaudeSessions` mutation helpers for rename, tag, delete, and mutation error reporting
+- session-history and mutation convenience methods on `ClaudeClientAdapter` and `ClaudeClientNode`
+- saved-session browsing, transcript restoration, resume, and basic session-management controls in `ClaudeChatPanel` and the shipped demo
 
 ## [0.1.0] - 2026-04-04
 

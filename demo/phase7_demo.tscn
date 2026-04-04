@@ -55,19 +55,19 @@ theme_override_constants/separation = 8
 layout_mode = 2
 theme_override_colors/font_color = Color(0.392157, 0.839216, 1, 1)
 theme_override_font_sizes/font_size = 13
-text = "Phase 7 demo"
+text = "Reference demo"
 
 [node name="Title" type="Label" parent="Layout/Shell/Body/Hero/HeroBody" unique_id=1823596264]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.952941, 0.968627, 1, 1)
 theme_override_font_sizes/font_size = 28
-text = "Reusable Claude chat panel"
+text = "Session-aware Claude chat panel"
 
 [node name="Summary" type="Label" parent="Layout/Shell/Body/Hero/HeroBody" unique_id=1220297111]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.709804, 0.811765, 1)
 theme_override_font_sizes/font_size = 15
-text = "This scene validates the shipped addon UI directly. The panel below uses ClaudeClientNode internally, and your own projects can replace it with custom UI built on ClaudeClientAdapter or ClaudeSDKClient."
+text = "This scene validates the shipped addon UI directly. The panel below now includes saved-session browsing, transcript restoration, reconnect/resume, and basic rename/tag/delete controls while still using ClaudeClientNode internally."
 autowrap_mode = 3
 
 [node name="PanelWrap" type="MarginContainer" parent="Layout/Shell/Body" unique_id=1958223651]

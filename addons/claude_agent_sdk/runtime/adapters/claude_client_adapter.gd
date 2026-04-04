@@ -11,6 +11,7 @@ signal error_occurred(message: String)
 signal session_closed()
 
 const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_client.gd")
+const ClaudeSessionsScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_sessions.gd")
 
 var _client = null
 var _connected := false
@@ -91,6 +92,40 @@ func get_auth_status() -> Dictionary:
 	return result
 
 
+func list_sessions(
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0,
+	include_worktrees: bool = true
+) -> Array[ClaudeSessionInfo]:
+	return ClaudeSessionsScript.list_sessions(directory, limit, offset, include_worktrees)
+
+
+func get_session_info(session_id: String, directory: String = ""):
+	return ClaudeSessionsScript.get_session_info(session_id, directory)
+
+
+func get_session_messages(
+	session_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionMessage]:
+	return ClaudeSessionsScript.get_session_messages(session_id, directory, limit, offset)
+
+
+func rename_session(session_id: String, title: String, directory: String = "") -> int:
+	return _handle_session_mutation_result(ClaudeSessionsScript.rename_session(session_id, title, directory))
+
+
+func tag_session(session_id: String, tag: Variant = null, directory: String = "") -> int:
+	return _handle_session_mutation_result(ClaudeSessionsScript.tag_session(session_id, tag, directory))
+
+
+func delete_session(session_id: String, directory: String = "") -> int:
+	return _handle_session_mutation_result(ClaudeSessionsScript.delete_session(session_id, directory))
+
+
 func get_context_usage() -> Dictionary:
 	return await _client.get_context_usage()
 
@@ -108,10 +143,12 @@ func toggle_mcp_server(server_name: String, enabled: bool) -> void:
 
 
 func get_last_error() -> String:
+	if not _last_error.is_empty():
+		return _last_error
 	var client_error: String = _client.get_last_error()
 	if not client_error.is_empty():
 		return client_error
-	return _last_error
+	return ""
 
 
 func is_client_connected() -> bool:
@@ -177,3 +214,11 @@ func _emit_error(message: String) -> void:
 		return
 	_last_error = message
 	error_occurred.emit(message)
+
+
+func _handle_session_mutation_result(result: int) -> int:
+	if result == OK:
+		_last_error = ""
+		return OK
+	_emit_error(ClaudeSessionsScript.get_last_error())
+	return result

@@ -66,6 +66,40 @@ func get_auth_status() -> Dictionary:
 	return _adapter.get_auth_status()
 
 
+func list_sessions(
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0,
+	include_worktrees: bool = true
+) -> Array[ClaudeSessionInfo]:
+	return _adapter.list_sessions(directory, limit, offset, include_worktrees)
+
+
+func get_session_info(session_id: String, directory: String = ""):
+	return _adapter.get_session_info(session_id, directory)
+
+
+func get_session_messages(
+	session_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionMessage]:
+	return _adapter.get_session_messages(session_id, directory, limit, offset)
+
+
+func rename_session(session_id: String, title: String, directory: String = "") -> int:
+	return _adapter.rename_session(session_id, title, directory)
+
+
+func tag_session(session_id: String, tag: Variant = null, directory: String = "") -> int:
+	return _adapter.tag_session(session_id, tag, directory)
+
+
+func delete_session(session_id: String, directory: String = "") -> int:
+	return _adapter.delete_session(session_id, directory)
+
+
 func get_context_usage() -> Dictionary:
 	return await _adapter.get_context_usage()
 

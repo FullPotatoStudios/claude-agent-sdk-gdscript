@@ -22,6 +22,7 @@ The current addon does not require `plugin.cfg`, autoloads, or editor-plugin ena
 - the addon uses the system-installed `claude` CLI
 - existing Claude auth is reused from the caller's environment
 - the packaged chat panel is optional and can be replaced with custom UI built on the lower runtime layers
+- session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`
 
 ## Contents
 
@@ -32,7 +33,7 @@ This payload includes:
 - `ClaudeSessions`
 - `ClaudeClientAdapter`
 - `ClaudeClientNode`
-- `ClaudeChatPanel`
+- `ClaudeChatPanel` with saved-session browsing, transcript restoration, idle-time live switching, resume, and basic rename/tag/delete controls
 - the canonical addon `VERSION`
 - the addon-local `LICENSE.txt`
 
@@ -41,5 +42,5 @@ Development-only content such as `demo/`, `tests/`, `tools/`, and `addons/gdUnit
 ## More docs
 
 - See the root repository `README.md` for the public project overview.
-- See the repository docs, especially `docs/contributing/session-history.md`, for read-only local session-history usage.
+- See the repository docs, especially `docs/contributing/session-history.md`, for session-history and basic mutation usage.
 - See the repository docs for install, integration, release, and parity details.

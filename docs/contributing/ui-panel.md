@@ -13,7 +13,8 @@ The panel owns one internal `ClaudeClientNode`. In Phase 7 it does not support e
 Use `ClaudeChatPanel` when:
 
 - you want a ready-made Claude chat surface in a Godot project
-- you want auth-state, connect/disconnect controls, transcript rendering, and a composer without building UI glue first
+- you want auth-state, saved-session browsing, connect/disconnect controls, transcript rendering, and a composer without building UI glue first
+- you want a resizable two-pane layout with a saved-session browser on the left and chat on the right
 - you want a reference for building your own UI on top of `ClaudeClientAdapter` or `ClaudeClientNode`
 
 Use the lower layers instead when:
@@ -76,14 +77,19 @@ The shipped panel currently includes:
 - auth/status header
 - model field
 - permission mode control
+- a resizable session browser pane scoped to the configured project path
+- saved transcript loading and read-only browsing while disconnected
+- reconnect/resume into selected saved sessions
+- idle-time live switching between saved sessions inside an already connected panel
+- basic rename, tag, clear-tag, and delete controls for saved sessions
 - connect/disconnect controls
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
 - interrupt support during active turns
 
 The panel intentionally does not yet include:
 
-- saved transcript/history browsing
-- session listing or mutation
+- multiple simultaneous in-flight sessions inside one panel instance
+- session forking
 - task-specific UI beyond the generic typed messages
 - SDK-hosted MCP/custom-tool UX
 - editor-plugin workflows

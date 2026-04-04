@@ -3,9 +3,19 @@ extends GdUnitTestSuite
 
 const FakeTransportScript := preload("res://tests/support/fake_transport.gd")
 const ClaudeClientAdapterScript := preload("res://addons/claude_agent_sdk/runtime/adapters/claude_client_adapter.gd")
+const ClaudeSessionsScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_sessions.gd")
 const ClaudeSystemMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_system_message.gd")
 const ClaudeAssistantMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_assistant_message.gd")
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
+
+var _created_roots: Array[String] = []
+
+
+func after_test() -> void:
+	for root_path in _created_roots:
+		_delete_tree(root_path)
+	_created_roots.clear()
+	OS.set_environment("CLAUDE_CONFIG_DIR", "")
 
 
 func test_adapter_emits_session_and_turn_signals_from_initialize_and_continuous_stream() -> void:
@@ -378,6 +388,47 @@ func test_adapter_emits_session_closed_once_per_connection() -> void:
 	assert_int(closed_events.size()).is_equal(2)
 
 
+func test_adapter_session_passthrough_reads_and_mutates_sessions() -> void:
+	var config_root := _create_config_root("adapter-sessions")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/adapter-session-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "31313131-3131-4313-8313-313131313131"
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Saved prompt"}},
+		{"type": "assistant", "uuid": "adapter-a-1", "parentUuid": "adapter-u-1", "sessionId": session_id, "message": {"role": "assistant", "content": "Saved answer"}},
+		{"type": "summary", "summary": "Saved summary"},
+	], 1712302000)
+
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+	var sessions := adapter.list_sessions(project_path, 0, 0, false)
+	assert_int(sessions.size()).is_equal(1)
+	assert_str(sessions[0].session_id).is_equal(session_id)
+
+	assert_int(adapter.rename_session(session_id, "Adapter renamed", project_path)).is_equal(OK)
+	assert_int(adapter.tag_session(session_id, "review", project_path)).is_equal(OK)
+
+	var info = adapter.get_session_info(session_id, project_path)
+	assert_object(info).is_not_null()
+	if info == null:
+		return
+	assert_str(info.summary).is_equal("Adapter renamed")
+	assert_str(str(info.tag)).is_equal("review")
+	assert_str(adapter.get_last_error()).is_empty()
+
+
+func test_adapter_session_mutation_failure_updates_last_error_and_emits_signal() -> void:
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+	var errors: Array[String] = []
+	adapter.error_occurred.connect(func(message: String): errors.append(message))
+
+	assert_int(adapter.rename_session("not-a-uuid", "Bad")).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(adapter.get_last_error()).contains("Invalid session_id")
+	assert_int(errors.size()).is_equal(1)
+	assert_str(errors[0]).contains("Invalid session_id")
+
+
 func _await_frames(count: int) -> void:
 	for _index in range(count):
 		await get_tree().process_frame
@@ -405,3 +456,55 @@ func _result_payload(result_text: String) -> Dictionary:
 		"session_id": "default",
 		"result": result_text,
 	}
+
+
+func _create_config_root(label: String) -> String:
+	var root_path := _create_temp_root("adapter-config-%s" % label)
+	DirAccess.make_dir_recursive_absolute(root_path.path_join("projects"))
+	return root_path
+
+
+func _create_temp_root(label: String) -> String:
+	var root_path := ClaudeSessionsScript._resolve_absolute_path(
+		ProjectSettings.globalize_path("user://%s-%s" % [label, Time.get_ticks_usec()])
+	)
+	DirAccess.make_dir_recursive_absolute(root_path)
+	_created_roots.append(root_path)
+	return root_path
+
+
+func _make_project_dir(config_root: String, project_path: String) -> String:
+	var sanitized := ClaudeSessionsScript._sanitize_path(
+		ClaudeSessionsScript._resolve_absolute_path(project_path)
+	)
+	var project_dir := config_root.path_join("projects").path_join(sanitized)
+	DirAccess.make_dir_recursive_absolute(project_dir)
+	return project_dir
+
+
+func _write_session_file(project_dir: String, session_id: String, entries: Array, mtime: int) -> void:
+	var file := FileAccess.open(project_dir.path_join("%s.jsonl" % session_id), FileAccess.WRITE)
+	for entry in entries:
+		file.store_line(JSON.stringify(entry))
+	file.close()
+	var output: Array = []
+	OS.execute("python3", [
+		"-c",
+		"import os, sys; ts=int(sys.argv[2]); os.utime(sys.argv[1], (ts, ts))",
+		project_dir.path_join("%s.jsonl" % session_id),
+		str(mtime),
+	], output, true)
+
+
+func _delete_tree(path: String) -> void:
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+		return
+	var access := DirAccess.open(path)
+	if access == null:
+		return
+	for directory_name in access.get_directories():
+		_delete_tree(path.path_join(directory_name))
+	for file_name in access.get_files():
+		DirAccess.remove_absolute(path.path_join(file_name))
+	DirAccess.remove_absolute(path)

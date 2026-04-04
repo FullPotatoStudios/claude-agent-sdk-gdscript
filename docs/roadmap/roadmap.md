@@ -154,11 +154,12 @@ Goal:
 
 Outputs:
 - read-only local session history support
-- future session mutation helpers
+- basic session mutation helpers
+- future session forking helpers
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10A: read-only session history support
+- Phase 10C: higher-layer session support and reference UI integration
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -166,11 +167,23 @@ Delivered in Phase 10A:
 - read-only session listing, metadata lookup, and transcript reading against local Claude session storage
 - project-path sanitization, long-path fallback, and git-worktree-aware lookup
 
+Delivered in Phase 10B:
+- `ClaudeSessions.rename_session()`
+- `ClaudeSessions.tag_session()`
+- `ClaudeSessions.delete_session()`
+- `ClaudeSessions.get_last_error()` for mutation failures
+
+Delivered in Phase 10C:
+- `ClaudeClientAdapter` session-history and session-mutation convenience methods
+- `ClaudeClientNode` session-history and session-mutation convenience methods
+- `ClaudeChatPanel` session browser, transcript restoration, saved-session resume, and basic rename/tag/delete controls
+- demo copy and validation updated around session-aware reference UI
+
 Still deferred within Phase 10:
-- session mutations such as rename, tag, delete, and fork
+- session forking helpers
 - SDK-hosted MCP/custom-tool helpers
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize Phase 10A.
+Work should currently prioritize Phase 10C.

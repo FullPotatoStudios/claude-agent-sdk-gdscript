@@ -104,7 +104,7 @@ Phase 1 findings that constrain this matrix:
 | --- | --- | --- | --- | --- | --- |
 | Session listing | `_internal/sessions.py`, `tests/test_sessions.py` | Useful for history browsers and chat restoration | Claude local storage knowledge | `v1 later` | Delivered in Phase 10A through `ClaudeSessions.list_sessions()` |
 | Session transcript reading | `_internal/sessions.py`, `tests/test_sessions.py` | Needed for conversation history tooling | session listing, transcript parsing | `v1 later` | Delivered in Phase 10A through `ClaudeSessions.get_session_messages()` |
-| Rename/tag/delete session helpers | `_internal/session_mutations.py`, `tests/test_session_mutations.py` | Useful for history management UIs | session file layout and mutation rules | `deferred` | Clear post-v1 feature family |
+| Rename/tag/delete session helpers | `_internal/session_mutations.py`, `tests/test_session_mutations.py` | Useful for history management UIs | session file layout and mutation rules | `v1 later` | Delivered in Phase 10B through `ClaudeSessions.rename_session()`, `tag_session()`, and `delete_session()`; higher-layer wrapper and panel support shipped in Phase 10C |
 | Session forking helpers | `_internal/session_mutations.py` | Advanced workflow for branching conversation history | session transcript mutation | `deferred` | Too much surface for first release |
 
 ## MCP integration and SDK MCP helpers
@@ -136,9 +136,9 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Scene-free core mirroring upstream concepts | project ADRs, roadmap | Keeps parity work testable and portable | core SDK implementation | `v1 core` | Godot-specific architectural rule |
-| Signal-based adapters | project roadmap, ADR 0001 | Godot-native integration surface for games/tools | scene-free core | `v1 later` | Implemented in Phase 6; still additive rather than part of the upstream core-parity target |
-| Optional Node wrappers | project roadmap, ADR 0001 | Convenience for scene-tree users | adapters | `v1 later` | Implemented in Phase 6 |
-| Reusable chat panel | project roadmap | Validation UI and reference implementation | adapters | `deferred` | Implemented in Phase 7 as addon UI; still outside the upstream core-parity target |
+| Signal-based adapters | project roadmap, ADR 0001 | Godot-native integration surface for games/tools | scene-free core | `v1 later` | Implemented in Phase 6; extended in Phase 10C with session-history and mutation convenience methods |
+| Optional Node wrappers | project roadmap, ADR 0001 | Convenience for scene-tree users | adapters | `v1 later` | Implemented in Phase 6; extended in Phase 10C with session-history and mutation convenience methods |
+| Reusable chat panel | project roadmap | Validation UI and reference implementation | adapters | `deferred` | Implemented in Phase 7 as addon UI and expanded in Phase 10C with session browsing, transcript restoration, saved-session resume, and basic session-management controls |
 | Demo validation project | project roadmap | End-to-end validation and onboarding | core SDK, adapters, chat panel | `deferred` | Implemented in Phase 7 as root-project demo content outside the addon payload |
 
 ## Current Phase 2 conclusion
@@ -153,5 +153,7 @@ The first implementation target should stay narrow:
 Status note:
 
 - that first public-release core has now been extended with Phase 5 runtime parity work, Phase 6 adapters, and Phase 7 UI/demo work
-- Phase 10A now adds read-only session history support through `ClaudeSessions`, while keeping session mutations deferred
+- Phase 10A adds read-only session history support through `ClaudeSessions`
+- Phase 10B adds basic session mutations through `ClaudeSessions.rename_session()`, `tag_session()`, and `delete_session()`
+- Phase 10C lifts the current session feature set into `ClaudeClientAdapter`, `ClaudeClientNode`, and the shipped `ClaudeChatPanel`
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

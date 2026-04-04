@@ -6,6 +6,7 @@ const ClaudeSessionMessageScript := preload("res://addons/claude_agent_sdk/runti
 
 const LITE_READ_BUF_SIZE := 65536
 const MAX_SANITIZED_LENGTH := 200
+const SESSION_SEARCH_MISS := -10001
 const TRANSCRIPT_ENTRY_TYPES := {
 	"user": true,
 	"assistant": true,
@@ -16,6 +17,7 @@ const TRANSCRIPT_ENTRY_TYPES := {
 
 static var _uuid_regex: RegEx
 static var _command_name_regex: RegEx
+static var _last_error := ""
 
 
 class LiteSessionFile:
@@ -81,7 +83,7 @@ static func get_session_info(session_id: String, directory: String = ""):
 	var projects_access := DirAccess.open(projects_dir)
 	if projects_access == null:
 		return null
-	for project_name in projects_access.get_directories():
+	for project_name in _sorted_directory_names(projects_access):
 		var lite: Variant = _read_session_lite(_join_path(_join_path(projects_dir, project_name), file_name))
 		if lite != null:
 			return _parse_session_info_from_lite(session_id, lite, "")
@@ -120,6 +122,72 @@ static func get_session_messages(
 	if limit > 0 and limit < messages.size():
 		messages = messages.slice(0, limit)
 	return messages
+
+
+static func rename_session(session_id: String, title: String, directory: String = "") -> int:
+	if not _is_valid_uuid(session_id):
+		return _fail_mutation(ERR_INVALID_PARAMETER, "Invalid session_id: %s" % session_id)
+
+	var stripped := title.strip_edges()
+	if stripped.is_empty():
+		return _fail_mutation(ERR_INVALID_PARAMETER, "title must be non-empty")
+
+	var entry := {
+		"type": "custom-title",
+		"customTitle": stripped,
+		"sessionId": session_id,
+	}
+	return _append_to_session(session_id, JSON.stringify(entry, "", false) + "\n", directory)
+
+
+static func tag_session(session_id: String, tag: Variant = null, directory: String = "") -> int:
+	if not _is_valid_uuid(session_id):
+		return _fail_mutation(ERR_INVALID_PARAMETER, "Invalid session_id: %s" % session_id)
+	if tag != null and not (tag is String):
+		return _fail_mutation(ERR_INVALID_PARAMETER, "tag must be a String or null")
+
+	var stored_tag := ""
+	if tag != null:
+		stored_tag = _sanitize_tag(str(tag)).strip_edges()
+		if stored_tag.is_empty():
+			return _fail_mutation(ERR_INVALID_PARAMETER, "tag must be non-empty (use null to clear)")
+
+	var entry := {
+		"type": "tag",
+		"tag": stored_tag,
+		"sessionId": session_id,
+	}
+	return _append_to_session(session_id, JSON.stringify(entry, "", false) + "\n", directory)
+
+
+static func delete_session(session_id: String, directory: String = "") -> int:
+	if not _is_valid_uuid(session_id):
+		return _fail_mutation(ERR_INVALID_PARAMETER, "Invalid session_id: %s" % session_id)
+
+	var file_result := _find_session_file_with_dir(session_id, directory) if not directory.is_empty() else _find_latest_visible_session_file(session_id)
+	if file_result.has("error"):
+		return _fail_mutation(
+			int(file_result.get("error", ERR_CANT_OPEN)),
+			str(file_result.get("message", "Failed to locate session %s for deletion" % session_id))
+		)
+	if file_result.is_empty():
+		if directory.is_empty():
+			return _fail_mutation(ERR_DOES_NOT_EXIST, "Session %s not found" % session_id)
+		return _fail_mutation(
+			ERR_DOES_NOT_EXIST,
+			"Session %s not found in project directory for %s" % [session_id, directory]
+		)
+
+	var delete_error := DirAccess.remove_absolute(str(file_result.get("path", "")))
+	if delete_error != OK:
+		return _fail_mutation(delete_error, "Failed to delete session %s" % session_id)
+
+	_clear_last_error()
+	return OK
+
+
+static func get_last_error() -> String:
+	return _last_error
 
 
 static func _is_valid_uuid(maybe_uuid: String) -> bool:
@@ -162,6 +230,217 @@ static func _sanitize_path(name: String) -> String:
 	if sanitized.length() <= MAX_SANITIZED_LENGTH:
 		return sanitized
 	return "%s-%s" % [sanitized.substr(0, MAX_SANITIZED_LENGTH), _simple_hash(name)]
+
+
+static func _sanitize_tag(value: String) -> String:
+	var current := value
+	for _i in range(10):
+		var next := ""
+		for j in range(current.length()):
+			var code := current.unicode_at(j)
+			if _should_strip_tag_codepoint(code):
+				continue
+			var compatibility := _compatibility_tag_replacement(code)
+			if not compatibility.is_empty():
+				next += compatibility
+				continue
+			next += char(code)
+		if next == current:
+			return next
+		current = next
+	return current
+
+
+static func _compatibility_tag_replacement(code: int) -> String:
+	if code == 0x3000:
+		return " "
+	if code >= 0xff01 and code <= 0xff5e:
+		return char(code - 0xfee0)
+	if code == 0x24ea:
+		return "0"
+	if code >= 0x2460 and code <= 0x2473:
+		return str(code - 0x245f)
+	if code >= 0x24b6 and code <= 0x24cf:
+		return char(65 + code - 0x24b6)
+	if code >= 0x24d0 and code <= 0x24e9:
+		return char(97 + code - 0x24d0)
+
+	match code:
+		0x00aa:
+			return "a"
+		0x00ba:
+			return "o"
+		0x00b2:
+			return "2"
+		0x00b3:
+			return "3"
+		0x00b9:
+			return "1"
+		0x0132:
+			return "IJ"
+		0x0133:
+			return "ij"
+		0x01c7:
+			return "LJ"
+		0x01c8:
+			return "Lj"
+		0x01c9:
+			return "lj"
+		0x01ca:
+			return "NJ"
+		0x01cb:
+			return "Nj"
+		0x01cc:
+			return "nj"
+		0x01f1:
+			return "DZ"
+		0x01f2:
+			return "Dz"
+		0x01f3:
+			return "dz"
+		0x1d2c:
+			return "A"
+		0x1d2e:
+			return "B"
+		0x1d30:
+			return "D"
+		0x1d31:
+			return "E"
+		0x1d33:
+			return "G"
+		0x1d34:
+			return "H"
+		0x1d35:
+			return "I"
+		0x1d36:
+			return "J"
+		0x1d37:
+			return "K"
+		0x1d38:
+			return "L"
+		0x1d39:
+			return "M"
+		0x1d3a:
+			return "N"
+		0x1d3c:
+			return "O"
+		0x1d3d:
+			return "P"
+		0x1d3e:
+			return "R"
+		0x1d3f:
+			return "T"
+		0x1d40:
+			return "U"
+		0x1d41:
+			return "W"
+		0x2070:
+			return "0"
+		0x2071:
+			return "i"
+		0x2074:
+			return "4"
+		0x2075:
+			return "5"
+		0x2076:
+			return "6"
+		0x2077:
+			return "7"
+		0x2078:
+			return "8"
+		0x2079:
+			return "9"
+		0x207f:
+			return "n"
+		0x2080:
+			return "0"
+		0x2081:
+			return "1"
+		0x2082:
+			return "2"
+		0x2083:
+			return "3"
+		0x2084:
+			return "4"
+		0x2085:
+			return "5"
+		0x2086:
+			return "6"
+		0x2087:
+			return "7"
+		0x2088:
+			return "8"
+		0x2089:
+			return "9"
+		0x2160:
+			return "I"
+		0x2161:
+			return "II"
+		0x2162:
+			return "III"
+		0x2163:
+			return "IV"
+		0x2164:
+			return "V"
+		0x2165:
+			return "VI"
+		0x2166:
+			return "VII"
+		0x2167:
+			return "VIII"
+		0x2168:
+			return "IX"
+		0x2169:
+			return "X"
+		0x2170:
+			return "i"
+		0x2171:
+			return "ii"
+		0x2172:
+			return "iii"
+		0x2173:
+			return "iv"
+		0x2174:
+			return "v"
+		0x2175:
+			return "vi"
+		0x2176:
+			return "vii"
+		0x2177:
+			return "viii"
+		0x2178:
+			return "ix"
+		0x2179:
+			return "x"
+		0xfb00:
+			return "ff"
+		0xfb01:
+			return "fi"
+		0xfb02:
+			return "fl"
+		0xfb03:
+			return "ffi"
+		0xfb04:
+			return "ffl"
+		0xfb05:
+			return "st"
+		0xfb06:
+			return "st"
+	return ""
+
+
+static func _should_strip_tag_codepoint(code: int) -> bool:
+	if code == 0xfeff:
+		return true
+	if code >= 0x200b and code <= 0x200d:
+		return true
+	if code >= 0x202a and code <= 0x202e:
+		return true
+	if code >= 0x2066 and code <= 0x2069:
+		return true
+	if code >= 0xe000 and code <= 0xf8ff:
+		return true
+	return false
 
 
 static func _get_claude_config_home_dir() -> String:
@@ -272,7 +551,7 @@ static func _find_project_dir(project_path: String) -> String:
 		return ""
 
 	var prefix := sanitized.substr(0, MAX_SANITIZED_LENGTH)
-	for entry in projects_access.get_directories():
+	for entry in _sorted_directory_names(projects_access):
 		if entry.begins_with(prefix + "-"):
 			return _join_path(projects_dir, entry)
 	return ""
@@ -413,23 +692,41 @@ static func _should_skip_first_prompt(text: String) -> bool:
 		or (text.contains("<ide_selection>") and text.contains("</ide_selection>"))
 
 
-static func _read_session_lite(file_path: String):
+static func _read_session_lite_result(file_path: String) -> Dictionary:
+	if not FileAccess.file_exists(file_path):
+		return {}
 	var file := FileAccess.open(file_path, FileAccess.READ)
 	if file == null:
-		return null
+		return {
+			"error": _map_open_error(FileAccess.get_open_error()),
+		}
 	var size := file.get_length()
 	if size <= 0:
-		return null
+		file.close()
+		return {
+			"stub": true,
+		}
 	var mtime := int(FileAccess.get_modified_time(file_path) * 1000.0)
 	var head_bytes := file.get_buffer(mini(LITE_READ_BUF_SIZE, size))
 	if head_bytes.is_empty():
-		return null
+		file.close()
+		return {
+			"stub": true,
+		}
 	var head := head_bytes.get_string_from_utf8()
 	var tail := head
 	if size > LITE_READ_BUF_SIZE:
 		file.seek(size - LITE_READ_BUF_SIZE)
 		tail = file.get_buffer(LITE_READ_BUF_SIZE).get_string_from_utf8()
-	return LiteSessionFile.new(mtime, size, head, tail)
+	file.close()
+	return {
+		"lite": LiteSessionFile.new(mtime, size, head, tail),
+	}
+
+
+static func _read_session_lite(file_path: String):
+	var result := _read_session_lite_result(file_path)
+	return result.get("lite") if result.has("lite") else null
 
 
 static func _get_worktree_paths(cwd: String) -> Array[String]:
@@ -490,7 +787,8 @@ static func _parse_session_info_from_lite(session_id: String, lite: LiteSessionF
 			continue
 		var tag_entry = JSON.parse_string(line)
 		if tag_entry is Dictionary and str(tag_entry.get("type", "")) == "tag" and tag_entry.get("tag") is String:
-			tag = str(tag_entry.get("tag"))
+			var candidate_tag := str(tag_entry.get("tag"))
+			tag = candidate_tag if not candidate_tag.is_empty() else null
 
 	var created_at = null
 	var first_timestamp = _extract_json_string_field(first_line, "timestamp")
@@ -531,6 +829,14 @@ static func _read_sessions_from_dir(project_dir: String, project_path: String = 
 		var info = _parse_session_info_from_lite(session_id, lite, project_path)
 		if info != null:
 			result.append(info)
+	return result
+
+
+static func _sorted_directory_names(projects_access: DirAccess) -> Array[String]:
+	var result: Array[String] = []
+	for directory_name in projects_access.get_directories():
+		result.append(str(directory_name))
+	result.sort()
 	return result
 
 
@@ -604,7 +910,7 @@ static func _list_sessions_for_project(
 		seen_dirs[dir_base.to_lower() if case_insensitive else dir_base] = true
 		all_sessions.append_array(_read_sessions_from_dir(canonical_project_dir, canonical_dir))
 
-	for entry in projects_access.get_directories():
+	for entry in _sorted_directory_names(projects_access):
 		var normalized_entry := entry.to_lower() if case_insensitive else entry
 		if seen_dirs.has(normalized_entry):
 			continue
@@ -629,7 +935,7 @@ static func _list_all_sessions(limit: int, offset: int) -> Array[ClaudeSessionIn
 		return []
 
 	var all_sessions: Array[ClaudeSessionInfo] = []
-	for project_name in projects_access.get_directories():
+	for project_name in _sorted_directory_names(projects_access):
 		all_sessions.append_array(_read_sessions_from_dir(_join_path(projects_dir, project_name)))
 	return _apply_sort_limit_offset(_deduplicate_by_session_id(all_sessions), limit, offset)
 
@@ -665,11 +971,206 @@ static func _read_session_file(session_id: String, directory: String = "") -> St
 	var projects_access := DirAccess.open(projects_dir)
 	if projects_access == null:
 		return ""
-	for project_name in projects_access.get_directories():
+	for project_name in _sorted_directory_names(projects_access):
 		var content := _try_read_session_file(_join_path(projects_dir, project_name), file_name)
 		if not content.is_empty():
 			return content
 	return ""
+
+
+static func _find_session_file_with_dir(session_id: String, directory: String = "") -> Dictionary:
+	var file_name := "%s.jsonl" % session_id
+	if not directory.is_empty():
+		var resolved_directory := _resolve_directory(directory)
+		if resolved_directory.is_empty():
+			return {}
+		var first_error: Dictionary = {}
+
+		var project_dir := _find_project_dir(resolved_directory)
+		if not project_dir.is_empty():
+			var direct_result := _try_find_session_file(_join_path(project_dir, file_name), project_dir)
+			if direct_result.has("error"):
+				first_error = direct_result
+			elif not direct_result.is_empty():
+				return direct_result
+
+		for worktree_path in _get_worktree_paths(resolved_directory):
+			if worktree_path == resolved_directory:
+				continue
+			var worktree_project_dir := _find_project_dir(worktree_path)
+			if worktree_project_dir.is_empty():
+				continue
+			var worktree_result := _try_find_session_file(
+				_join_path(worktree_project_dir, file_name),
+				worktree_project_dir
+			)
+			if worktree_result.has("error"):
+				if first_error.is_empty():
+					first_error = worktree_result
+			elif not worktree_result.is_empty():
+				return worktree_result
+		return first_error
+
+	var projects_dir := _get_projects_dir()
+	var projects_access := DirAccess.open(projects_dir)
+	if projects_access == null:
+		return {}
+	var first_error: Dictionary = {}
+	for project_name in _sorted_directory_names(projects_access):
+		var project_dir := _join_path(projects_dir, project_name)
+		var result := _try_find_session_file(_join_path(project_dir, file_name), project_dir)
+		if result.has("error"):
+			if first_error.is_empty():
+				first_error = result
+		elif not result.is_empty():
+			return result
+	return first_error
+
+
+static func _try_find_session_file(file_path: String, project_dir: String) -> Dictionary:
+	var lite_result := _read_session_lite_result(file_path)
+	if lite_result.is_empty() or lite_result.has("stub"):
+		return {}
+	if lite_result.has("error"):
+		return {
+			"error": int(lite_result.get("error", ERR_CANT_OPEN)),
+			"path": file_path,
+			"project_dir": project_dir,
+			"message": "Failed to access session file at %s" % file_path,
+		}
+	return {
+		"path": file_path,
+		"project_dir": project_dir,
+	}
+
+
+static func _append_to_session(session_id: String, data: String, directory: String = "") -> int:
+	var file_name := "%s.jsonl" % session_id
+	if not directory.is_empty():
+		var resolved_directory := _resolve_directory(directory)
+		if resolved_directory.is_empty():
+			return _fail_mutation(
+				ERR_DOES_NOT_EXIST,
+				"Session %s not found in project directory for %s" % [session_id, directory]
+			)
+		var first_error_code := OK
+		var first_error_message := ""
+
+		var project_dir := _find_project_dir(resolved_directory)
+		if not project_dir.is_empty():
+			var append_result := _try_append(_join_path(project_dir, file_name), data)
+			if append_result == OK:
+				_clear_last_error()
+				return OK
+			if append_result != SESSION_SEARCH_MISS:
+				first_error_code = append_result
+				first_error_message = "Failed to append metadata for session %s at %s" % [session_id, _join_path(project_dir, file_name)]
+
+		for worktree_path in _get_worktree_paths(resolved_directory):
+			if worktree_path == resolved_directory:
+				continue
+			var worktree_project_dir := _find_project_dir(worktree_path)
+			if worktree_project_dir.is_empty():
+				continue
+			var worktree_result := _try_append(_join_path(worktree_project_dir, file_name), data)
+			if worktree_result == OK:
+				_clear_last_error()
+				return OK
+			if worktree_result != SESSION_SEARCH_MISS:
+				if first_error_message.is_empty():
+					first_error_code = worktree_result
+					first_error_message = "Failed to append metadata for session %s at %s" % [session_id, _join_path(worktree_project_dir, file_name)]
+		if not first_error_message.is_empty():
+			return _fail_mutation(first_error_code, first_error_message)
+		return _fail_mutation(
+			ERR_DOES_NOT_EXIST,
+			"Session %s not found in project directory for %s" % [session_id, directory]
+		)
+
+	var target := _find_latest_visible_session_file(session_id)
+	if target.has("error"):
+		return _fail_mutation(
+			int(target.get("error", ERR_CANT_OPEN)),
+			str(target.get("message", "Failed to append metadata for session %s" % session_id))
+		)
+	if target.is_empty():
+		return _fail_mutation(ERR_DOES_NOT_EXIST, "Session %s not found in any project directory" % session_id)
+	var append_result := _try_append(str(target.get("path", "")), data)
+	if append_result == OK:
+		_clear_last_error()
+		return OK
+	return _fail_mutation(append_result, "Failed to append metadata for session %s" % session_id)
+
+
+static func _find_latest_visible_session_file(session_id: String) -> Dictionary:
+	var projects_dir := _get_projects_dir()
+	var projects_access := DirAccess.open(projects_dir)
+	if projects_access == null:
+		return {}
+
+	var file_name := "%s.jsonl" % session_id
+	var visible_matches: Array[Dictionary] = []
+	var first_error: Dictionary = {}
+	for project_name in _sorted_directory_names(projects_access):
+		var project_dir := _join_path(projects_dir, project_name)
+		var file_path := _join_path(project_dir, file_name)
+		var lite_result := _read_session_lite_result(file_path)
+		if lite_result.is_empty() or lite_result.has("stub"):
+			continue
+		if lite_result.has("error"):
+			if first_error.is_empty():
+				first_error = {
+					"error": int(lite_result.get("error", ERR_CANT_OPEN)),
+					"path": file_path,
+					"project_dir": project_dir,
+					"message": "Failed to access session file at %s" % file_path,
+				}
+			continue
+		var lite: LiteSessionFile = lite_result["lite"]
+		var info = _parse_session_info_from_lite(session_id, lite)
+		if info == null:
+			continue
+		visible_matches.append({
+			"path": file_path,
+			"project_dir": project_dir,
+			"mtime": int(info.last_modified),
+		})
+
+	if visible_matches.is_empty():
+		return first_error
+	visible_matches.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.get("mtime", 0)) > int(b.get("mtime", 0)))
+	return visible_matches[0]
+
+
+static func _try_append(file_path: String, data: String) -> int:
+	var file := FileAccess.open(file_path, FileAccess.READ_WRITE)
+	if file == null:
+		return _map_open_error(FileAccess.get_open_error())
+
+	if file.get_length() <= 0:
+		file.close()
+		return SESSION_SEARCH_MISS
+
+	file.seek_end()
+	file.store_string(data)
+	var write_error := file.get_error()
+	file.close()
+	return write_error if write_error != OK else OK
+
+
+static func _map_open_error(error_code: int) -> int:
+	if error_code == ERR_FILE_NOT_FOUND or error_code == ERR_FILE_BAD_PATH:
+		return SESSION_SEARCH_MISS
+	return error_code if error_code != OK else SESSION_SEARCH_MISS
+
+
+static func _clear_last_error() -> void:
+	_last_error = ""
+
+
+static func _fail_mutation(error_code: int, message: String) -> int:
+	_last_error = message
+	return error_code
 
 
 static func _parse_transcript_entries(content: String) -> Array[Dictionary]:
