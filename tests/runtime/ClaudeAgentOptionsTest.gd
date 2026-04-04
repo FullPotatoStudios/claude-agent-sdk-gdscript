@@ -56,6 +56,35 @@ func test_duplicate_options_preserves_phase_4_fields() -> void:
 	assert_int((duplicated.hooks["PreToolUse"] as Array).size()).is_equal(1)
 
 
+func test_duplicate_options_preserves_mixed_external_and_sdk_mcp_servers() -> void:
+	var sdk_server := ClaudeMcp.create_sdk_server(
+		"tools",
+		"1.0.0",
+		[
+				ClaudeMcp.tool(
+					"echo",
+					"Echo input",
+					ClaudeMcp.schema_object({"text": ClaudeMcp.schema_scalar("string")}, ["text"]),
+					func(tool_args: Dictionary): return {"content": [{"type": "text", "text": str(tool_args.get("text", ""))}]}
+				),
+		]
+	)
+	var options = ClaudeAgentOptions.new({
+		"mcp_servers": {
+			"sdk_tools": sdk_server,
+			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+		},
+	})
+
+	var duplicated = options.duplicate_options()
+	var duplicated_servers := duplicated.mcp_servers as Dictionary
+
+	assert_dict(duplicated_servers).contains_keys(["sdk_tools", "filesystem"])
+	assert_str(str((duplicated_servers["sdk_tools"] as Dictionary).get("type", ""))).is_equal("sdk")
+	assert_bool((duplicated_servers["sdk_tools"] as Dictionary).get("instance") == (sdk_server as Dictionary).get("instance")).is_true()
+	assert_dict(duplicated_servers["filesystem"]).is_equal({"command": "mcp-server", "args": ["stdio"]})
+
+
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
 	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
 		return ClaudePermissionResultAllow.new()
@@ -130,6 +159,38 @@ func test_subprocess_transport_omits_phase_5_flags_by_default() -> void:
 	assert_bool(args.has("--permission-prompt-tool")).is_false()
 	assert_bool(args.has("--json-schema")).is_false()
 	assert_bool(args.has("--mcp-config")).is_false()
+
+
+func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:
+	var sdk_server := ClaudeMcp.create_sdk_server(
+		"tools",
+		"1.0.0",
+		[
+				ClaudeMcp.tool(
+					"echo",
+					"Echo input",
+					ClaudeMcp.schema_object({"text": ClaudeMcp.schema_scalar("string")}, ["text"]),
+					func(tool_args: Dictionary): return {"content": [{"type": "text", "text": str(tool_args.get("text", ""))}]}
+				),
+			]
+		)
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"mcp_servers": {
+			"sdk_tools": sdk_server,
+			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+		},
+	}))
+	var args = transport.build_command_args()
+	var mcp_config: Dictionary = JSON.parse_string(args[args.find("--mcp-config") + 1])
+
+	assert_dict(mcp_config).is_equal({
+		"mcpServers": {
+			"filesystem": {
+				"command": "mcp-server",
+				"args": ["stdio"],
+			},
+		},
+	})
 
 
 func test_subprocess_transport_builds_default_environment_overrides() -> void:

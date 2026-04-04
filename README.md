@@ -44,6 +44,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeQuery` for one-shot usage
 - `ClaudeSDKClient` for interactive runtime usage
 - `ClaudeSessions` for local session history access and basic session mutations
+- `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history convenience methods
 - `ClaudeChatPanel` as a reusable reference chat UI with saved-session browsing, idle-time live switching, resume, and basic session management
 - A root-project demo under `demo/` for validation and onboarding
@@ -104,6 +105,7 @@ func _ready() -> void:
 - Local session history access for session listing, metadata lookup, transcript reading, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
+- Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Godot-native adapter and node layers with session-history convenience passthroughs
 - A reusable chat panel plus demo validation scene, now including session browsing, transcript restoration, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
 
@@ -112,7 +114,6 @@ func _ready() -> void:
 The current release still defers some broader upstream parity areas, including:
 
 - session forking helpers
-- SDK-hosted MCP/custom-tool hosting
 - broader settings/agent-definition parity beyond the current runtime surface
 
 Use these as the canonical sources of truth for compatibility and parity status:
@@ -154,4 +155,5 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - The addon depends on a user-installed `claude` CLI.
 - Claude auth remains CLI-owned rather than SDK-owned.
 - The runtime API is scene-free, but the subprocess transport still expects an active Godot `SceneTree`.
+- SDK-hosted MCP tool handlers should return `{ "content": [...], "is_error": true }` for tool-level failures; uncaught GDScript runtime faults still surface as normal Godot errors.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.

@@ -319,12 +319,6 @@ func _quote_windows_assignment(value: String) -> String:
 
 
 func _validate_supported_options() -> bool:
-	if _options.mcp_servers is Dictionary:
-		for server_name_variant in _options.mcp_servers.keys():
-			var server_config: Variant = _options.mcp_servers[server_name_variant]
-			if server_config is Dictionary and str((server_config as Dictionary).get("type", "")) == "sdk":
-				_report_transport_error("SDK-hosted MCP servers are not supported yet: %s" % str(server_name_variant), true, false)
-				return false
 	return true
 
 
@@ -341,8 +335,16 @@ func _build_json_schema_argument() -> String:
 
 func _build_mcp_config_argument() -> String:
 	if _options.mcp_servers is Dictionary and not _options.mcp_servers.is_empty():
+		var external_servers: Dictionary = {}
+		for server_name_variant in (_options.mcp_servers as Dictionary).keys():
+			var server_config: Variant = (_options.mcp_servers as Dictionary)[server_name_variant]
+			if server_config is Dictionary and str((server_config as Dictionary).get("type", "")) == "sdk":
+				continue
+			external_servers[str(server_name_variant)] = server_config
+		if external_servers.is_empty():
+			return ""
 		return JSON.stringify({
-			"mcpServers": (_options.mcp_servers as Dictionary).duplicate(true),
+			"mcpServers": external_servers,
 		})
 	if _options.mcp_servers is String and not str(_options.mcp_servers).is_empty():
 		return str(_options.mcp_servers)

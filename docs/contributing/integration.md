@@ -14,6 +14,13 @@ Use `ClaudeSDKClient` directly when:
 - you want the closest surface to the upstream Python SDK
 - your own code is already comfortable working with `await`
 - you want to keep your integration scene-free and fully under your own control
+- you want to attach SDK-hosted MCP tools through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
+
+SDK-hosted MCP tool handlers should report tool-level failures by returning a
+normal result dictionary with `is_error = true`. Unlike the upstream Python
+SDK runtime, the GDScript bridge cannot safely trap arbitrary runtime faults
+inside a `Callable`; uncaught script errors still surface as normal Godot
+errors.
 
 Use `ClaudeClientAdapter` when:
 
@@ -66,5 +73,6 @@ The integration layer is intentionally thin.
 - It does not add custom-tool or SDK-hosted MCP abstractions
 - It does not replace the reusable chat panel for users who want a drop-in UI
 - It does not replace `ClaudeSessions` as the canonical scene-free session-history surface
+- SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
 
 For panel-specific setup and usage guidance, see `docs/contributing/ui-panel.md`.

@@ -155,11 +155,12 @@ Goal:
 Outputs:
 - read-only local session history support
 - basic session mutation helpers
+- scene-free SDK-hosted MCP tool/server helpers
 - future session forking helpers
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10C: higher-layer session support and reference UI integration
+- Phase 10D: runtime-first SDK MCP helpers
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -179,11 +180,16 @@ Delivered in Phase 10C:
 - `ClaudeChatPanel` session browser, transcript restoration, saved-session resume, and basic rename/tag/delete controls
 - demo copy and validation updated around session-aware reference UI
 
+Delivered in Phase 10D:
+- `ClaudeMcp` scene-free SDK MCP tool/server builders
+- typed runtime MCP models `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer`
+- mixed external plus SDK-hosted `ClaudeAgentOptions.mcp_servers` handling
+- inbound `mcp_message` control-request bridging for `initialize`, `notifications/initialized`, `tools/list`, and `tools/call`
+
 Still deferred within Phase 10:
 - session forking helpers
-- SDK-hosted MCP/custom-tool helpers
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize Phase 10C.
+Work should currently prioritize Phase 10D.

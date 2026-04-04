@@ -330,3 +330,43 @@ func test_client_options_force_stdio_permission_prompt_when_can_use_tool_is_conf
 
 	assert_bool(args.has("--permission-prompt-tool")).is_true()
 	assert_bool(args.has("stdio")).is_true()
+
+
+func test_client_extracts_sdk_mcp_servers_for_inbound_control_requests() -> void:
+	var transport = FakeTransportScript.new()
+	var options = ClaudeAgentOptions.new({
+		"mcp_servers": {
+			"sdk": ClaudeMcp.create_sdk_server(
+				"runtime-tools",
+				"1.0.0",
+				[
+					ClaudeMcp.tool(
+						"echo",
+						"Echo input",
+						ClaudeMcp.schema_object({"name": ClaudeMcp.schema_scalar("string")}, ["name"]),
+						func(args: Dictionary): return {"content": [{"type": "text", "text": "Hello %s" % str(args.get("name", ""))}]}
+					),
+				]
+			),
+			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+		},
+	})
+	var client = ClaudeSDKClient.new(options, transport)
+	client.connect_client()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-list",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "sdk",
+			"message": {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+		},
+	})
+	await get_tree().process_frame
+
+	var response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var tools: Array = ((((response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary).get("result", {}) as Dictionary).get("tools", [])
+	assert_int(tools.size()).is_equal(1)
+	assert_str(str((tools[0] as Dictionary).get("name", ""))).is_equal("echo")
+	client.disconnect_client()

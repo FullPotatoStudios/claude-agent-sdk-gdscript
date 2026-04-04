@@ -48,6 +48,23 @@ func test_initialize_caches_server_info_and_sends_control_request() -> void:
 	assert_dict(initialized_payloads[0]).contains_keys(["commands", "output_style"])
 
 
+func _mcp_echo_tool(args: Dictionary) -> Dictionary:
+	return {
+		"content": [
+			{"type": "text", "text": "Hello %s" % str(args.get("name", ""))},
+			{"type": "resource_link", "name": "Docs", "uri": "https://example.com/docs", "description": "Reference"},
+			{"type": "resource", "resource": {"uri": "file:///tmp/note.txt", "text": "Embedded note"}},
+			{"type": "resource", "resource": {"uri": "file:///tmp/blob.bin", "blob": "AA==", "mimeType": "application/octet-stream"}},
+			{"type": "custom_widget", "data": "skip"},
+		],
+		"is_error": true,
+	}
+
+
+func _mcp_invalid_result_tool(_args: Dictionary):
+	return "not-a-dictionary"
+
+
 func test_initialize_includes_hook_matchers_with_generated_callback_ids() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(
@@ -205,6 +222,235 @@ func test_unsupported_inbound_control_request_returns_error_response() -> void:
 	var response: Dictionary = JSON.parse_string(transport.writes[-1])
 	assert_str(str((response.get("response", {}) as Dictionary).get("subtype", ""))).is_equal("error")
 	assert_str(str((response.get("response", {}) as Dictionary).get("error", ""))).contains("Unsupported control request subtype")
+
+
+func test_initialize_request_does_not_embed_sdk_mcp_data() -> void:
+	var transport = FakeTransportScript.new()
+	var server_config := ClaudeMcp.create_sdk_server(
+		"runtime-tools",
+		"1.0.0",
+		[
+			ClaudeMcp.tool(
+				"echo",
+				"Echo input",
+				ClaudeMcp.schema_object({"name": ClaudeMcp.schema_scalar("string")}, ["name"]),
+				Callable(self, "_mcp_echo_tool")
+			),
+		]
+	)
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({"mcp_servers": {"sdk": server_config}}),
+		{"sdk": (server_config as Dictionary)["instance"]}
+	)
+	session.open_session()
+
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request: Dictionary = initialize_request.get("request", {}) if initialize_request.get("request", {}) is Dictionary else {}
+	assert_bool(request.has("mcp")).is_false()
+	assert_bool(request.has("mcp_servers")).is_false()
+
+
+func test_inbound_mcp_message_returns_jsonrpc_error_for_unknown_server() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-unknown",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "missing",
+			"message": {
+				"jsonrpc": "2.0",
+				"id": 1,
+				"method": "tools/list",
+				"params": {},
+			},
+		},
+	})
+	await get_tree().process_frame
+
+	var response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var mcp_response: Dictionary = (((response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary)
+	assert_int(int(((mcp_response.get("error", {}) as Dictionary).get("code", 0)))).is_equal(-32601)
+	assert_str(str(((mcp_response.get("error", {}) as Dictionary).get("message", "")))).contains("not found")
+
+
+func test_inbound_mcp_message_handles_initialize_and_tools_list() -> void:
+	var transport = FakeTransportScript.new()
+	var annotations := ClaudeMcpToolAnnotations.new({
+		"read_only_hint": true,
+		"open_world_hint": false,
+	})
+	var tool = ClaudeMcp.tool(
+		"echo",
+		"Echo input",
+		ClaudeMcp.schema_object({"name": ClaudeMcp.schema_scalar("string", "Name")}, ["name"]),
+		Callable(self, "_mcp_echo_tool"),
+		annotations
+	)
+	var server_config := ClaudeMcp.create_sdk_server("runtime-tools", "2.0.0", [tool])
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({"mcp_servers": {"sdk": server_config}}),
+		{"sdk": (server_config as Dictionary)["instance"]}
+	)
+	session.open_session()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-init",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "sdk",
+			"message": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+		},
+	})
+	await get_tree().process_frame
+	var init_response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var init_mcp: Dictionary = (((init_response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary)
+	assert_str(str((((init_mcp.get("result", {}) as Dictionary).get("serverInfo", {}) as Dictionary).get("name", "")))).is_equal("runtime-tools")
+	assert_str(str((((init_mcp.get("result", {}) as Dictionary).get("serverInfo", {}) as Dictionary).get("version", "")))).is_equal("2.0.0")
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-list",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "sdk",
+			"message": {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+		},
+	})
+	await get_tree().process_frame
+	var list_response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var tools: Array = ((((list_response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary).get("result", {}) as Dictionary).get("tools", [])
+	assert_int(tools.size()).is_equal(1)
+	assert_dict(tools[0]).is_equal({
+		"name": "echo",
+		"description": "Echo input",
+		"inputSchema": {
+			"type": "object",
+			"properties": {"name": {"type": "string", "description": "Name"}},
+			"required": ["name"],
+		},
+		"annotations": {
+			"readOnlyHint": true,
+			"openWorldHint": false,
+		},
+	})
+
+
+func test_inbound_mcp_message_handles_tools_call_and_method_errors() -> void:
+	var transport = FakeTransportScript.new()
+	var server_config := ClaudeMcp.create_sdk_server(
+		"runtime-tools",
+		"1.0.0",
+		[
+			ClaudeMcp.tool(
+				"echo",
+				"Echo input",
+				ClaudeMcp.schema_object({"name": ClaudeMcp.schema_scalar("string")}, ["name"]),
+				Callable(self, "_mcp_echo_tool")
+			),
+		]
+	)
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({"mcp_servers": {"sdk": server_config}}),
+		{"sdk": (server_config as Dictionary)["instance"]}
+	)
+	session.open_session()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-call",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "sdk",
+			"message": {
+				"jsonrpc": "2.0",
+				"id": 3,
+				"method": "tools/call",
+				"params": {
+					"name": "echo",
+					"arguments": {"name": "Ada"},
+				},
+			},
+		},
+	})
+	await get_tree().process_frame
+	var call_response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var call_mcp: Dictionary = (((call_response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary)
+	var result: Dictionary = call_mcp.get("result", {}) if call_mcp.get("result", {}) is Dictionary else {}
+	var content: Array = result.get("content", []) if result.get("content", []) is Array else []
+	assert_bool(bool(result.get("isError", false))).is_true()
+	assert_int(content.size()).is_equal(3)
+	assert_dict(content[0]).is_equal({"type": "text", "text": "Hello Ada"})
+	assert_dict(content[1]).is_equal({"type": "text", "text": "Docs\nhttps://example.com/docs\nReference"})
+	assert_dict(content[2]).is_equal({"type": "text", "text": "Embedded note"})
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-method-miss",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "sdk",
+			"message": {"jsonrpc": "2.0", "id": 4, "method": "resources/list", "params": {}},
+		},
+	})
+	await get_tree().process_frame
+	var missing_response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var missing_mcp: Dictionary = (((missing_response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary)
+	assert_int(int(((missing_mcp.get("error", {}) as Dictionary).get("code", 0)))).is_equal(-32601)
+	assert_str(str(((missing_mcp.get("error", {}) as Dictionary).get("message", "")))).contains("Method 'resources/list' not found")
+
+
+func test_inbound_mcp_message_contains_invalid_handler_result_as_jsonrpc_error() -> void:
+	var transport = FakeTransportScript.new()
+	var server_config := ClaudeMcp.create_sdk_server(
+		"runtime-tools",
+		"1.0.0",
+		[
+			ClaudeMcp.tool(
+				"explode",
+				"Return an invalid handler payload",
+				ClaudeMcp.schema_object({}, []),
+				Callable(self, "_mcp_invalid_result_tool")
+			),
+		]
+	)
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({"mcp_servers": {"sdk": server_config}}),
+		{"sdk": (server_config as Dictionary)["instance"]}
+	)
+	session.open_session()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "mcp-runtime-fail",
+		"request": {
+			"subtype": "mcp_message",
+			"server_name": "sdk",
+			"message": {
+				"jsonrpc": "2.0",
+				"id": 5,
+				"method": "tools/call",
+				"params": {
+					"name": "explode",
+					"arguments": {},
+				},
+			},
+		},
+	})
+	await get_tree().process_frame
+
+	var response: Dictionary = JSON.parse_string(transport.writes[-1])
+	var mcp_response: Dictionary = (((response.get("response", {}) as Dictionary).get("response", {}) as Dictionary).get("mcp_response", {}) as Dictionary)
+	assert_int(int(((mcp_response.get("error", {}) as Dictionary).get("code", 0)))).is_equal(-32603)
+	assert_str(str(((mcp_response.get("error", {}) as Dictionary).get("message", "")))).contains("must return a Dictionary")
 
 
 func test_control_cancel_request_suppresses_late_response() -> void:

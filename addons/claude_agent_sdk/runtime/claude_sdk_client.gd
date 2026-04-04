@@ -8,6 +8,7 @@ const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeQuerySessionScript := preload("res://addons/claude_agent_sdk/runtime/protocol/query_session.gd")
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
+const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
 
 var options = null
 var _transport = null
@@ -23,7 +24,7 @@ func _init(initial_options = null, transport = null) -> void:
 func connect_client() -> void:
 	if _session != null:
 		return
-	_session = ClaudeQuerySessionScript.new(_transport, options)
+	_session = ClaudeQuerySessionScript.new(_transport, options, _extract_sdk_mcp_servers())
 	_session.session_initialized.connect(_on_session_initialized)
 	_session.error_occurred.connect(_on_session_error_occurred)
 	_session.open_session()
@@ -160,3 +161,20 @@ func _on_session_initialized(server_info: Dictionary) -> void:
 func _on_session_error_occurred(message: String) -> void:
 	_last_error = message
 	error_occurred.emit(message)
+
+
+func _extract_sdk_mcp_servers() -> Dictionary:
+	var extracted: Dictionary = {}
+	if options == null or not (options.mcp_servers is Dictionary):
+		return extracted
+	for server_name_variant in (options.mcp_servers as Dictionary).keys():
+		var config_variant: Variant = (options.mcp_servers as Dictionary)[server_name_variant]
+		if not (config_variant is Dictionary):
+			continue
+		var config := config_variant as Dictionary
+		if str(config.get("type", "")) != "sdk":
+			continue
+		var instance: Variant = config.get("instance")
+		if instance is ClaudeSdkMcpServer:
+			extracted[str(server_name_variant)] = instance
+	return extracted

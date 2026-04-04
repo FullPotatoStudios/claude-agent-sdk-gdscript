@@ -12,6 +12,7 @@ const ClaudeHookContextScript := preload("res://addons/claude_agent_sdk/runtime/
 const ClaudeToolPermissionContextScript := preload("res://addons/claude_agent_sdk/runtime/claude_tool_permission_context.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
+const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
 
 var _transport = null
 var _options = null
@@ -30,11 +31,13 @@ var _current_response_stream = null
 var _last_response_stream = null
 var _pending_prompt_payload := ""
 var _last_error := ""
+var _sdk_mcp_servers: Dictionary = {}
 
 
-func _init(transport, options = null) -> void:
+func _init(transport, options = null, sdk_mcp_servers: Dictionary = {}) -> void:
 	_transport = transport
 	_options = options
+	_sdk_mcp_servers = sdk_mcp_servers.duplicate()
 	_connect_transport_signals()
 
 
@@ -462,6 +465,8 @@ func _run_inbound_control_request(request_id: String, data: Dictionary) -> void:
 				response_payload = await _handle_hook_callback_request(request_data)
 			"can_use_tool":
 				response_payload = await _handle_permission_control_request(request_data)
+			"mcp_message":
+				response_payload = await _handle_mcp_message_request(request_data)
 			_:
 				error_message = "Unsupported control request subtype: %s" % subtype
 
@@ -529,6 +534,181 @@ func _handle_permission_control_request(request_data: Dictionary) -> Dictionary:
 			response_payload["interrupt"] = true
 		return response_payload
 	return _raise_control_request_error("Tool permission callback must return ClaudePermissionResultAllow or ClaudePermissionResultDeny")
+
+
+func _handle_mcp_message_request(request_data: Dictionary) -> Dictionary:
+	var server_name := str(request_data.get("server_name", ""))
+	if server_name.is_empty():
+		return _raise_control_request_error("Missing server_name for MCP request")
+	var message := request_data.get("message")
+	if not (message is Dictionary):
+		return _raise_control_request_error("Missing message for MCP request")
+	return {
+		"mcp_response": await _handle_sdk_mcp_request(server_name, message as Dictionary),
+	}
+
+
+func _handle_sdk_mcp_request(server_name: String, message: Dictionary) -> Dictionary:
+	var request_id: Variant = message.get("id", null)
+	if not _sdk_mcp_servers.has(server_name):
+		return _build_jsonrpc_error_response(request_id, -32601, "Server '%s' not found" % server_name)
+
+	var server_variant: Variant = _sdk_mcp_servers[server_name]
+	if not (server_variant is ClaudeSdkMcpServer):
+		return _build_jsonrpc_error_response(request_id, -32601, "Server '%s' not found" % server_name)
+	var server := server_variant as ClaudeSdkMcpServer
+	var method := str(message.get("method", ""))
+	var params: Dictionary = message.get("params", {}) if message.get("params", {}) is Dictionary else {}
+
+	match method:
+		"initialize":
+			return {
+				"jsonrpc": "2.0",
+				"id": request_id,
+				"result": {
+					"protocolVersion": "2024-11-05",
+					"capabilities": {
+						"tools": {},
+					},
+					"serverInfo": {
+						"name": server.name,
+						"version": server.version,
+					},
+				},
+			}
+		"notifications/initialized":
+			return {
+				"jsonrpc": "2.0",
+				"result": {},
+			}
+		"tools/list":
+			return {
+				"jsonrpc": "2.0",
+				"id": request_id,
+				"result": {
+					"tools": server.list_tools(),
+				},
+			}
+		"tools/call":
+			return await _handle_sdk_mcp_tool_call(server, request_id, params)
+		_:
+			return _build_jsonrpc_error_response(request_id, -32601, "Method '%s' not found" % method)
+
+
+func _handle_sdk_mcp_tool_call(server: ClaudeSdkMcpServer, request_id: Variant, params: Dictionary) -> Dictionary:
+	var tool_name := str(params.get("name", ""))
+	var tool_variant = server.get_tool(tool_name)
+	if not (tool_variant is ClaudeMcpTool):
+		return _build_jsonrpc_error_response(request_id, -32601, "Tool '%s' not found" % tool_name)
+	var tool := tool_variant as ClaudeMcpTool
+	var arguments: Dictionary = params.get("arguments", {}) if params.get("arguments", {}) is Dictionary else {}
+	if not tool.handler.is_valid():
+		return _build_jsonrpc_error_response(request_id, -32603, "MCP tool handler is not callable")
+
+	# Upstream's Python SDK can convert handler exceptions into MCP error
+	# results inside its server runtime. In GDScript we only receive a Callable,
+	# and arbitrary runtime faults inside that Callable are not catchable here.
+	# Tool-level failures should therefore be reported by returning a Dictionary
+	# payload with is_error = true. The bridge still maps containable handler
+	# contract failures, such as invalid Callables or invalid return payloads,
+	# into -32603.
+	var result: Variant = await tool.handler.callv([arguments])
+	if not (result is Dictionary):
+		return _build_jsonrpc_error_response(
+			request_id,
+			-32603,
+			"MCP tool handler must return a Dictionary result; use is_error for tool-level failures"
+		)
+	var result_dict := result as Dictionary
+	var response_payload := {
+		"content": _convert_mcp_tool_result_content(result_dict.get("content", [])),
+	}
+	if bool(result_dict.get("is_error", false)):
+		response_payload["isError"] = true
+	return {
+		"jsonrpc": "2.0",
+		"id": request_id,
+		"result": response_payload,
+	}
+
+
+func _convert_mcp_tool_result_content(content_variant: Variant) -> Array:
+	var converted: Array = []
+	if not (content_variant is Array):
+		return converted
+	for item_variant in content_variant:
+		if not (item_variant is Dictionary):
+			push_warning("Unsupported MCP tool content item; expected Dictionary")
+			continue
+		var item := item_variant as Dictionary
+		var item_type := str(item.get("type", ""))
+		match item_type:
+			"text":
+				converted.append({
+					"type": "text",
+					"text": str(item.get("text", "")),
+				})
+			"image":
+				converted.append({
+					"type": "image",
+					"data": str(item.get("data", "")),
+					"mimeType": str(item.get("mimeType", "")),
+				})
+			"resource_link":
+				converted.append({
+					"type": "text",
+					"text": _resource_link_to_text(item),
+				})
+			"resource":
+				var text_payload := _embedded_resource_to_text(item)
+				if not text_payload.is_empty():
+					converted.append({
+						"type": "text",
+						"text": text_payload,
+					})
+			_:
+				push_warning("Unsupported content type '%s' in MCP tool result; skipping" % item_type)
+	return converted
+
+
+func _resource_link_to_text(item: Dictionary) -> String:
+	var parts: Array[String] = []
+	var name := str(item.get("name", ""))
+	var uri := str(item.get("uri", ""))
+	var description := str(item.get("description", ""))
+	if not name.is_empty():
+		parts.append(name)
+	if not uri.is_empty():
+		parts.append(uri)
+	if not description.is_empty():
+		parts.append(description)
+	if parts.is_empty():
+		return "Resource link"
+	return "\n".join(parts)
+
+
+func _embedded_resource_to_text(item: Dictionary) -> String:
+	var resource := item.get("resource")
+	if not (resource is Dictionary):
+		push_warning("Unsupported embedded resource in MCP tool result; skipping")
+		return ""
+	var resource_dict := resource as Dictionary
+	var text := str(resource_dict.get("text", ""))
+	if not text.is_empty():
+		return text
+	push_warning("Binary embedded resource cannot be converted to text; skipping")
+	return ""
+
+
+func _build_jsonrpc_error_response(request_id: Variant, code: int, message: String) -> Dictionary:
+	return {
+		"jsonrpc": "2.0",
+		"id": request_id,
+		"error": {
+			"code": code,
+			"message": message,
+		},
+	}
 
 
 func _write_inbound_control_response(

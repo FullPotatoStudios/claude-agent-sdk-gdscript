@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10C higher-layer session support and reference UI integration
+- Active roadmap slice: Phase 10D runtime-first SDK MCP helpers
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -60,9 +60,14 @@ The first public implementation target is the scene-free core conversation loop,
 - `ClaudeClientAdapter` session-history and mutation convenience methods
 - `ClaudeClientNode` session-history and mutation convenience methods
 - `ClaudeChatPanel` session browser, transcript restoration, saved-session resume, and basic session-management controls
+- `ClaudeMcp` scene-free SDK MCP builders and typed runtime MCP models
+- mixed external plus SDK-hosted `ClaudeAgentOptions.mcp_servers` handling
+- `ClaudeQuerySession` runtime JSON-RPC bridging for SDK-hosted MCP `initialize`, `notifications/initialized`, `tools/list`, and `tools/call`
+- Known GDScript/runtime difference:
+  - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
+  - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
 - Still deferred:
   - session forking helpers
-  - SDK-hosted custom-tool / MCP helper parity
   - broader settings and agent-definition parity slices
 
 ## Update process

@@ -62,7 +62,7 @@ func apply(config: Dictionary):
 		output_format = (config["output_format"] as Dictionary).duplicate(true)
 	if config.has("mcp_servers"):
 		if config["mcp_servers"] is Dictionary:
-			mcp_servers = (config["mcp_servers"] as Dictionary).duplicate(true)
+			mcp_servers = _duplicate_nested_variant(config["mcp_servers"])
 		elif config["mcp_servers"] is String:
 			mcp_servers = str(config["mcp_servers"])
 	return self
@@ -123,8 +123,22 @@ static func _duplicate_hooks(value: Dictionary) -> Dictionary:
 
 
 static func _duplicate_mcp_servers(value: Variant) -> Variant:
-	if value is Dictionary:
-		return (value as Dictionary).duplicate(true)
+	if value is Dictionary or value is Array:
+		return _duplicate_nested_variant(value)
 	if value is String:
 		return str(value)
 	return {}
+
+
+static func _duplicate_nested_variant(value: Variant) -> Variant:
+	if value is Dictionary:
+		var duplicated: Dictionary = {}
+		for key_variant in (value as Dictionary).keys():
+			duplicated[key_variant] = _duplicate_nested_variant((value as Dictionary)[key_variant])
+		return duplicated
+	if value is Array:
+		var duplicated: Array = []
+		for item in value:
+			duplicated.append(_duplicate_nested_variant(item))
+		return duplicated
+	return value

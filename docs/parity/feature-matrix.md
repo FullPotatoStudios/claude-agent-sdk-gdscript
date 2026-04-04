@@ -113,7 +113,7 @@ Phase 1 findings that constrain this matrix:
 | --- | --- | --- | --- | --- | --- |
 | External MCP server config passthrough | `types.py`, transport command building | Important once users need external tool ecosystems | transport, settings/config encoding | `v1 later` | Reasonable after core chat and core options settle |
 | MCP status inspection and live toggling | `client.py`, e2e MCP tests | Operational tooling for advanced sessions | MCP config, control protocol | `v1 later` | Tied to broader MCP story |
-| SDK MCP in-process tool helpers | `__init__.py` tool decorator and SDK MCP helpers, `e2e-tests/test_sdk_mcp_tools.py` | Powerful parity feature, but Python implementation is very language-specific | MCP server runtime, callback plumbing | `deferred` | Revisit with a Godot-native design later |
+| SDK MCP in-process tool helpers | `__init__.py` tool decorator and SDK MCP helpers, `e2e-tests/test_sdk_mcp_tools.py` | Powerful parity feature for in-process tool hosting without external MCP processes | MCP server runtime, callback plumbing | `v1 later` | Delivered post-v1 in Phase 10D with Godot-native builders instead of Python decorators |
 | Python decorator-based tool definition API | `__init__.py` | Python convenience layer | language-specific reflection and decorators | `not applicable` | GDScript should use a different registration shape if/when this feature arrives |
 
 ## Structured output, agents, settings, and diagnostics
@@ -156,4 +156,5 @@ Status note:
 - Phase 10A adds read-only session history support through `ClaudeSessions`
 - Phase 10B adds basic session mutations through `ClaudeSessions.rename_session()`, `tag_session()`, and `delete_session()`
 - Phase 10C lifts the current session feature set into `ClaudeClientAdapter`, `ClaudeClientNode`, and the shipped `ClaudeChatPanel`
+- Phase 10D adds runtime-first SDK-hosted MCP tool/server helpers through `ClaudeMcp` and mixed `mcp_servers` handling
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules
