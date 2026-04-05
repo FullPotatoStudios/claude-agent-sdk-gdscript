@@ -15,6 +15,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - scene-free `ClaudeMcp` SDK-hosted MCP tool/server builders with runtime JSON-RPC bridging through `ClaudeAgentOptions.mcp_servers`
 - richer `ClaudeAgentOptions.system_prompt` variants and upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
 - disconnected `ClaudeChatPanel` controls for prompt/tool configuration, plus read-only MCP environment summary
+- scene-free `ClaudeBuiltInToolCatalog` helper plus a grouped built-in tool picker in the reference panel, with advanced allow/deny passthrough preserved behind a collapsed section
 
 ## [0.1.0] - 2026-04-04
 

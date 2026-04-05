@@ -55,11 +55,27 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 	get_tree().root.add_child(panel)
 	await _await_frames(2)
 
+	assert_bool(_button(panel, "ChatViewButton").button_pressed).is_true()
+	assert_bool(_button(panel, "SettingsViewButton").button_pressed).is_false()
+	assert_bool(_control(panel, "ChatSummaryCard").visible).is_true()
+	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
+	assert_str(_label(panel, "ChatSummaryModelValue").text).is_equal("haiku")
+	assert_str(_label(panel, "ChatSummaryPermissionValue").text).is_equal("plan")
+	assert_str(_label(panel, "ChatSummaryPromptValue").text).is_equal("Claude Code preset + append")
+	assert_str(_label(panel, "ChatSummaryToolsValue").text).is_equal("All default built-in tools enabled.")
+	assert_str(_label(panel, "ChatSummaryMcpValue").text).contains("gameplay")
+	assert_str(_label(panel, "ChatSummaryMcpValue").text).contains("filesystem")
+
+	_show_settings_view(panel)
+	await _await_frames(1)
+
 	assert_str(_line_edit(panel, "ModelInput").text).is_equal("haiku")
 	assert_str(_option_button(panel, "PermissionModeOption").get_item_text(_option_button(panel, "PermissionModeOption").selected)).is_equal("plan")
 	assert_str(_option_button(panel, "SystemPromptModeOption").get_item_text(_option_button(panel, "SystemPromptModeOption").selected)).is_equal("Preset + append")
 	assert_str(_text_edit(panel, "SystemPromptTextInput").text).is_equal("Stay in-universe.")
-	assert_str(_option_button(panel, "ToolsModeOption").get_item_text(_option_button(panel, "ToolsModeOption").selected)).is_equal("Claude Code preset")
+	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).is_equal("All default built-in tools enabled.")
+	assert_int(_checked_built_in_tool_count(panel)).is_equal(ClaudeBuiltInToolCatalog.list_default_tools().size())
+	assert_bool(_button(panel, "ToolRulesAdvancedToggle").button_pressed).is_true()
 	assert_str(_line_edit(panel, "AllowedToolsInput").text).is_equal("Read,Glob")
 	assert_str(_line_edit(panel, "DisallowedToolsInput").text).is_equal("Edit")
 	assert_str(_label(panel, "McpSummaryValue").text).contains("gameplay")
@@ -74,6 +90,8 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
 	get_tree().root.add_child(panel)
 	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
 
 	_line_edit(panel, "ModelInput").text = "sonnet"
 	_line_edit(panel, "ModelInput").text_changed.emit("sonnet")
@@ -83,10 +101,18 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	_option_button(panel, "SystemPromptModeOption").item_selected.emit(4)
 	_line_edit(panel, "SystemPromptFileInput").text = "res://prompts/game-assistant.md"
 	_line_edit(panel, "SystemPromptFileInput").text_changed.emit("res://prompts/game-assistant.md")
-	_option_button(panel, "ToolsModeOption").select(2)
-	_option_button(panel, "ToolsModeOption").item_selected.emit(2)
-	_line_edit(panel, "ToolsValueInput").text = "Read,Glob,Grep"
-	_line_edit(panel, "ToolsValueInput").text_changed.emit("Read,Glob,Grep")
+	_button(panel, "BuiltInToolGroupReadNoneButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupWriteNoneButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupAutomationNoneButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupWebNoneButton").pressed.emit()
+	_built_in_tool_checkbox(panel, "Read").button_pressed = true
+	_built_in_tool_checkbox(panel, "Read").toggled.emit(true)
+	_built_in_tool_checkbox(panel, "Glob").button_pressed = true
+	_built_in_tool_checkbox(panel, "Glob").toggled.emit(true)
+	_built_in_tool_checkbox(panel, "Grep").button_pressed = true
+	_built_in_tool_checkbox(panel, "Grep").toggled.emit(true)
+	_button(panel, "ToolRulesAdvancedToggle").button_pressed = true
+	_button(panel, "ToolRulesAdvancedToggle").toggled.emit(true)
 	_line_edit(panel, "AllowedToolsInput").text = "Read,Glob"
 	_line_edit(panel, "AllowedToolsInput").text_changed.emit("Read,Glob")
 	_line_edit(panel, "DisallowedToolsInput").text = "Edit"
@@ -103,6 +129,10 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	assert_array(configured_options.tools).is_equal(["Read", "Glob", "Grep"])
 	assert_array(configured_options.allowed_tools).is_equal(["Read", "Glob"])
 	assert_array(configured_options.disallowed_tools).is_equal(["Edit"])
+	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).contains("3 of")
+	assert_str(_label(panel, "ChatSummaryModelValue").text).is_equal("sonnet")
+	assert_str(_label(panel, "ChatSummaryPromptValue").text).contains("Prompt file")
+	assert_str(_label(panel, "ChatSummaryToolsValue").text).contains("3 of")
 
 	panel.connect_client()
 	await _await_frames(1)
@@ -115,8 +145,74 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	assert_array(runtime_options.tools).is_equal(["Read", "Glob", "Grep"])
 	assert_bool(_line_edit(panel, "ModelInput").editable).is_false()
 	assert_bool(_option_button(panel, "SystemPromptModeOption").disabled).is_true()
-	assert_bool(_option_button(panel, "ToolsModeOption").disabled).is_true()
+	assert_bool(_built_in_tool_checkbox(panel, "Read").disabled).is_true()
 	assert_bool(_line_edit(panel, "AllowedToolsInput").editable).is_false()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_built_in_tool_picker_maps_all_none_and_partial_selection() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	assert_that(configured_options.tools).is_null()
+	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).is_equal("All default built-in tools enabled.")
+
+	_button(panel, "BuiltInToolGroupReadNoneButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupWriteNoneButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupAutomationNoneButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupWebNoneButton").pressed.emit()
+	await _await_frames(1)
+	assert_array(configured_options.tools).is_empty()
+	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).is_equal("No built-in tools enabled.")
+
+	_built_in_tool_checkbox(panel, "Read").button_pressed = true
+	_built_in_tool_checkbox(panel, "Read").toggled.emit(true)
+	_built_in_tool_checkbox(panel, "WebSearch").button_pressed = true
+	_built_in_tool_checkbox(panel, "WebSearch").toggled.emit(true)
+	await _await_frames(1)
+	assert_array(configured_options.tools).is_equal(["Read", "WebSearch"])
+
+	_button(panel, "BuiltInToolGroupReadAllButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupWriteAllButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupAutomationAllButton").pressed.emit()
+	_button(panel, "BuiltInToolGroupWebAllButton").pressed.emit()
+	await _await_frames(1)
+	assert_dict(configured_options.tools).is_equal({"type": "preset", "preset": "claude_code"})
+	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).is_equal("All default built-in tools enabled.")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_defaults_to_chat_view_and_switches_to_settings_view() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	assert_bool(_button(panel, "ChatViewButton").button_pressed).is_true()
+	assert_bool(_control(panel, "ChatSummaryCard").visible).is_true()
+	assert_bool(_control(panel, "SplitRow").visible).is_true()
+	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
+
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	assert_bool(_button(panel, "SettingsViewButton").button_pressed).is_true()
+	assert_bool(_control(panel, "ChatSummaryCard").visible).is_false()
+	assert_bool(_control(panel, "SplitRow").visible).is_false()
+	assert_bool(_control(panel, "SettingsScroll").visible).is_true()
+
+	_button(panel, "ChatViewButton").pressed.emit()
+	await _await_frames(1)
+	assert_bool(_control(panel, "ChatSummaryCard").visible).is_true()
+	assert_bool(_control(panel, "SplitRow").visible).is_true()
+	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
 
 	await _cleanup_panel(panel)
 
@@ -679,6 +775,10 @@ func _button(panel, node_name: String) -> Button:
 	return panel.find_child(node_name, true, false) as Button
 
 
+func _control(panel, node_name: String) -> Control:
+	return panel.find_child(node_name, true, false) as Control
+
+
 func _label(panel, node_name: String) -> Label:
 	return panel.find_child(node_name, true, false) as Label
 
@@ -695,12 +795,33 @@ func _option_button(panel, node_name: String) -> OptionButton:
 	return panel.find_child(node_name, true, false) as OptionButton
 
 
+func _check_box(panel, node_name: String) -> CheckBox:
+	return panel.find_child(node_name, true, false) as CheckBox
+
+
+func _built_in_tool_checkbox(panel, tool_name: String) -> CheckBox:
+	return _check_box(panel, "BuiltInToolCheck_%s" % tool_name)
+
+
+func _checked_built_in_tool_count(panel) -> int:
+	var count := 0
+	for tool_name in ClaudeBuiltInToolCatalog.list_default_tools():
+		var checkbox := _built_in_tool_checkbox(panel, tool_name)
+		if checkbox != null and checkbox.button_pressed:
+			count += 1
+	return count
+
+
 func _prompt_input(panel) -> TextEdit:
 	return panel.find_child("PromptInput", true, false) as TextEdit
 
 
 func _session_list(panel) -> ItemList:
 	return panel.find_child("SessionList", true, false) as ItemList
+
+
+func _show_settings_view(panel) -> void:
+	_button(panel, "SettingsViewButton").pressed.emit()
 
 
 func _transcript_list(panel) -> VBoxContainer:

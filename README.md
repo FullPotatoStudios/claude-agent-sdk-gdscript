@@ -45,8 +45,9 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeSDKClient` for interactive runtime usage
 - `ClaudeSessions` for local session history access and basic session mutations
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
+- `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history convenience methods
-- `ClaudeChatPanel` as a reusable reference chat UI with saved-session browsing, idle-time live switching, resume, basic session management, and disconnected chat-configuration controls
+- `ClaudeChatPanel` as a reusable reference chat UI with a conversation-first `Chat` view, secondary `Settings` view, saved-session browsing, idle-time live switching, resume, basic session management, and disconnected chat-configuration controls
 - A root-project demo under `demo/` for validation and onboarding
 
 Only `addons/claude_agent_sdk/` is the distributable addon payload. The `demo/`, `tests/`, and `tools/` directories stay outside the packaged artifact.
@@ -108,8 +109,9 @@ func _ready() -> void:
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
+- Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
 - Godot-native adapter and node layers with session-history convenience passthroughs
-- A reusable chat panel plus demo validation scene, now including session browsing, transcript restoration, idle-time live session switching, saved-session resume, basic rename/tag/delete actions, and disconnected prompt/tool configuration editing
+- A reusable chat panel plus demo validation scene, now including a conversation-first main view, secondary settings view, session browsing, transcript restoration, idle-time live session switching, saved-session resume, basic rename/tag/delete actions, and disconnected prompt/tool configuration editing
 
 ## Current Gaps
 

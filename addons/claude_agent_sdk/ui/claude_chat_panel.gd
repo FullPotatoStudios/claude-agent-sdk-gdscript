@@ -23,15 +23,13 @@ const COLOR_WARNING := Color("ffbf69")
 const COLOR_ERROR := Color("ff7b86")
 const COLOR_USER := Color("ff9966")
 const COLOR_ASSISTANT := Color("5db3ff")
+const PANEL_VIEW_CHAT := 0
+const PANEL_VIEW_SETTINGS := 1
 const SYSTEM_PROMPT_MODE_VANILLA := 0
 const SYSTEM_PROMPT_MODE_TEXT := 1
 const SYSTEM_PROMPT_MODE_PRESET := 2
 const SYSTEM_PROMPT_MODE_PRESET_APPEND := 3
 const SYSTEM_PROMPT_MODE_FILE := 4
-const TOOLS_MODE_DEFAULT := 0
-const TOOLS_MODE_PRESET := 1
-const TOOLS_MODE_CUSTOM := 2
-const TOOLS_MODE_EMPTY := 3
 
 var _configured_options = null
 var _configured_transport = null
@@ -57,6 +55,9 @@ var _delete_confirm_armed := false
 var _connected_session_id := "default"
 var _did_apply_initial_split := false
 var _suppress_configuration_sync := false
+var _built_in_tool_checks: Dictionary = {}
+var _built_in_tool_group_buttons: Dictionary = {}
+var _current_view := PANEL_VIEW_CHAT
 
 @onready var _shell: PanelContainer = $Shell
 @onready var _status_badge: PanelContainer = $Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge
@@ -66,21 +67,31 @@ var _suppress_configuration_sync := false
 @onready var _refresh_auth_button: Button = $Shell/Margin/Body/Header/TopRow/ActionButtons/RefreshAuthButton
 @onready var _connect_button: Button = $Shell/Margin/Body/Header/TopRow/ActionButtons/ConnectButton
 @onready var _disconnect_button: Button = $Shell/Margin/Body/Header/TopRow/ActionButtons/DisconnectButton
-@onready var _model_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup/ModelInput
-@onready var _permission_mode: OptionButton = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup/PermissionModeOption
-@onready var _system_prompt_mode: OptionButton = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup/SystemPromptModeOption
-@onready var _system_prompt_text_group: VBoxContainer = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup
-@onready var _system_prompt_text_label: Label = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextLabel
-@onready var _system_prompt_text_input: TextEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextInput
-@onready var _system_prompt_file_group: VBoxContainer = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup
-@onready var _system_prompt_file_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup/SystemPromptFileInput
-@onready var _tools_mode: OptionButton = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsModeGroup/ToolsModeOption
-@onready var _tools_value_group: VBoxContainer = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup
-@onready var _tools_value_label: Label = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup/ToolsValueLabel
-@onready var _tools_value_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup/ToolsValueInput
-@onready var _allowed_tools_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/AllowedToolsGroup/AllowedToolsInput
-@onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
-@onready var _mcp_summary_value: Label = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup/McpSummaryValue
+@onready var _chat_view_button: Button = $Shell/Margin/Body/ViewNavigation/ChatViewButton
+@onready var _settings_view_button: Button = $Shell/Margin/Body/ViewNavigation/SettingsViewButton
+@onready var _open_settings_button: Button = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryHeader/OpenSettingsButton
+@onready var _chat_summary_card: PanelContainer = $Shell/Margin/Body/ChatSummaryCard
+@onready var _settings_scroll: ScrollContainer = $Shell/Margin/Body/SettingsScroll
+@onready var _chat_summary_model: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryModelGroup/ChatSummaryModelValue
+@onready var _chat_summary_permission: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPermissionGroup/ChatSummaryPermissionValue
+@onready var _chat_summary_prompt: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPromptGroup/ChatSummaryPromptValue
+@onready var _chat_summary_tools: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryToolsGroup/ChatSummaryToolsValue
+@onready var _chat_summary_mcp: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryMcpGroup/ChatSummaryMcpValue
+@onready var _model_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup/ModelInput
+@onready var _permission_mode: OptionButton = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup/PermissionModeOption
+@onready var _system_prompt_mode: OptionButton = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup/SystemPromptModeOption
+@onready var _system_prompt_text_group: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup
+@onready var _system_prompt_text_label: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextLabel
+@onready var _system_prompt_text_input: TextEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextInput
+@onready var _system_prompt_file_group: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup
+@onready var _system_prompt_file_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup/SystemPromptFileInput
+@onready var _built_in_tools_summary: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsSummaryValue
+@onready var _built_in_tool_groups: GridContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsCard/BuiltInToolsMargin/BuiltInToolsBody/BuiltInToolGroups
+@onready var _tool_rules_advanced_toggle: Button = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedToggle
+@onready var _tool_rules_advanced_body: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody
+@onready var _allowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/AllowedToolsGroup/AllowedToolsInput
+@onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
+@onready var _mcp_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup/McpSummaryValue
 @onready var _split_row: HSplitContainer = $Shell/Margin/Body/SplitRow
 @onready var _session_refresh_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/SessionRefreshButton
 @onready var _new_chat_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/NewChatButton
@@ -114,8 +125,9 @@ func _ready() -> void:
 	_apply_static_button_icons()
 	_populate_permission_modes()
 	_populate_system_prompt_modes()
-	_populate_tools_modes()
+	_populate_built_in_tool_groups()
 	_apply_initial_control_values()
+	_set_current_view(PANEL_VIEW_CHAT)
 	_ensure_client_node()
 	_wire_ui()
 	_apply_theme_overrides()
@@ -230,6 +242,12 @@ func _wire_ui() -> void:
 		_connect_button.pressed.connect(_on_connect_pressed)
 	if not _disconnect_button.pressed.is_connected(_on_disconnect_pressed):
 		_disconnect_button.pressed.connect(_on_disconnect_pressed)
+	if not _chat_view_button.pressed.is_connected(_on_chat_view_pressed):
+		_chat_view_button.pressed.connect(_on_chat_view_pressed)
+	if not _settings_view_button.pressed.is_connected(_on_settings_view_pressed):
+		_settings_view_button.pressed.connect(_on_settings_view_pressed)
+	if not _open_settings_button.pressed.is_connected(_on_settings_view_pressed):
+		_open_settings_button.pressed.connect(_on_settings_view_pressed)
 	if not _interrupt_button.pressed.is_connected(_on_interrupt_pressed):
 		_interrupt_button.pressed.connect(_on_interrupt_pressed)
 	if not _send_button.pressed.is_connected(_on_send_pressed):
@@ -246,10 +264,8 @@ func _wire_ui() -> void:
 		_system_prompt_text_input.text_changed.connect(_on_system_prompt_text_changed)
 	if not _system_prompt_file_input.text_changed.is_connected(_on_system_prompt_file_text_changed):
 		_system_prompt_file_input.text_changed.connect(_on_system_prompt_file_text_changed)
-	if not _tools_mode.item_selected.is_connected(_on_tools_mode_selected):
-		_tools_mode.item_selected.connect(_on_tools_mode_selected)
-	if not _tools_value_input.text_changed.is_connected(_on_tools_value_text_changed):
-		_tools_value_input.text_changed.connect(_on_tools_value_text_changed)
+	if not _tool_rules_advanced_toggle.toggled.is_connected(_on_tool_rules_advanced_toggled):
+		_tool_rules_advanced_toggle.toggled.connect(_on_tool_rules_advanced_toggled)
 	if not _allowed_tools_input.text_changed.is_connected(_on_allowed_tools_text_changed):
 		_allowed_tools_input.text_changed.connect(_on_allowed_tools_text_changed)
 	if not _disallowed_tools_input.text_changed.is_connected(_on_disallowed_tools_text_changed):
@@ -304,13 +320,72 @@ func _populate_system_prompt_modes() -> void:
 	_system_prompt_mode.add_item("Prompt file")
 
 
-func _populate_tools_modes() -> void:
-	if _tools_mode.item_count > 0:
+func _populate_built_in_tool_groups() -> void:
+	if _built_in_tool_groups.get_child_count() > 0:
 		return
-	_tools_mode.add_item("Default tool set")
-	_tools_mode.add_item("Claude Code preset")
-	_tools_mode.add_item("Custom list")
-	_tools_mode.add_item("Disable built-in tools")
+	_built_in_tool_checks.clear()
+	_built_in_tool_group_buttons.clear()
+	for group in ClaudeBuiltInToolCatalog.list_groups():
+		var group_id := str(group.get("id", ""))
+		var group_id_pascal := group_id.capitalize()
+		var panel := PanelContainer.new()
+		panel.name = "BuiltInToolGroup%s" % group_id_pascal
+		panel.size_flags_horizontal = SIZE_EXPAND_FILL
+
+		var margin := MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 10)
+		margin.add_theme_constant_override("margin_top", 10)
+		margin.add_theme_constant_override("margin_right", 10)
+		margin.add_theme_constant_override("margin_bottom", 10)
+		panel.add_child(margin)
+
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 8)
+		margin.add_child(body)
+
+		var header := HBoxContainer.new()
+		header.add_theme_constant_override("separation", 6)
+		body.add_child(header)
+
+		var title := Label.new()
+		title.text = str(group.get("label", ""))
+		title.size_flags_horizontal = SIZE_EXPAND_FILL
+		header.add_child(title)
+
+		var enable_button := Button.new()
+		enable_button.name = "BuiltInToolGroup%sAllButton" % group_id_pascal
+		enable_button.text = "All"
+		enable_button.pressed.connect(_on_tool_group_enable_all_pressed.bind(group_id))
+		header.add_child(enable_button)
+
+		var disable_button := Button.new()
+		disable_button.name = "BuiltInToolGroup%sNoneButton" % group_id_pascal
+		disable_button.text = "None"
+		disable_button.pressed.connect(_on_tool_group_disable_all_pressed.bind(group_id))
+		header.add_child(disable_button)
+		_built_in_tool_group_buttons[group_id] = {
+			"all": enable_button,
+			"none": disable_button,
+		}
+
+		var description := Label.new()
+		description.text = str(group.get("description", ""))
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		description.modulate = COLOR_MUTED
+		body.add_child(description)
+
+		for tool_name_variant in (group.get("tools", []) as Array):
+			var tool_name := str(tool_name_variant)
+			var metadata := (ClaudeBuiltInToolCatalog.list_tool_metadata()).get(tool_name, {})
+			var checkbox := CheckBox.new()
+			checkbox.name = "BuiltInToolCheck_%s" % tool_name
+			checkbox.text = str(metadata.get("label", tool_name))
+			checkbox.tooltip_text = str(metadata.get("description", ""))
+			checkbox.toggled.connect(_on_built_in_tool_toggled.bind(tool_name))
+			body.add_child(checkbox)
+			_built_in_tool_checks[tool_name] = checkbox
+
+		_built_in_tool_groups.add_child(panel)
 
 
 func _apply_initial_control_values() -> void:
@@ -325,10 +400,13 @@ func _apply_initial_control_values() -> void:
 			_permission_mode.select(index)
 			break
 	_apply_system_prompt_controls_from_options()
-	_apply_tools_controls_from_options()
+	_apply_built_in_tool_controls_from_options()
 	_allowed_tools_input.text = ",".join(_configured_options.allowed_tools)
 	_disallowed_tools_input.text = ",".join(_configured_options.disallowed_tools)
+	var has_advanced_rules: bool = not _configured_options.allowed_tools.is_empty() or not _configured_options.disallowed_tools.is_empty()
+	_tool_rules_advanced_toggle.set_pressed_no_signal(has_advanced_rules)
 	_refresh_mcp_summary()
+	_refresh_chat_configuration_summary()
 	_refresh_configuration_field_visibility()
 	_suppress_configuration_sync = false
 
@@ -359,28 +437,16 @@ func _apply_system_prompt_controls_from_options() -> void:
 		_system_prompt_text_input.text = str(system_prompt)
 
 
-func _apply_tools_controls_from_options() -> void:
-	var tools_config: Variant = _configured_options.tools
-	_tools_value_input.text = ""
-	if tools_config == null:
-		_tools_mode.select(TOOLS_MODE_DEFAULT)
-		return
-	if tools_config is Dictionary:
-		var tool_config := tools_config as Dictionary
-		if str(tool_config.get("type", "")) == "preset" and str(tool_config.get("preset", "")) == "claude_code":
-			_tools_mode.select(TOOLS_MODE_PRESET)
-			return
-	if tools_config is Array:
-		var tool_names: Array[String] = []
-		for tool_name_variant in tools_config:
-			tool_names.append(str(tool_name_variant))
-		if tool_names.is_empty():
-			_tools_mode.select(TOOLS_MODE_EMPTY)
-			return
-		_tools_mode.select(TOOLS_MODE_CUSTOM)
-		_tools_value_input.text = ",".join(tool_names)
-		return
-	_tools_mode.select(TOOLS_MODE_DEFAULT)
+func _apply_built_in_tool_controls_from_options() -> void:
+	var selected_tools := ClaudeBuiltInToolCatalog.selection_from_tools_config(_configured_options.tools)
+	var selected_lookup := {}
+	for tool_name in selected_tools:
+		selected_lookup[tool_name] = true
+	for tool_name in _built_in_tool_checks.keys():
+		var checkbox := _built_in_tool_checks[tool_name] as CheckBox
+		checkbox.set_pressed_no_signal(selected_lookup.has(tool_name))
+	_refresh_built_in_tools_summary()
+	_refresh_built_in_tool_group_buttons()
 
 
 func _capture_base_session_defaults() -> void:
@@ -442,7 +508,7 @@ func _apply_preconnect_controls_to_options() -> void:
 	_configured_options.model = _model_input.text.strip_edges()
 	_configured_options.permission_mode = _current_permission_mode()
 	_configured_options.system_prompt = _system_prompt_from_controls()
-	_configured_options.tools = _tools_from_controls()
+	_configured_options.tools = _built_in_tools_from_controls()
 	_configured_options.allowed_tools = _parse_tool_csv(_allowed_tools_input.text)
 	_configured_options.disallowed_tools = _parse_tool_csv(_disallowed_tools_input.text)
 
@@ -470,6 +536,15 @@ func _resolve_session_scope_directory() -> String:
 	return ProjectSettings.globalize_path("res://")
 
 
+func _set_current_view(view: int) -> void:
+	_current_view = view
+	_chat_view_button.set_pressed_no_signal(view == PANEL_VIEW_CHAT)
+	_settings_view_button.set_pressed_no_signal(view == PANEL_VIEW_SETTINGS)
+	_chat_summary_card.visible = view == PANEL_VIEW_CHAT
+	_split_row.visible = view == PANEL_VIEW_CHAT
+	_settings_scroll.visible = view == PANEL_VIEW_SETTINGS
+
+
 func _refresh_configuration_controls() -> void:
 	var configuration_locked := _session_live or _is_connecting
 	_model_input.editable = not configuration_locked
@@ -477,10 +552,10 @@ func _refresh_configuration_controls() -> void:
 	_system_prompt_mode.disabled = configuration_locked
 	_system_prompt_text_input.editable = not configuration_locked and _system_prompt_text_group.visible
 	_system_prompt_file_input.editable = not configuration_locked and _system_prompt_file_group.visible
-	_tools_mode.disabled = configuration_locked
-	_tools_value_input.editable = not configuration_locked and _tools_value_group.visible
-	_allowed_tools_input.editable = not configuration_locked
-	_disallowed_tools_input.editable = not configuration_locked
+	_tool_rules_advanced_toggle.disabled = configuration_locked
+	_allowed_tools_input.editable = not configuration_locked and _tool_rules_advanced_body.visible
+	_disallowed_tools_input.editable = not configuration_locked and _tool_rules_advanced_body.visible
+	_refresh_built_in_tool_picker_state()
 
 
 func _refresh_configuration_field_visibility() -> void:
@@ -493,8 +568,8 @@ func _refresh_configuration_field_visibility() -> void:
 	else:
 		_system_prompt_text_label.text = "Prompt text"
 		_system_prompt_text_input.placeholder_text = "You are a level-design assistant."
-	_tools_value_group.visible = _tools_mode.selected == TOOLS_MODE_CUSTOM
-	_tools_value_label.text = "Built-in tools list"
+	_tool_rules_advanced_body.visible = _tool_rules_advanced_toggle.button_pressed
+	_tool_rules_advanced_toggle.text = "Hide advanced tool rules" if _tool_rules_advanced_toggle.button_pressed else "Advanced tool rules"
 	_refresh_configuration_controls()
 
 
@@ -510,6 +585,30 @@ func _refresh_mcp_summary() -> void:
 		elif _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
 			summary = "External MCP config: %s" % str(_configured_options.mcp_servers).strip_edges()
 	_mcp_summary_value.text = summary
+	_chat_summary_mcp.text = summary
+
+
+func _refresh_chat_configuration_summary() -> void:
+	if _configured_options == null:
+		return
+	_chat_summary_model.text = _configured_options.model if not _configured_options.model.is_empty() else "default"
+	_chat_summary_permission.text = _configured_options.permission_mode if not _configured_options.permission_mode.is_empty() else "default"
+	_chat_summary_prompt.text = _system_prompt_summary(_configured_options.system_prompt)
+	_chat_summary_tools.text = _built_in_tools_summary.text
+
+
+func _system_prompt_summary(system_prompt: Variant) -> String:
+	if system_prompt is Dictionary:
+		var prompt_config := system_prompt as Dictionary
+		match str(prompt_config.get("type", "")):
+			"preset":
+				return "Claude Code preset + append" if not str(prompt_config.get("append", "")).is_empty() else "Claude Code preset"
+			"file":
+				var path := str(prompt_config.get("path", ""))
+				return "Prompt file · %s" % path if not path.is_empty() else "Prompt file"
+	if not str(system_prompt).is_empty():
+		return "Custom text"
+	return "Vanilla Claude"
 
 
 func _sync_configuration_from_controls() -> void:
@@ -517,8 +616,11 @@ func _sync_configuration_from_controls() -> void:
 		return
 	_apply_preconnect_controls_to_options()
 	_capture_base_session_defaults()
+	_refresh_built_in_tools_summary()
+	_refresh_built_in_tool_group_buttons()
 	_refresh_configuration_field_visibility()
 	_refresh_mcp_summary()
+	_refresh_chat_configuration_summary()
 
 
 func _system_prompt_from_controls() -> Variant:
@@ -539,16 +641,8 @@ func _system_prompt_from_controls() -> Variant:
 			return ""
 
 
-func _tools_from_controls() -> Variant:
-	match _tools_mode.selected:
-		TOOLS_MODE_PRESET:
-			return {"type": "preset", "preset": "claude_code"}
-		TOOLS_MODE_CUSTOM:
-			return _parse_tool_csv(_tools_value_input.text)
-		TOOLS_MODE_EMPTY:
-			return []
-		_:
-			return null
+func _built_in_tools_from_controls() -> Variant:
+	return ClaudeBuiltInToolCatalog.tools_config_from_selection(_selected_built_in_tools())
 
 
 func _parse_tool_csv(value: String) -> Array[String]:
@@ -558,6 +652,56 @@ func _parse_tool_csv(value: String) -> Array[String]:
 		if not normalized.is_empty():
 			results.append(normalized)
 	return results
+
+
+func _selected_built_in_tools() -> Array[String]:
+	var selected: Array[String] = []
+	for tool_name in ClaudeBuiltInToolCatalog.list_default_tools():
+		var checkbox := _built_in_tool_checks.get(tool_name, null) as CheckBox
+		if checkbox != null and checkbox.button_pressed:
+			selected.append(tool_name)
+	return selected
+
+
+func _refresh_built_in_tools_summary() -> void:
+	var selected_count := _selected_built_in_tools().size()
+	var total_count := ClaudeBuiltInToolCatalog.list_default_tools().size()
+	if selected_count == 0:
+		_built_in_tools_summary.text = "No built-in tools enabled."
+	elif selected_count == total_count:
+		_built_in_tools_summary.text = "All default built-in tools enabled."
+	else:
+		_built_in_tools_summary.text = "%d of %d built-in tools enabled." % [selected_count, total_count]
+	_chat_summary_tools.text = _built_in_tools_summary.text
+
+
+func _refresh_built_in_tool_group_buttons() -> void:
+	var locked := _session_live or _is_connecting
+	var selected_lookup := {}
+	for tool_name in _selected_built_in_tools():
+		selected_lookup[tool_name] = true
+	for group in ClaudeBuiltInToolCatalog.list_groups():
+		var group_id := str(group.get("id", ""))
+		var buttons := _built_in_tool_group_buttons.get(group_id, {}) as Dictionary
+		var all_button := buttons.get("all", null) as Button
+		var none_button := buttons.get("none", null) as Button
+		var group_tools: Array = group.get("tools", [])
+		var enabled_count := 0
+		for tool_name_variant in group_tools:
+			if selected_lookup.has(str(tool_name_variant)):
+				enabled_count += 1
+		if all_button != null:
+			all_button.disabled = locked or enabled_count == group_tools.size()
+		if none_button != null:
+			none_button.disabled = locked or enabled_count == 0
+
+
+func _refresh_built_in_tool_picker_state() -> void:
+	var locked := _session_live or _is_connecting
+	for checkbox_variant in _built_in_tool_checks.values():
+		var checkbox := checkbox_variant as CheckBox
+		checkbox.disabled = locked
+	_refresh_built_in_tool_group_buttons()
 
 
 func _reload_sessions(preserve_selection: bool = true) -> void:
@@ -1295,6 +1439,15 @@ func _on_disconnect_pressed() -> void:
 	disconnect_client()
 
 
+func _on_chat_view_pressed() -> void:
+	_set_current_view(PANEL_VIEW_CHAT)
+
+
+func _on_settings_view_pressed() -> void:
+	_set_current_view(PANEL_VIEW_SETTINGS)
+	_settings_scroll.scroll_vertical = 0
+
+
 func _on_interrupt_pressed() -> void:
 	if _client_node != null:
 		_client_node.interrupt()
@@ -1335,13 +1488,34 @@ func _on_system_prompt_file_text_changed(_new_text: String) -> void:
 	_sync_configuration_from_controls()
 
 
-func _on_tools_mode_selected(_index: int) -> void:
+func _on_built_in_tool_toggled(_pressed: bool, _tool_name: String) -> void:
+	_sync_configuration_from_controls()
+
+
+func _on_tool_group_enable_all_pressed(group_id: String) -> void:
+	_set_group_tool_state(group_id, true)
+	_sync_configuration_from_controls()
+
+
+func _on_tool_group_disable_all_pressed(group_id: String) -> void:
+	_set_group_tool_state(group_id, false)
+	_sync_configuration_from_controls()
+
+
+func _on_tool_rules_advanced_toggled(_pressed: bool) -> void:
 	_refresh_configuration_field_visibility()
 	_sync_configuration_from_controls()
 
 
-func _on_tools_value_text_changed(_new_text: String) -> void:
-	_sync_configuration_from_controls()
+func _set_group_tool_state(group_id: String, enabled: bool) -> void:
+	for group in ClaudeBuiltInToolCatalog.list_groups():
+		if str(group.get("id", "")) != group_id:
+			continue
+		for tool_name_variant in (group.get("tools", []) as Array):
+			var checkbox := _built_in_tool_checks.get(str(tool_name_variant), null) as CheckBox
+			if checkbox != null:
+				checkbox.set_pressed_no_signal(enabled)
+		return
 
 
 func _on_allowed_tools_text_changed(_new_text: String) -> void:

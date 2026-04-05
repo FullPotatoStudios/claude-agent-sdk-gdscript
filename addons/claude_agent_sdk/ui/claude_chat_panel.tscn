@@ -99,164 +99,367 @@ text = "Connect"
 layout_mode = 2
 text = "Disconnect"
 
-[node name="ControlRow" type="PanelContainer" parent="Shell/Margin/Body/Header" unique_id=1908615743]
+[node name="ViewNavigation" type="HBoxContainer" parent="Shell/Margin/Body"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ChatViewButton" type="Button" parent="Shell/Margin/Body/ViewNavigation"]
+layout_mode = 2
+toggle_mode = true
+button_pressed = true
+text = "Chat"
+
+[node name="SettingsViewButton" type="Button" parent="Shell/Margin/Body/ViewNavigation"]
+layout_mode = 2
+toggle_mode = true
+text = "Settings"
+
+[node name="ChatSummaryCard" type="PanelContainer" parent="Shell/Margin/Body"]
 layout_mode = 2
 
-[node name="ControlMargin" type="MarginContainer" parent="Shell/Margin/Body/Header/ControlRow" unique_id=2120035982]
+[node name="ChatSummaryMargin" type="MarginContainer" parent="Shell/Margin/Body/ChatSummaryCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="ChatSummaryBody" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ChatSummaryHeader" type="HBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ChatSummaryTitleGroup" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="ChatSummaryEyebrow" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryHeader/ChatSummaryTitleGroup"]
+layout_mode = 2
+text = "Configuration summary"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ChatSummaryText" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryHeader/ChatSummaryTitleGroup"]
+layout_mode = 2
+text = "Current chat settings remain visible here while the full editor lives in Settings."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="OpenSettingsButton" type="Button" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryHeader"]
+layout_mode = 2
+text = "Open settings"
+
+[node name="ChatSummaryGrid" type="GridContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody"]
+layout_mode = 2
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 10
+columns = 3
+
+[node name="ChatSummaryModelGroup" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatSummaryModelLabel" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryModelGroup"]
+layout_mode = 2
+text = "Model"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ChatSummaryModelValue" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryModelGroup"]
+layout_mode = 2
+text = "haiku"
+autowrap_mode = 3
+
+[node name="ChatSummaryPermissionGroup" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatSummaryPermissionLabel" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPermissionGroup"]
+layout_mode = 2
+text = "Permission"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ChatSummaryPermissionValue" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPermissionGroup"]
+layout_mode = 2
+text = "default"
+autowrap_mode = 3
+
+[node name="ChatSummaryPromptGroup" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatSummaryPromptLabel" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPromptGroup"]
+layout_mode = 2
+text = "System prompt"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ChatSummaryPromptValue" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPromptGroup"]
+layout_mode = 2
+text = "Vanilla Claude"
+autowrap_mode = 3
+
+[node name="ChatSummaryToolsGroup" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatSummaryToolsLabel" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryToolsGroup"]
+layout_mode = 2
+text = "Built-in tools"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ChatSummaryToolsValue" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryToolsGroup"]
+layout_mode = 2
+text = "All default built-in tools enabled."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="ChatSummaryMcpGroup" type="VBoxContainer" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatSummaryMcpLabel" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryMcpGroup"]
+layout_mode = 2
+text = "Custom tools"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ChatSummaryMcpValue" type="Label" parent="Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryMcpGroup"]
+layout_mode = 2
+text = "No MCP servers configured."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="SettingsScroll" type="ScrollContainer" parent="Shell/Margin/Body"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="SettingsBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="SettingsIntroCard" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody"]
+layout_mode = 2
+
+[node name="SettingsIntroMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard"]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 14
 
-[node name="SettingsRow" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin" unique_id=789839819]
+[node name="SettingsIntroBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SettingsIntroEyebrow" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin/SettingsIntroBody"]
+layout_mode = 2
+text = "Settings"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="SettingsIntroText" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin/SettingsIntroBody"]
+layout_mode = 2
+text = "Edit chat configuration while disconnected. These controls update the same runtime options used when you connect."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="ControlRow" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody" unique_id=1908615743]
+layout_mode = 2
+
+[node name="ControlMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow" unique_id=2120035982]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="SettingsRow" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin" unique_id=789839819]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="SettingsLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=1375529655]
+[node name="SettingsLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=1375529655]
 layout_mode = 2
 text = "Chat controls"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="SettingsGrid" type="GridContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=562908444]
+[node name="SettingsGrid" type="GridContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=562908444]
 layout_mode = 2
 theme_override_constants/h_separation = 14
 theme_override_constants/v_separation = 10
 columns = 2
 
-[node name="ModelGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid" unique_id=73849189]
+[node name="ModelGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid" unique_id=73849189]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="ModelLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup" unique_id=967093094]
+[node name="ModelLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup" unique_id=967093094]
 layout_mode = 2
 text = "Model"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="ModelInput" type="LineEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup" unique_id=253882446]
+[node name="ModelInput" type="LineEdit" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup" unique_id=253882446]
 layout_mode = 2
 placeholder_text = "haiku"
 
-[node name="PermissionGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid" unique_id=743331917]
+[node name="PermissionGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid" unique_id=743331917]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="PermissionLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=1001712538]
+[node name="PermissionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=1001712538]
 layout_mode = 2
 text = "Permission mode"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="PermissionModeOption" type="OptionButton" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=984920834]
+[node name="PermissionModeOption" type="OptionButton" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup" unique_id=984920834]
 layout_mode = 2
 
-[node name="SystemPromptModeGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000111]
+[node name="SystemPromptModeGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=114000111]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="SystemPromptModeLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup" unique_id=114000112]
+[node name="SystemPromptModeLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup" unique_id=114000112]
 layout_mode = 2
 text = "System prompt"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="SystemPromptModeOption" type="OptionButton" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup" unique_id=114000113]
+[node name="SystemPromptModeOption" type="OptionButton" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup" unique_id=114000113]
 layout_mode = 2
 
-[node name="SystemPromptTextGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000114]
+[node name="SystemPromptTextGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=114000114]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="SystemPromptTextLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup" unique_id=114000115]
+[node name="SystemPromptTextLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup" unique_id=114000115]
 layout_mode = 2
 text = "Prompt text"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="SystemPromptTextInput" type="TextEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup" unique_id=114000116]
+[node name="SystemPromptTextInput" type="TextEdit" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup" unique_id=114000116]
 custom_minimum_size = Vector2(0, 86)
 layout_mode = 2
 wrap_mode = 1
 
-[node name="SystemPromptFileGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000117]
+[node name="SystemPromptFileGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=114000117]
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="SystemPromptFileLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup" unique_id=114000118]
+[node name="SystemPromptFileLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup" unique_id=114000118]
 layout_mode = 2
 text = "Prompt file path"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="SystemPromptFileInput" type="LineEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup" unique_id=114000119]
+[node name="SystemPromptFileInput" type="LineEdit" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup" unique_id=114000119]
 layout_mode = 2
 placeholder_text = "res://prompts/game-assistant.md"
 
-[node name="ToolsModeGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000120]
+[node name="BuiltInToolsGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=114000120]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="ToolsModeLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsModeGroup" unique_id=114000121]
+[node name="BuiltInToolsLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup" unique_id=114000121]
 layout_mode = 2
 text = "Built-in tools"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="ToolsModeOption" type="OptionButton" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsModeGroup" unique_id=114000122]
+[node name="BuiltInToolsSummaryValue" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup" unique_id=114000122]
 layout_mode = 2
+text = "All default built-in tools enabled."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
 
-[node name="ToolsValueGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000123]
+[node name="BuiltInToolsCard" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup" unique_id=114000123]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BuiltInToolsMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsCard" unique_id=114000124]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="BuiltInToolsBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsCard/BuiltInToolsMargin" unique_id=114000125]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BuiltInToolsHintLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsCard/BuiltInToolsMargin/BuiltInToolsBody" unique_id=114000126]
+layout_mode = 2
+text = "All checked uses the default Claude Code preset. Partial selections become an explicit built-in tool list."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="BuiltInToolGroups" type="GridContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsCard/BuiltInToolsMargin/BuiltInToolsBody" unique_id=114000127]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 2
+
+[node name="ToolRulesAdvancedGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=114000128]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ToolRulesAdvancedToggle" type="Button" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup" unique_id=114000129]
+layout_mode = 2
+toggle_mode = true
+text = "Advanced tool rules"
+
+[node name="ToolRulesAdvancedBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup" unique_id=114000130]
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="ToolsValueLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup" unique_id=114000124]
+[node name="ToolRulesAdvancedHint" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody" unique_id=114000131]
 layout_mode = 2
-text = "Built-in tools list"
+text = "Use these exact CLI passthrough lists for edge cases or finer-grained overrides."
 label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
 
-[node name="ToolsValueInput" type="LineEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup" unique_id=114000125]
-layout_mode = 2
-placeholder_text = "Read,Glob,Grep"
-
-[node name="ToolGovernanceGrid" type="GridContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000126]
+[node name="ToolGovernanceGrid" type="GridContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody" unique_id=114000132]
 layout_mode = 2
 theme_override_constants/h_separation = 14
 theme_override_constants/v_separation = 10
 columns = 2
 
-[node name="AllowedToolsGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid" unique_id=114000127]
+[node name="AllowedToolsGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid" unique_id=114000136]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="AllowedToolsLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/AllowedToolsGroup" unique_id=114000128]
+[node name="AllowedToolsLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/AllowedToolsGroup" unique_id=114000137]
 layout_mode = 2
 text = "Allowed tools"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="AllowedToolsInput" type="LineEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/AllowedToolsGroup" unique_id=114000129]
+[node name="AllowedToolsInput" type="LineEdit" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/AllowedToolsGroup" unique_id=114000138]
 layout_mode = 2
 placeholder_text = "Read,Glob"
 
-[node name="DisallowedToolsGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid" unique_id=114000130]
+[node name="DisallowedToolsGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid" unique_id=114000139]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="DisallowedToolsLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/DisallowedToolsGroup" unique_id=114000131]
+[node name="DisallowedToolsLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup" unique_id=114000140]
 layout_mode = 2
 text = "Disallowed tools"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="DisallowedToolsInput" type="LineEdit" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/DisallowedToolsGroup" unique_id=114000132]
+[node name="DisallowedToolsInput" type="LineEdit" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup" unique_id=114000141]
 layout_mode = 2
 placeholder_text = "Edit,Bash"
 
-[node name="McpSummaryGroup" type="VBoxContainer" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow" unique_id=114000133]
+[node name="McpSummaryGroup" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=114000133]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="McpSummaryLabel" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup" unique_id=114000134]
+[node name="McpSummaryLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup" unique_id=114000134]
 layout_mode = 2
 text = "Configured MCP servers"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="McpSummaryValue" type="Label" parent="Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup" unique_id=114000135]
+[node name="McpSummaryValue" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup" unique_id=114000135]
 layout_mode = 2
 text = "No MCP servers configured."
 label_settings = SubResource("LabelSettings_bjn48")

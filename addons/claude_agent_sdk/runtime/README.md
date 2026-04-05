@@ -7,6 +7,7 @@ The intended Phase 4 layering is:
 - `query.gd`
 - `claude_agent_options.gd`
 - `claude_sdk_client.gd`
+- `tools/`
 - `sessions/`
 - `transport/`
 - `protocol/`

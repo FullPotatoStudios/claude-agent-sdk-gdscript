@@ -163,7 +163,7 @@ static func _normalize_tools(value: Variant) -> Variant:
 			return null
 		duplicated["type"] = tools_type
 		if tools_type == "preset":
-			duplicated["preset"] = str(source.get("preset", "")).strip_edges()
+			duplicated["preset"] = "claude_code"
 			return duplicated
 		return null
 	return null

@@ -76,11 +76,8 @@ Methods:
 The shipped panel currently includes:
 
 - auth/status header
-- model field
-- permission mode control
-- disconnected-only system prompt mode/value controls
-- disconnected-only base built-in tool selection plus allow/deny controls
-- read-only MCP server summary for the currently configured custom-tool environment
+- top-level `Chat` and `Settings` views, with `Chat` as the default
+- a compact read-only chat-view configuration summary
 - a resizable session browser pane scoped to the configured project path
 - saved transcript loading and read-only browsing while disconnected
 - reconnect/resume into selected saved sessions
@@ -89,6 +86,7 @@ The shipped panel currently includes:
 - connect/disconnect controls
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
 - interrupt support during active turns
+- disconnected-only settings for model, permission mode, system prompt, built-in tools, advanced allow/deny rules, and MCP summary in the separate `Settings` view
 
 The panel intentionally does not yet include:
 
@@ -97,3 +95,6 @@ The panel intentionally does not yet include:
 - task-specific UI beyond the generic typed messages
 - SDK-hosted MCP/custom-tool authoring UX
 - editor-plugin workflows
+
+The built-in tool picker only covers Claude's built-in tools. SDK/external MCP
+tools still stay code-driven through `ClaudeMcp` and `ClaudeAgentOptions`.

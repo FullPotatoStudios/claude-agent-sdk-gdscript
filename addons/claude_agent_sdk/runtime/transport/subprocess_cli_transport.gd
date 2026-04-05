@@ -111,7 +111,7 @@ func _append_tools_args(args: PackedStringArray) -> void:
 		return
 	if tools_config is Dictionary:
 		var tool_config := tools_config as Dictionary
-		if str(tool_config.get("type", "")) == "preset" and str(tool_config.get("preset", "")) == "claude_code":
+		if str(tool_config.get("type", "")) == "preset":
 			args.append_array(["--tools", "default"])
 
 

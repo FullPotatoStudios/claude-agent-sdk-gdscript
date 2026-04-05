@@ -24,6 +24,7 @@ The current addon does not require `plugin.cfg`, autoloads, or editor-plugin ena
 - the packaged chat panel is optional and can be replaced with custom UI built on the lower runtime layers
 - session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`
 - richer `system_prompt` and base `tools` configuration is available through `ClaudeAgentOptions`
+- `ClaudeBuiltInToolCatalog` exposes the shipped built-in Claude Code tool metadata for custom panel/tool-picker UIs
 - SDK-hosted MCP/custom-tool registration stays code-driven through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
 
 ## Contents
@@ -34,6 +35,7 @@ This payload includes:
 - `ClaudeSDKClient`
 - `ClaudeSessions`
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer`
+- `ClaudeBuiltInToolCatalog`
 - `ClaudeClientAdapter`
 - `ClaudeClientNode`
 - `ClaudeChatPanel` with saved-session browsing, transcript restoration, idle-time live switching, resume, basic rename/tag/delete controls, and disconnected prompt/tool configuration controls

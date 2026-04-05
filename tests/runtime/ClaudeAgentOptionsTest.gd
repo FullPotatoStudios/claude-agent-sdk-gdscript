@@ -82,6 +82,14 @@ func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() 
 	})
 	assert_array(file_duplicate.tools).is_empty()
 
+	var preset_normalized = ClaudeAgentOptions.new({
+		"tools": {"type": "preset", "preset": "future-default"},
+	})
+	assert_dict(preset_normalized.tools).is_equal({
+		"type": "preset",
+		"preset": "claude_code",
+	})
+
 	var default_options = ClaudeAgentOptions.new()
 	assert_that(default_options.tools).is_null()
 
@@ -234,6 +242,12 @@ func test_subprocess_transport_supports_tools_unset_empty_and_preset() -> void:
 	}))
 	var preset_args := preset_transport.build_command_args()
 	assert_array(preset_args).contains(["--tools", "default"])
+
+	var normalized_preset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"tools": {"type": "preset", "preset": "future-default"},
+	}))
+	var normalized_preset_args := normalized_preset_transport.build_command_args()
+	assert_array(normalized_preset_args).contains(["--tools", "default"])
 
 
 func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:
