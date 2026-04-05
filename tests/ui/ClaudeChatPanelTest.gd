@@ -32,6 +32,95 @@ func test_panel_setup_creates_internal_client_and_shows_ready_auth_state() -> vo
 	await _cleanup_panel(panel)
 
 
+func test_panel_loads_chat_configuration_controls_from_options() -> void:
+	var sdk_server := ClaudeMcp.create_sdk_server(
+		"gameplay",
+		"1.0.0",
+		[]
+	)
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"permission_mode": "plan",
+		"system_prompt": {"type": "preset", "preset": "claude_code", "append": "Stay in-universe."},
+		"tools": {"type": "preset", "preset": "claude_code"},
+		"allowed_tools": ["Read", "Glob"],
+		"disallowed_tools": ["Edit"],
+		"mcp_servers": {
+			"gameplay": sdk_server,
+			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+		},
+	}), FakeTransportScript.new())
+
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	assert_str(_line_edit(panel, "ModelInput").text).is_equal("haiku")
+	assert_str(_option_button(panel, "PermissionModeOption").get_item_text(_option_button(panel, "PermissionModeOption").selected)).is_equal("plan")
+	assert_str(_option_button(panel, "SystemPromptModeOption").get_item_text(_option_button(panel, "SystemPromptModeOption").selected)).is_equal("Preset + append")
+	assert_str(_text_edit(panel, "SystemPromptTextInput").text).is_equal("Stay in-universe.")
+	assert_str(_option_button(panel, "ToolsModeOption").get_item_text(_option_button(panel, "ToolsModeOption").selected)).is_equal("Claude Code preset")
+	assert_str(_line_edit(panel, "AllowedToolsInput").text).is_equal("Read,Glob")
+	assert_str(_line_edit(panel, "DisallowedToolsInput").text).is_equal("Edit")
+	assert_str(_label(panel, "McpSummaryValue").text).contains("gameplay")
+	assert_str(_label(panel, "McpSummaryValue").text).contains("filesystem")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_disconnected_chat_configuration_controls_update_options_and_lock_when_connected() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_line_edit(panel, "ModelInput").text = "sonnet"
+	_line_edit(panel, "ModelInput").text_changed.emit("sonnet")
+	_option_button(panel, "PermissionModeOption").select(1)
+	_option_button(panel, "PermissionModeOption").item_selected.emit(1)
+	_option_button(panel, "SystemPromptModeOption").select(4)
+	_option_button(panel, "SystemPromptModeOption").item_selected.emit(4)
+	_line_edit(panel, "SystemPromptFileInput").text = "res://prompts/game-assistant.md"
+	_line_edit(panel, "SystemPromptFileInput").text_changed.emit("res://prompts/game-assistant.md")
+	_option_button(panel, "ToolsModeOption").select(2)
+	_option_button(panel, "ToolsModeOption").item_selected.emit(2)
+	_line_edit(panel, "ToolsValueInput").text = "Read,Glob,Grep"
+	_line_edit(panel, "ToolsValueInput").text_changed.emit("Read,Glob,Grep")
+	_line_edit(panel, "AllowedToolsInput").text = "Read,Glob"
+	_line_edit(panel, "AllowedToolsInput").text_changed.emit("Read,Glob")
+	_line_edit(panel, "DisallowedToolsInput").text = "Edit"
+	_line_edit(panel, "DisallowedToolsInput").text_changed.emit("Edit")
+	await _await_frames(2)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	assert_str(configured_options.model).is_equal("sonnet")
+	assert_str(configured_options.permission_mode).is_equal("plan")
+	assert_dict(configured_options.system_prompt).is_equal({
+		"type": "file",
+		"path": "res://prompts/game-assistant.md",
+	})
+	assert_array(configured_options.tools).is_equal(["Read", "Glob", "Grep"])
+	assert_array(configured_options.allowed_tools).is_equal(["Read", "Glob"])
+	assert_array(configured_options.disallowed_tools).is_equal(["Edit"])
+
+	panel.connect_client()
+	await _await_frames(1)
+
+	var runtime_options = panel.get_client_node()._adapter._client.options
+	assert_dict(runtime_options.system_prompt).is_equal({
+		"type": "file",
+		"path": "res://prompts/game-assistant.md",
+	})
+	assert_array(runtime_options.tools).is_equal(["Read", "Glob", "Grep"])
+	assert_bool(_line_edit(panel, "ModelInput").editable).is_false()
+	assert_bool(_option_button(panel, "SystemPromptModeOption").disabled).is_true()
+	assert_bool(_option_button(panel, "ToolsModeOption").disabled).is_true()
+	assert_bool(_line_edit(panel, "AllowedToolsInput").editable).is_false()
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_auth_states_cover_logged_out_and_transport_issue() -> void:
 	var logged_out_transport = FakeTransportScript.new()
 	logged_out_transport.auth_status_result = {
@@ -592,6 +681,18 @@ func _button(panel, node_name: String) -> Button:
 
 func _label(panel, node_name: String) -> Label:
 	return panel.find_child(node_name, true, false) as Label
+
+
+func _line_edit(panel, node_name: String) -> LineEdit:
+	return panel.find_child(node_name, true, false) as LineEdit
+
+
+func _text_edit(panel, node_name: String) -> TextEdit:
+	return panel.find_child(node_name, true, false) as TextEdit
+
+
+func _option_button(panel, node_name: String) -> OptionButton:
+	return panel.find_child(node_name, true, false) as OptionButton
 
 
 func _prompt_input(panel) -> TextEdit:

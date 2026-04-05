@@ -13,6 +13,8 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - session-history and mutation convenience methods on `ClaudeClientAdapter` and `ClaudeClientNode`
 - saved-session browsing, transcript restoration, resume, and basic session-management controls in `ClaudeChatPanel` and the shipped demo
 - scene-free `ClaudeMcp` SDK-hosted MCP tool/server builders with runtime JSON-RPC bridging through `ClaudeAgentOptions.mcp_servers`
+- richer `ClaudeAgentOptions.system_prompt` variants and upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
+- disconnected `ClaudeChatPanel` controls for prompt/tool configuration, plus read-only MCP environment summary
 
 ## [0.1.0] - 2026-04-04
 

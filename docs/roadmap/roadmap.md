@@ -156,11 +156,12 @@ Outputs:
 - read-only local session history support
 - basic session mutation helpers
 - scene-free SDK-hosted MCP tool/server helpers
+- richer chat-configuration parity for prompt and built-in tool selection
 - future session forking helpers
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10D: runtime-first SDK MCP helpers
+- Phase 10E: chat-configuration parity and panel tooling controls
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -186,10 +187,17 @@ Delivered in Phase 10D:
 - mixed external plus SDK-hosted `ClaudeAgentOptions.mcp_servers` handling
 - inbound `mcp_message` control-request bridging for `initialize`, `notifications/initialized`, `tools/list`, and `tools/call`
 
+Delivered in Phase 10E:
+- richer `ClaudeAgentOptions.system_prompt` variants: plain string, `claude_code` preset, preset+append, and file-backed prompts
+- upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
+- subprocess command-building parity for prompt/tool flag emission
+- `ClaudeChatPanel` disconnected prompt/tool configuration controls and MCP environment summary
+- demo configuration updated to showcase prompt and custom-tool setup through the shipped panel
+
 Still deferred within Phase 10:
 - session forking helpers
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize Phase 10D.
+Work should currently prioritize Phase 10E.

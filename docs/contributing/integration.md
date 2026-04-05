@@ -38,7 +38,7 @@ Use `ClaudeClientNode` when:
 
 Use `ClaudeChatPanel` when:
 
-- you want a working Claude chat UI with auth-state, saved-session browsing, connect controls, transcript rendering, and a composer immediately
+- you want a working Claude chat UI with auth-state, saved-session browsing, connect controls, transcript rendering, disconnected prompt/tool configuration editing, and a composer immediately
 - you want a reference implementation for custom UI work
 - you are happy with the panel owning its own internal `ClaudeClientNode`
 
@@ -74,5 +74,6 @@ The integration layer is intentionally thin.
 - It does not replace the reusable chat panel for users who want a drop-in UI
 - It does not replace `ClaudeSessions` as the canonical scene-free session-history surface
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
+- richer `system_prompt` modes and base built-in tool selection live in `ClaudeAgentOptions` and flow through every layer, including the panel
 
 For panel-specific setup and usage guidance, see `docs/contributing/ui-panel.md`.

@@ -41,8 +41,9 @@ func build_command_args() -> PackedStringArray:
 	var args := PackedStringArray([
 		"--output-format", "stream-json",
 		"--verbose",
-		"--system-prompt", _options.system_prompt,
 	])
+	_append_system_prompt_args(args)
+	_append_tools_args(args)
 	if not _options.allowed_tools.is_empty():
 		args.append_array(["--allowedTools", ",".join(_options.allowed_tools)])
 	if _options.max_turns > 0:
@@ -71,6 +72,56 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--mcp-config", mcp_config])
 	args.append_array(["--input-format", "stream-json"])
 	return args
+
+
+func _append_system_prompt_args(args: PackedStringArray) -> void:
+	var system_prompt: Variant = _options.system_prompt
+	if system_prompt == null:
+		args.append_array(["--system-prompt", ""])
+		return
+	if system_prompt is Dictionary:
+		var prompt_config := system_prompt as Dictionary
+		var prompt_type := str(prompt_config.get("type", "")).strip_edges()
+		match prompt_type:
+			"preset":
+				var append_text := str(prompt_config.get("append", ""))
+				if not append_text.is_empty():
+					args.append_array(["--append-system-prompt", append_text])
+			"file":
+				var prompt_path := _resolve_system_prompt_file_path(str(prompt_config.get("path", "")).strip_edges())
+				if prompt_path.is_empty():
+					args.append_array(["--system-prompt", ""])
+				else:
+					args.append_array(["--system-prompt-file", prompt_path])
+			_:
+				args.append_array(["--system-prompt", ""])
+		return
+	args.append_array(["--system-prompt", str(system_prompt)])
+
+
+func _append_tools_args(args: PackedStringArray) -> void:
+	var tools_config: Variant = _options.tools
+	if tools_config == null:
+		return
+	if tools_config is Array:
+		var tool_names: Array[String] = []
+		for tool_name_variant in tools_config:
+			tool_names.append(str(tool_name_variant))
+		args.append_array(["--tools", "" if tool_names.is_empty() else ",".join(tool_names)])
+		return
+	if tools_config is Dictionary:
+		var tool_config := tools_config as Dictionary
+		if str(tool_config.get("type", "")) == "preset" and str(tool_config.get("preset", "")) == "claude_code":
+			args.append_array(["--tools", "default"])
+
+
+func _resolve_system_prompt_file_path(path: String) -> String:
+	var normalized_path := path.strip_edges()
+	if normalized_path.is_empty():
+		return ""
+	if normalized_path.begins_with("res://") or normalized_path.begins_with("user://"):
+		return ProjectSettings.globalize_path(normalized_path)
+	return normalized_path
 
 
 func build_process_spec() -> Dictionary:

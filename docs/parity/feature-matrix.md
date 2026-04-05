@@ -122,8 +122,8 @@ Phase 1 findings that constrain this matrix:
 | --- | --- | --- | --- | --- | --- |
 | Core options object (`ClaudeAgentOptions`) | `types.py`, all tests/examples | Main configuration entrypoint for parity | typed models | `v1 core` | Keep the name and role close to upstream |
 | Core option fields: `model`, `effort`, `cwd`, `cli_path`, `env`, `system_prompt`, `allowed_tools`, `disallowed_tools`, `permission_mode`, `max_turns`, `resume`, `session_id` | `types.py`, examples, transport tests | Defines the first stable config surface | transport, client/query APIs | `v1 core` | Locked by Phase 2 decisions |
-| Base tool-set selection (`tools`) | `types.py`, `examples/tools_option.py` | Useful for advanced tool governance | command building | `v1 later` | Start with default tool set plus allow/deny lists |
-| System prompt preset/file variants | `types.py`, transport tests | Good parity with upstream configuration ergonomics | command building | `v1 later` | Core v1 only needs the plain string form |
+| Base tool-set selection (`tools`) | `types.py`, `examples/tools_option.py` | Useful for advanced tool governance | command building | `v1 later` | Delivered post-v1 in Phase 10E with unset, empty, array, and `claude_code` preset semantics |
+| System prompt preset/file variants | `types.py`, transport tests | Good parity with upstream configuration ergonomics | command building | `v1 later` | Delivered post-v1 in Phase 10E through preset omission, preset+append, and file-path support |
 | Structured output (`output_format`) | `types.py`, `e2e-tests/test_structured_output.py` | Valuable for game/tool integrations consuming machine-readable results | result parsing, option encoding | `v1 later` | Strong candidate once the normal result flow is stable |
 | Partial-message option (`include_partial_messages`) | `types.py`, `e2e-tests/test_include_partial_messages.py` | Needed for token-delta UIs | stream-event parsing | `v1 later` | Pair with `StreamEvent` support |
 | Stderr callback / debug output plumbing | `types.py`, `examples/stderr_callback_example.py`, `e2e-tests/test_stderr_callback.py` | Important for diagnostics and developer UX | stderr draining | `v1 later` | Internal draining is core; public callback can arrive shortly after |
@@ -157,4 +157,5 @@ Status note:
 - Phase 10B adds basic session mutations through `ClaudeSessions.rename_session()`, `tag_session()`, and `delete_session()`
 - Phase 10C lifts the current session feature set into `ClaudeClientAdapter`, `ClaudeClientNode`, and the shipped `ClaudeChatPanel`
 - Phase 10D adds runtime-first SDK-hosted MCP tool/server helpers through `ClaudeMcp` and mixed `mcp_servers` handling
+- Phase 10E adds richer `system_prompt` variants, base built-in tool selection, and disconnected prompt/tool configuration controls in the shipped panel
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

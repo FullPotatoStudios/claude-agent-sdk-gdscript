@@ -23,6 +23,15 @@ const COLOR_WARNING := Color("ffbf69")
 const COLOR_ERROR := Color("ff7b86")
 const COLOR_USER := Color("ff9966")
 const COLOR_ASSISTANT := Color("5db3ff")
+const SYSTEM_PROMPT_MODE_VANILLA := 0
+const SYSTEM_PROMPT_MODE_TEXT := 1
+const SYSTEM_PROMPT_MODE_PRESET := 2
+const SYSTEM_PROMPT_MODE_PRESET_APPEND := 3
+const SYSTEM_PROMPT_MODE_FILE := 4
+const TOOLS_MODE_DEFAULT := 0
+const TOOLS_MODE_PRESET := 1
+const TOOLS_MODE_CUSTOM := 2
+const TOOLS_MODE_EMPTY := 3
 
 var _configured_options = null
 var _configured_transport = null
@@ -47,6 +56,7 @@ var _selected_session_messages: Array[ClaudeSessionMessage] = []
 var _delete_confirm_armed := false
 var _connected_session_id := "default"
 var _did_apply_initial_split := false
+var _suppress_configuration_sync := false
 
 @onready var _shell: PanelContainer = $Shell
 @onready var _status_badge: PanelContainer = $Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge
@@ -58,6 +68,19 @@ var _did_apply_initial_split := false
 @onready var _disconnect_button: Button = $Shell/Margin/Body/Header/TopRow/ActionButtons/DisconnectButton
 @onready var _model_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup/ModelInput
 @onready var _permission_mode: OptionButton = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup/PermissionModeOption
+@onready var _system_prompt_mode: OptionButton = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup/SystemPromptModeOption
+@onready var _system_prompt_text_group: VBoxContainer = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup
+@onready var _system_prompt_text_label: Label = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextLabel
+@onready var _system_prompt_text_input: TextEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextInput
+@onready var _system_prompt_file_group: VBoxContainer = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup
+@onready var _system_prompt_file_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup/SystemPromptFileInput
+@onready var _tools_mode: OptionButton = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsModeGroup/ToolsModeOption
+@onready var _tools_value_group: VBoxContainer = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup
+@onready var _tools_value_label: Label = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup/ToolsValueLabel
+@onready var _tools_value_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolsValueGroup/ToolsValueInput
+@onready var _allowed_tools_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/AllowedToolsGroup/AllowedToolsInput
+@onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
+@onready var _mcp_summary_value: Label = $Shell/Margin/Body/Header/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup/McpSummaryValue
 @onready var _split_row: HSplitContainer = $Shell/Margin/Body/SplitRow
 @onready var _session_refresh_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/SessionRefreshButton
 @onready var _new_chat_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/NewChatButton
@@ -90,6 +113,8 @@ func _init() -> void:
 func _ready() -> void:
 	_apply_static_button_icons()
 	_populate_permission_modes()
+	_populate_system_prompt_modes()
+	_populate_tools_modes()
 	_apply_initial_control_values()
 	_ensure_client_node()
 	_wire_ui()
@@ -97,6 +122,7 @@ func _ready() -> void:
 	_session_scope_directory = _resolve_session_scope_directory()
 	_reload_sessions(false)
 	_refresh_composer_state()
+	_refresh_configuration_controls()
 	refresh_auth_status()
 	call_deferred("_apply_initial_split_layout")
 
@@ -112,6 +138,7 @@ func setup(options = null, transport = null) -> void:
 		_apply_initial_control_values()
 		_session_scope_directory = _resolve_session_scope_directory()
 		_reload_sessions(false)
+		_refresh_configuration_controls()
 		_rebuild_client_node()
 
 
@@ -213,6 +240,20 @@ func _wire_ui() -> void:
 		_model_input.text_changed.connect(_on_model_text_changed)
 	if not _permission_mode.item_selected.is_connected(_on_permission_mode_selected):
 		_permission_mode.item_selected.connect(_on_permission_mode_selected)
+	if not _system_prompt_mode.item_selected.is_connected(_on_system_prompt_mode_selected):
+		_system_prompt_mode.item_selected.connect(_on_system_prompt_mode_selected)
+	if not _system_prompt_text_input.text_changed.is_connected(_on_system_prompt_text_changed):
+		_system_prompt_text_input.text_changed.connect(_on_system_prompt_text_changed)
+	if not _system_prompt_file_input.text_changed.is_connected(_on_system_prompt_file_text_changed):
+		_system_prompt_file_input.text_changed.connect(_on_system_prompt_file_text_changed)
+	if not _tools_mode.item_selected.is_connected(_on_tools_mode_selected):
+		_tools_mode.item_selected.connect(_on_tools_mode_selected)
+	if not _tools_value_input.text_changed.is_connected(_on_tools_value_text_changed):
+		_tools_value_input.text_changed.connect(_on_tools_value_text_changed)
+	if not _allowed_tools_input.text_changed.is_connected(_on_allowed_tools_text_changed):
+		_allowed_tools_input.text_changed.connect(_on_allowed_tools_text_changed)
+	if not _disallowed_tools_input.text_changed.is_connected(_on_disallowed_tools_text_changed):
+		_disallowed_tools_input.text_changed.connect(_on_disallowed_tools_text_changed)
 	if not _session_refresh_button.pressed.is_connected(_on_session_refresh_pressed):
 		_session_refresh_button.pressed.connect(_on_session_refresh_pressed)
 	if not _new_chat_button.pressed.is_connected(_on_new_chat_pressed):
@@ -253,16 +294,93 @@ func _populate_permission_modes() -> void:
 		_permission_mode.add_item(mode)
 
 
+func _populate_system_prompt_modes() -> void:
+	if _system_prompt_mode.item_count > 0:
+		return
+	_system_prompt_mode.add_item("Vanilla Claude")
+	_system_prompt_mode.add_item("Custom text")
+	_system_prompt_mode.add_item("Claude Code preset")
+	_system_prompt_mode.add_item("Preset + append")
+	_system_prompt_mode.add_item("Prompt file")
+
+
+func _populate_tools_modes() -> void:
+	if _tools_mode.item_count > 0:
+		return
+	_tools_mode.add_item("Default tool set")
+	_tools_mode.add_item("Claude Code preset")
+	_tools_mode.add_item("Custom list")
+	_tools_mode.add_item("Disable built-in tools")
+
+
 func _apply_initial_control_values() -> void:
 	if _configured_options == null:
 		_configured_options = ClaudeAgentOptionsScript.new()
 	_capture_base_session_defaults()
+	_suppress_configuration_sync = true
 	_model_input.text = _configured_options.model
 	var target_mode: String = _configured_options.permission_mode if not _configured_options.permission_mode.is_empty() else "default"
 	for index in range(_permission_mode.item_count):
 		if _permission_mode.get_item_text(index) == target_mode:
 			_permission_mode.select(index)
 			break
+	_apply_system_prompt_controls_from_options()
+	_apply_tools_controls_from_options()
+	_allowed_tools_input.text = ",".join(_configured_options.allowed_tools)
+	_disallowed_tools_input.text = ",".join(_configured_options.disallowed_tools)
+	_refresh_mcp_summary()
+	_refresh_configuration_field_visibility()
+	_suppress_configuration_sync = false
+
+
+func _apply_system_prompt_controls_from_options() -> void:
+	var system_prompt: Variant = _configured_options.system_prompt
+	_system_prompt_text_input.text = ""
+	_system_prompt_file_input.text = ""
+	if system_prompt is Dictionary:
+		var prompt_config := system_prompt as Dictionary
+		var prompt_type := str(prompt_config.get("type", ""))
+		if prompt_type == "preset":
+			var append_text := str(prompt_config.get("append", ""))
+			if append_text.is_empty():
+				_system_prompt_mode.select(SYSTEM_PROMPT_MODE_PRESET)
+			else:
+				_system_prompt_mode.select(SYSTEM_PROMPT_MODE_PRESET_APPEND)
+				_system_prompt_text_input.text = append_text
+			return
+		if prompt_type == "file":
+			_system_prompt_mode.select(SYSTEM_PROMPT_MODE_FILE)
+			_system_prompt_file_input.text = str(prompt_config.get("path", ""))
+			return
+	_system_prompt_mode.select(
+		SYSTEM_PROMPT_MODE_VANILLA if str(system_prompt).is_empty() else SYSTEM_PROMPT_MODE_TEXT
+	)
+	if not str(system_prompt).is_empty():
+		_system_prompt_text_input.text = str(system_prompt)
+
+
+func _apply_tools_controls_from_options() -> void:
+	var tools_config: Variant = _configured_options.tools
+	_tools_value_input.text = ""
+	if tools_config == null:
+		_tools_mode.select(TOOLS_MODE_DEFAULT)
+		return
+	if tools_config is Dictionary:
+		var tool_config := tools_config as Dictionary
+		if str(tool_config.get("type", "")) == "preset" and str(tool_config.get("preset", "")) == "claude_code":
+			_tools_mode.select(TOOLS_MODE_PRESET)
+			return
+	if tools_config is Array:
+		var tool_names: Array[String] = []
+		for tool_name_variant in tools_config:
+			tool_names.append(str(tool_name_variant))
+		if tool_names.is_empty():
+			_tools_mode.select(TOOLS_MODE_EMPTY)
+			return
+		_tools_mode.select(TOOLS_MODE_CUSTOM)
+		_tools_value_input.text = ",".join(tool_names)
+		return
+	_tools_mode.select(TOOLS_MODE_DEFAULT)
 
 
 func _capture_base_session_defaults() -> void:
@@ -323,6 +441,10 @@ func _disconnect_client_signals(client_node: ClaudeClientNode) -> void:
 func _apply_preconnect_controls_to_options() -> void:
 	_configured_options.model = _model_input.text.strip_edges()
 	_configured_options.permission_mode = _current_permission_mode()
+	_configured_options.system_prompt = _system_prompt_from_controls()
+	_configured_options.tools = _tools_from_controls()
+	_configured_options.allowed_tools = _parse_tool_csv(_allowed_tools_input.text)
+	_configured_options.disallowed_tools = _parse_tool_csv(_disallowed_tools_input.text)
 
 
 func _apply_session_target_to_options() -> void:
@@ -346,6 +468,96 @@ func _resolve_session_scope_directory() -> String:
 	if _configured_options != null and not _configured_options.cwd.is_empty():
 		return _configured_options.cwd
 	return ProjectSettings.globalize_path("res://")
+
+
+func _refresh_configuration_controls() -> void:
+	var configuration_locked := _session_live or _is_connecting
+	_model_input.editable = not configuration_locked
+	_permission_mode.disabled = configuration_locked
+	_system_prompt_mode.disabled = configuration_locked
+	_system_prompt_text_input.editable = not configuration_locked and _system_prompt_text_group.visible
+	_system_prompt_file_input.editable = not configuration_locked and _system_prompt_file_group.visible
+	_tools_mode.disabled = configuration_locked
+	_tools_value_input.editable = not configuration_locked and _tools_value_group.visible
+	_allowed_tools_input.editable = not configuration_locked
+	_disallowed_tools_input.editable = not configuration_locked
+
+
+func _refresh_configuration_field_visibility() -> void:
+	var prompt_mode := _system_prompt_mode.selected
+	_system_prompt_text_group.visible = prompt_mode == SYSTEM_PROMPT_MODE_TEXT or prompt_mode == SYSTEM_PROMPT_MODE_PRESET_APPEND
+	_system_prompt_file_group.visible = prompt_mode == SYSTEM_PROMPT_MODE_FILE
+	if prompt_mode == SYSTEM_PROMPT_MODE_PRESET_APPEND:
+		_system_prompt_text_label.text = "Preset append text"
+		_system_prompt_text_input.placeholder_text = "Always speak like a ship AI."
+	else:
+		_system_prompt_text_label.text = "Prompt text"
+		_system_prompt_text_input.placeholder_text = "You are a level-design assistant."
+	_tools_value_group.visible = _tools_mode.selected == TOOLS_MODE_CUSTOM
+	_tools_value_label.text = "Built-in tools list"
+	_refresh_configuration_controls()
+
+
+func _refresh_mcp_summary() -> void:
+	var summary := "No MCP servers configured."
+	if _configured_options != null:
+		if _configured_options.mcp_servers is Dictionary and not (_configured_options.mcp_servers as Dictionary).is_empty():
+			var server_names: Array[String] = []
+			for server_name_variant in (_configured_options.mcp_servers as Dictionary).keys():
+				server_names.append(str(server_name_variant))
+			server_names.sort()
+			summary = "%d configured: %s" % [server_names.size(), ", ".join(server_names)]
+		elif _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
+			summary = "External MCP config: %s" % str(_configured_options.mcp_servers).strip_edges()
+	_mcp_summary_value.text = summary
+
+
+func _sync_configuration_from_controls() -> void:
+	if _suppress_configuration_sync or _configured_options == null:
+		return
+	_apply_preconnect_controls_to_options()
+	_capture_base_session_defaults()
+	_refresh_configuration_field_visibility()
+	_refresh_mcp_summary()
+
+
+func _system_prompt_from_controls() -> Variant:
+	match _system_prompt_mode.selected:
+		SYSTEM_PROMPT_MODE_TEXT:
+			return _system_prompt_text_input.text
+		SYSTEM_PROMPT_MODE_PRESET:
+			return {"type": "preset", "preset": "claude_code"}
+		SYSTEM_PROMPT_MODE_PRESET_APPEND:
+			var append_text := _system_prompt_text_input.text
+			if append_text.strip_edges().is_empty():
+				return {"type": "preset", "preset": "claude_code"}
+			return {"type": "preset", "preset": "claude_code", "append": append_text}
+		SYSTEM_PROMPT_MODE_FILE:
+			var path := _system_prompt_file_input.text.strip_edges()
+			return "" if path.is_empty() else {"type": "file", "path": path}
+		_:
+			return ""
+
+
+func _tools_from_controls() -> Variant:
+	match _tools_mode.selected:
+		TOOLS_MODE_PRESET:
+			return {"type": "preset", "preset": "claude_code"}
+		TOOLS_MODE_CUSTOM:
+			return _parse_tool_csv(_tools_value_input.text)
+		TOOLS_MODE_EMPTY:
+			return []
+		_:
+			return null
+
+
+func _parse_tool_csv(value: String) -> Array[String]:
+	var results: Array[String] = []
+	for part in value.split(","):
+		var normalized := part.strip_edges()
+		if not normalized.is_empty():
+			results.append(normalized)
+	return results
 
 
 func _reload_sessions(preserve_selection: bool = true) -> void:
@@ -911,6 +1123,7 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 	_connect_button.disabled = _is_connecting or _session_live or not bool(_last_auth_status.get("logged_in", false))
 	_disconnect_button.disabled = not _session_live and not _is_connecting
 	_refresh_auth_button.disabled = _is_connecting
+	_refresh_configuration_controls()
 
 
 func _refresh_composer_state() -> void:
@@ -1098,11 +1311,45 @@ func _on_prompt_text_changed() -> void:
 func _on_model_text_changed(new_text: String) -> void:
 	if _session_live and not new_text.strip_edges().is_empty():
 		_client_node.set_model(new_text.strip_edges())
+		return
+	_sync_configuration_from_controls()
 
 
 func _on_permission_mode_selected(_index: int) -> void:
 	if _session_live:
 		_client_node.set_permission_mode(_current_permission_mode())
+		return
+	_sync_configuration_from_controls()
+
+
+func _on_system_prompt_mode_selected(_index: int) -> void:
+	_refresh_configuration_field_visibility()
+	_sync_configuration_from_controls()
+
+
+func _on_system_prompt_text_changed() -> void:
+	_sync_configuration_from_controls()
+
+
+func _on_system_prompt_file_text_changed(_new_text: String) -> void:
+	_sync_configuration_from_controls()
+
+
+func _on_tools_mode_selected(_index: int) -> void:
+	_refresh_configuration_field_visibility()
+	_sync_configuration_from_controls()
+
+
+func _on_tools_value_text_changed(_new_text: String) -> void:
+	_sync_configuration_from_controls()
+
+
+func _on_allowed_tools_text_changed(_new_text: String) -> void:
+	_sync_configuration_from_controls()
+
+
+func _on_disallowed_tools_text_changed(_new_text: String) -> void:
+	_sync_configuration_from_controls()
 
 
 func _on_session_refresh_pressed() -> void:

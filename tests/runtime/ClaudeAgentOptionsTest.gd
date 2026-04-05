@@ -13,6 +13,7 @@ func test_duplicate_options_preserves_phase_4_fields() -> void:
 		"cli_path": "/usr/local/bin/claude",
 		"env": {"CLAUDE_PATH": "claude"},
 		"system_prompt": "Be brief.",
+		"tools": {"type": "preset", "preset": "claude_code"},
 		"allowed_tools": ["Read"],
 		"disallowed_tools": ["Edit"],
 		"permission_mode": "plan",
@@ -42,6 +43,7 @@ func test_duplicate_options_preserves_phase_4_fields() -> void:
 	assert_str(duplicated.cli_path).is_equal("/usr/local/bin/claude")
 	assert_dict(duplicated.env).is_equal({"CLAUDE_PATH": "claude"})
 	assert_str(duplicated.system_prompt).is_equal("Be brief.")
+	assert_dict(duplicated.tools).is_equal({"type": "preset", "preset": "claude_code"})
 	assert_array(duplicated.allowed_tools).is_equal(["Read"])
 	assert_array(duplicated.disallowed_tools).is_equal(["Edit"])
 	assert_str(duplicated.permission_mode).is_equal("plan")
@@ -54,6 +56,34 @@ func test_duplicate_options_preserves_phase_4_fields() -> void:
 	assert_dict(duplicated.mcp_servers).is_equal({"filesystem": {"command": "mcp-server", "args": ["stdio"]}})
 	assert_dict(duplicated.hooks).contains_keys(["PreToolUse"])
 	assert_int((duplicated.hooks["PreToolUse"] as Array).size()).is_equal(1)
+
+
+func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() -> void:
+	var preset_options = ClaudeAgentOptions.new({
+		"system_prompt": {"type": "preset", "preset": "claude_code", "append": "Stay in character."},
+		"tools": ["Read", "Glob"],
+	})
+	var preset_duplicate = preset_options.duplicate_options()
+	assert_dict(preset_duplicate.system_prompt).is_equal({
+		"type": "preset",
+		"preset": "claude_code",
+		"append": "Stay in character.",
+	})
+	assert_array(preset_duplicate.tools).is_equal(["Read", "Glob"])
+
+	var file_options = ClaudeAgentOptions.new({
+		"system_prompt": {"type": "file", "path": "res://prompts/game.md"},
+		"tools": [],
+	})
+	var file_duplicate = file_options.duplicate_options()
+	assert_dict(file_duplicate.system_prompt).is_equal({
+		"type": "file",
+		"path": "res://prompts/game.md",
+	})
+	assert_array(file_duplicate.tools).is_empty()
+
+	var default_options = ClaudeAgentOptions.new()
+	assert_that(default_options.tools).is_null()
 
 
 func test_duplicate_options_preserves_mixed_external_and_sdk_mcp_servers() -> void:
@@ -92,6 +122,7 @@ func test_subprocess_transport_builds_phase_4_command_flags() -> void:
 		"model": "haiku",
 		"effort": "low",
 		"system_prompt": "Stay concise.",
+		"tools": ["Read", "Glob"],
 		"allowed_tools": ["Read", "Glob"],
 		"disallowed_tools": ["Edit"],
 		"permission_mode": "plan",
@@ -114,6 +145,7 @@ func test_subprocess_transport_builds_phase_4_command_flags() -> void:
 		"--output-format", "stream-json",
 		"--verbose",
 		"--system-prompt", "Stay concise.",
+		"--tools", "Read,Glob",
 		"--allowedTools", "Read,Glob",
 		"--max-turns", "1",
 		"--disallowedTools", "Edit",
@@ -159,6 +191,49 @@ func test_subprocess_transport_omits_phase_5_flags_by_default() -> void:
 	assert_bool(args.has("--permission-prompt-tool")).is_false()
 	assert_bool(args.has("--json-schema")).is_false()
 	assert_bool(args.has("--mcp-config")).is_false()
+	assert_bool(args.has("--tools")).is_false()
+
+
+func test_subprocess_transport_supports_system_prompt_variants() -> void:
+	var preset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"system_prompt": {"type": "preset", "preset": "claude_code"},
+	}))
+	var preset_args := preset_transport.build_command_args()
+	assert_bool(preset_args.has("--system-prompt")).is_false()
+	assert_bool(preset_args.has("--append-system-prompt")).is_false()
+	assert_bool(preset_args.has("--system-prompt-file")).is_false()
+
+	var append_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"system_prompt": {"type": "preset", "preset": "claude_code", "append": "Mention gameplay implications."},
+	}))
+	var append_args := append_transport.build_command_args()
+	assert_array(append_args).contains([
+		"--append-system-prompt",
+		"Mention gameplay implications.",
+	])
+
+	var file_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"system_prompt": {"type": "file", "path": "res://demo_prompt.md"},
+	}))
+	var file_args := file_transport.build_command_args()
+	assert_array(file_args).contains([
+		"--system-prompt-file",
+		ProjectSettings.globalize_path("res://demo_prompt.md"),
+	])
+
+
+func test_subprocess_transport_supports_tools_unset_empty_and_preset() -> void:
+	var empty_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"tools": [],
+	}))
+	var empty_args := empty_transport.build_command_args()
+	assert_array(empty_args).contains(["--tools", ""])
+
+	var preset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"tools": {"type": "preset", "preset": "claude_code"},
+	}))
+	var preset_args := preset_transport.build_command_args()
+	assert_array(preset_args).contains(["--tools", "default"])
 
 
 func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:

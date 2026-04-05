@@ -8,7 +8,8 @@ var effort: String = ""
 var cwd: String = ""
 var cli_path: String = "claude"
 var env: Dictionary = {}
-var system_prompt: String = ""
+var system_prompt: Variant = ""
+var tools: Variant = null
 var allowed_tools: Array[String] = []
 var disallowed_tools: Array[String] = []
 var permission_mode: String = ""
@@ -39,7 +40,9 @@ func apply(config: Dictionary):
 	if config.has("env") and config["env"] is Dictionary:
 		env = (config["env"] as Dictionary).duplicate(true)
 	if config.has("system_prompt"):
-		system_prompt = str(config["system_prompt"])
+		system_prompt = _normalize_system_prompt(config["system_prompt"])
+	if config.has("tools"):
+		tools = _normalize_tools(config["tools"])
 	if config.has("allowed_tools") and config["allowed_tools"] is Array:
 		allowed_tools = _to_string_array(config["allowed_tools"] as Array)
 	if config.has("disallowed_tools") and config["disallowed_tools"] is Array:
@@ -75,7 +78,8 @@ func duplicate_options():
 		"cwd": cwd,
 		"cli_path": cli_path,
 		"env": env.duplicate(true),
-		"system_prompt": system_prompt,
+		"system_prompt": _duplicate_system_prompt(system_prompt),
+		"tools": _duplicate_tools(tools),
 		"allowed_tools": allowed_tools.duplicate(),
 		"disallowed_tools": disallowed_tools.duplicate(),
 			"permission_mode": permission_mode,
@@ -120,6 +124,65 @@ static func _normalize_hooks(value: Dictionary) -> Dictionary:
 
 static func _duplicate_hooks(value: Dictionary) -> Dictionary:
 	return _normalize_hooks(value)
+
+
+static func _normalize_system_prompt(value: Variant) -> Variant:
+	if value == null:
+		return ""
+	if value is Dictionary:
+		var source := value as Dictionary
+		var duplicated: Dictionary = {}
+		var prompt_type := str(source.get("type", "")).strip_edges()
+		if prompt_type.is_empty():
+			return ""
+		duplicated["type"] = prompt_type
+		match prompt_type:
+			"preset":
+				duplicated["preset"] = str(source.get("preset", "")).strip_edges()
+				var append_value := str(source.get("append", ""))
+				if not append_value.is_empty():
+					duplicated["append"] = append_value
+			"file":
+				duplicated["path"] = str(source.get("path", "")).strip_edges()
+			_:
+				return ""
+		return duplicated
+	return str(value)
+
+
+static func _normalize_tools(value: Variant) -> Variant:
+	if value == null:
+		return null
+	if value is Array:
+		return _to_string_array(value as Array)
+	if value is Dictionary:
+		var source := value as Dictionary
+		var duplicated: Dictionary = {}
+		var tools_type := str(source.get("type", "")).strip_edges()
+		if tools_type.is_empty():
+			return null
+		duplicated["type"] = tools_type
+		if tools_type == "preset":
+			duplicated["preset"] = str(source.get("preset", "")).strip_edges()
+			return duplicated
+		return null
+	return null
+
+
+static func _duplicate_system_prompt(value: Variant) -> Variant:
+	if value is Dictionary:
+		return (value as Dictionary).duplicate(true)
+	if value is String:
+		return str(value)
+	return ""
+
+
+static func _duplicate_tools(value: Variant) -> Variant:
+	if value is Dictionary:
+		return (value as Dictionary).duplicate(true)
+	if value is Array:
+		return (value as Array).duplicate()
+	return null
 
 
 static func _duplicate_mcp_servers(value: Variant) -> Variant:

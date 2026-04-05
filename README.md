@@ -46,7 +46,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeSessions` for local session history access and basic session mutations
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history convenience methods
-- `ClaudeChatPanel` as a reusable reference chat UI with saved-session browsing, idle-time live switching, resume, and basic session management
+- `ClaudeChatPanel` as a reusable reference chat UI with saved-session browsing, idle-time live switching, resume, basic session management, and disconnected chat-configuration controls
 - A root-project demo under `demo/` for validation and onboarding
 
 Only `addons/claude_agent_sdk/` is the distributable addon payload. The `demo/`, `tests/`, and `tools/` directories stay outside the packaged artifact.
@@ -106,15 +106,17 @@ func _ready() -> void:
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
+- Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
+- Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Godot-native adapter and node layers with session-history convenience passthroughs
-- A reusable chat panel plus demo validation scene, now including session browsing, transcript restoration, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
+- A reusable chat panel plus demo validation scene, now including session browsing, transcript restoration, idle-time live session switching, saved-session resume, basic rename/tag/delete actions, and disconnected prompt/tool configuration editing
 
 ## Current Gaps
 
 The current release still defers some broader upstream parity areas, including:
 
 - session forking helpers
-- broader settings/agent-definition parity beyond the current runtime surface
+- broader settings and agent-definition parity beyond the current prompt/tool/runtime surface
 
 Use these as the canonical sources of truth for compatibility and parity status:
 
@@ -155,5 +157,6 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - The addon depends on a user-installed `claude` CLI.
 - Claude auth remains CLI-owned rather than SDK-owned.
 - The runtime API is scene-free, but the subprocess transport still expects an active Godot `SceneTree`.
+- SDK-hosted MCP/custom-tool registration stays code-driven through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`; the panel shows the active MCP environment but does not author tool handlers.
 - SDK-hosted MCP tool handlers should return `{ "content": [...], "is_error": true }` for tool-level failures; uncaught GDScript runtime faults still surface as normal Godot errors.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.
