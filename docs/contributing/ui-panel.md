@@ -14,6 +14,7 @@ Use `ClaudeChatPanel` when:
 
 - you want a ready-made Claude chat surface in a Godot project
 - you want auth-state, saved-session browsing, connect/disconnect controls, transcript rendering, and a composer without building UI glue first
+- you want quick model, effort, and permission controls in the main chat workflow
 - you want disconnected chat-configuration editing for system prompts, built-in tools, and tool allow/deny lists
 - you want a resizable two-pane layout with a saved-session browser on the left and chat on the right
 - you want a reference for building your own UI on top of `ClaudeClientAdapter` or `ClaudeClientNode`
@@ -77,7 +78,7 @@ The shipped panel currently includes:
 
 - auth/status header
 - top-level `Chat` and `Settings` views, with `Chat` as the default
-- a compact read-only chat-view configuration summary
+- quick chat-view controls for model, reasoning effort, and permission mode
 - a resizable session browser pane scoped to the configured project path
 - saved transcript loading and read-only browsing while disconnected
 - reconnect/resume into selected saved sessions
@@ -86,7 +87,9 @@ The shipped panel currently includes:
 - connect/disconnect controls
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
 - interrupt support during active turns
-- disconnected-only settings for model, permission mode, system prompt, built-in tools, advanced allow/deny rules, and MCP summary in the separate `Settings` view
+- live model and permission-mode changes while connected
+- reconnect-only effort changes, exposed in the chat view but disabled while connected
+- disconnected-only system prompt, built-in tool, advanced allow/deny, and MCP-summary editing in the separate `Settings` view
 
 The panel intentionally does not yet include:
 

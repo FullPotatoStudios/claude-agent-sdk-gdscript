@@ -111,7 +111,7 @@ func _ready() -> void:
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
 - Godot-native adapter and node layers with session-history convenience passthroughs
-- A reusable chat panel plus demo validation scene, now including a conversation-first main view, secondary settings view, session browsing, transcript restoration, idle-time live session switching, saved-session resume, basic rename/tag/delete actions, and disconnected prompt/tool configuration editing
+- A reusable chat panel plus demo validation scene, now including a conversation-first main view, quick model/effort/permission controls, a secondary settings view for prompt/tool configuration, session browsing, transcript restoration, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
 
 ## Current Gaps
 

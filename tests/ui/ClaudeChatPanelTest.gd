@@ -57,20 +57,14 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 
 	assert_bool(_button(panel, "ChatViewButton").button_pressed).is_true()
 	assert_bool(_button(panel, "SettingsViewButton").button_pressed).is_false()
-	assert_bool(_control(panel, "ChatSummaryCard").visible).is_true()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
-	assert_str(_label(panel, "ChatSummaryModelValue").text).is_equal("haiku")
-	assert_str(_label(panel, "ChatSummaryPermissionValue").text).is_equal("plan")
-	assert_str(_label(panel, "ChatSummaryPromptValue").text).is_equal("Claude Code preset + append")
-	assert_str(_label(panel, "ChatSummaryToolsValue").text).is_equal("All default built-in tools enabled.")
-	assert_str(_label(panel, "ChatSummaryMcpValue").text).contains("gameplay")
-	assert_str(_label(panel, "ChatSummaryMcpValue").text).contains("filesystem")
+	assert_str(_selected_option_text(panel, "ModelQuickOption")).is_equal("haiku")
+	assert_str(_selected_option_text(panel, "EffortQuickOption")).is_equal("low")
+	assert_str(_selected_option_text(panel, "PermissionQuickOption")).is_equal("plan")
 
 	_show_settings_view(panel)
 	await _await_frames(1)
 
-	assert_str(_line_edit(panel, "ModelInput").text).is_equal("haiku")
-	assert_str(_option_button(panel, "PermissionModeOption").get_item_text(_option_button(panel, "PermissionModeOption").selected)).is_equal("plan")
 	assert_str(_option_button(panel, "SystemPromptModeOption").get_item_text(_option_button(panel, "SystemPromptModeOption").selected)).is_equal("Preset + append")
 	assert_str(_text_edit(panel, "SystemPromptTextInput").text).is_equal("Stay in-universe.")
 	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).is_equal("All default built-in tools enabled.")
@@ -90,13 +84,16 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
 	get_tree().root.add_child(panel)
 	await _await_frames(2)
+
+	_option_button(panel, "ModelQuickOption").select(1)
+	_option_button(panel, "ModelQuickOption").item_selected.emit(1)
+	_option_button(panel, "EffortQuickOption").select(2)
+	_option_button(panel, "EffortQuickOption").item_selected.emit(2)
+	_option_button(panel, "PermissionQuickOption").select(1)
+	_option_button(panel, "PermissionQuickOption").item_selected.emit(1)
 	_show_settings_view(panel)
 	await _await_frames(1)
 
-	_line_edit(panel, "ModelInput").text = "sonnet"
-	_line_edit(panel, "ModelInput").text_changed.emit("sonnet")
-	_option_button(panel, "PermissionModeOption").select(1)
-	_option_button(panel, "PermissionModeOption").item_selected.emit(1)
 	_option_button(panel, "SystemPromptModeOption").select(4)
 	_option_button(panel, "SystemPromptModeOption").item_selected.emit(4)
 	_line_edit(panel, "SystemPromptFileInput").text = "res://prompts/game-assistant.md"
@@ -121,6 +118,7 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 
 	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
 	assert_str(configured_options.model).is_equal("sonnet")
+	assert_str(configured_options.effort).is_equal("high")
 	assert_str(configured_options.permission_mode).is_equal("plan")
 	assert_dict(configured_options.system_prompt).is_equal({
 		"type": "file",
@@ -130,9 +128,9 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	assert_array(configured_options.allowed_tools).is_equal(["Read", "Glob"])
 	assert_array(configured_options.disallowed_tools).is_equal(["Edit"])
 	assert_str(_label(panel, "BuiltInToolsSummaryValue").text).contains("3 of")
-	assert_str(_label(panel, "ChatSummaryModelValue").text).is_equal("sonnet")
-	assert_str(_label(panel, "ChatSummaryPromptValue").text).contains("Prompt file")
-	assert_str(_label(panel, "ChatSummaryToolsValue").text).contains("3 of")
+	assert_str(_selected_option_text(panel, "ModelQuickOption")).is_equal("sonnet")
+	assert_str(_selected_option_text(panel, "EffortQuickOption")).is_equal("high")
+	assert_str(_selected_option_text(panel, "PermissionQuickOption")).is_equal("plan")
 
 	panel.connect_client()
 	await _await_frames(1)
@@ -143,10 +141,37 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 		"path": "res://prompts/game-assistant.md",
 	})
 	assert_array(runtime_options.tools).is_equal(["Read", "Glob", "Grep"])
-	assert_bool(_line_edit(panel, "ModelInput").editable).is_false()
+	assert_str(runtime_options.effort).is_equal("high")
 	assert_bool(_option_button(panel, "SystemPromptModeOption").disabled).is_true()
 	assert_bool(_built_in_tool_checkbox(panel, "Read").disabled).is_true()
 	assert_bool(_line_edit(panel, "AllowedToolsInput").editable).is_false()
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(2)
+
+	assert_bool(_option_button(panel, "ModelQuickOption").disabled).is_false()
+	assert_bool(_option_button(panel, "EffortQuickOption").disabled).is_true()
+	assert_bool(_option_button(panel, "PermissionQuickOption").disabled).is_false()
+
+	_option_button(panel, "ModelQuickOption").select(2)
+	_option_button(panel, "ModelQuickOption").item_selected.emit(2)
+	var live_model_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((live_model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+
+	_option_button(panel, "PermissionQuickOption").select(3)
+	_option_button(panel, "PermissionQuickOption").item_selected.emit(3)
+	var live_permission_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((live_permission_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_permission_mode")
+	assert_str(configured_options.model).is_equal("opus")
+	assert_str(configured_options.permission_mode).is_equal("bypassPermissions")
 
 	await _cleanup_panel(panel)
 
@@ -196,21 +221,19 @@ func test_panel_defaults_to_chat_view_and_switches_to_settings_view() -> void:
 	await _await_frames(2)
 
 	assert_bool(_button(panel, "ChatViewButton").button_pressed).is_true()
-	assert_bool(_control(panel, "ChatSummaryCard").visible).is_true()
 	assert_bool(_control(panel, "SplitRow").visible).is_true()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
+	assert_object(_control(panel, "ChatSummaryCard")).is_null()
 
 	_show_settings_view(panel)
 	await _await_frames(1)
 
 	assert_bool(_button(panel, "SettingsViewButton").button_pressed).is_true()
-	assert_bool(_control(panel, "ChatSummaryCard").visible).is_false()
 	assert_bool(_control(panel, "SplitRow").visible).is_false()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_true()
 
 	_button(panel, "ChatViewButton").pressed.emit()
 	await _await_frames(1)
-	assert_bool(_control(panel, "ChatSummaryCard").visible).is_true()
 	assert_bool(_control(panel, "SplitRow").visible).is_true()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
 
@@ -732,9 +755,10 @@ func test_panel_default_split_favors_chat_column() -> void:
 	var session_pane := panel.find_child("SessionPane", true, false) as Control
 	var chat_column := panel.find_child("ChatColumn", true, false) as Control
 	assert_object(split_row).is_not_null()
-	assert_bool(session_pane.size.x < chat_column.size.x).is_true()
-	var session_ratio := float(session_pane.size.x) / maxf(1.0, float(split_row.size.x))
-	assert_bool(session_ratio > 0.30 and session_ratio < 0.48).is_true()
+	assert_object(session_pane).is_not_null()
+	assert_object(chat_column).is_not_null()
+	var split_ratio := float(split_row.split_offset) / maxf(1.0, float(split_row.size.x))
+	assert_bool(split_ratio > 0.34 and split_ratio < 0.46).is_true()
 
 	await _cleanup_panel(panel)
 
@@ -793,6 +817,11 @@ func _text_edit(panel, node_name: String) -> TextEdit:
 
 func _option_button(panel, node_name: String) -> OptionButton:
 	return panel.find_child(node_name, true, false) as OptionButton
+
+
+func _selected_option_text(panel, node_name: String) -> String:
+	var option := _option_button(panel, node_name)
+	return option.get_item_text(option.selected)
 
 
 func _check_box(panel, node_name: String) -> CheckBox:

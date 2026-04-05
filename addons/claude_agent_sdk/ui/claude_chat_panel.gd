@@ -30,6 +30,8 @@ const SYSTEM_PROMPT_MODE_TEXT := 1
 const SYSTEM_PROMPT_MODE_PRESET := 2
 const SYSTEM_PROMPT_MODE_PRESET_APPEND := 3
 const SYSTEM_PROMPT_MODE_FILE := 4
+const MODEL_PRESETS := ["haiku", "sonnet", "opus"]
+const EFFORT_PRESETS := ["low", "medium", "high", "max"]
 
 var _configured_options = null
 var _configured_transport = null
@@ -69,29 +71,23 @@ var _current_view := PANEL_VIEW_CHAT
 @onready var _disconnect_button: Button = $Shell/Margin/Body/Header/TopRow/ActionButtons/DisconnectButton
 @onready var _chat_view_button: Button = $Shell/Margin/Body/ViewNavigation/ChatViewButton
 @onready var _settings_view_button: Button = $Shell/Margin/Body/ViewNavigation/SettingsViewButton
-@onready var _open_settings_button: Button = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryHeader/OpenSettingsButton
-@onready var _chat_summary_card: PanelContainer = $Shell/Margin/Body/ChatSummaryCard
 @onready var _settings_scroll: ScrollContainer = $Shell/Margin/Body/SettingsScroll
-@onready var _chat_summary_model: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryModelGroup/ChatSummaryModelValue
-@onready var _chat_summary_permission: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPermissionGroup/ChatSummaryPermissionValue
-@onready var _chat_summary_prompt: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryPromptGroup/ChatSummaryPromptValue
-@onready var _chat_summary_tools: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryToolsGroup/ChatSummaryToolsValue
-@onready var _chat_summary_mcp: Label = $Shell/Margin/Body/ChatSummaryCard/ChatSummaryMargin/ChatSummaryBody/ChatSummaryGrid/ChatSummaryMcpGroup/ChatSummaryMcpValue
-@onready var _model_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/ModelGroup/ModelInput
-@onready var _permission_mode: OptionButton = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SettingsGrid/PermissionGroup/PermissionModeOption
-@onready var _system_prompt_mode: OptionButton = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptModeGroup/SystemPromptModeOption
-@onready var _system_prompt_text_group: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup
-@onready var _system_prompt_text_label: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextLabel
-@onready var _system_prompt_text_input: TextEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptTextGroup/SystemPromptTextInput
-@onready var _system_prompt_file_group: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup
-@onready var _system_prompt_file_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptFileGroup/SystemPromptFileInput
-@onready var _built_in_tools_summary: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsSummaryValue
-@onready var _built_in_tool_groups: GridContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/BuiltInToolsGroup/BuiltInToolsCard/BuiltInToolsMargin/BuiltInToolsBody/BuiltInToolGroups
-@onready var _tool_rules_advanced_toggle: Button = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedToggle
-@onready var _tool_rules_advanced_body: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody
-@onready var _allowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/AllowedToolsGroup/AllowedToolsInput
-@onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
-@onready var _mcp_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummaryGroup/McpSummaryValue
+@onready var _system_prompt_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection
+@onready var _tools_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection
+@onready var _mcp_summary_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection
+@onready var _system_prompt_mode: OptionButton = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection/SystemPromptModeGroup/SystemPromptModeOption
+@onready var _system_prompt_text_group: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection/SystemPromptTextGroup
+@onready var _system_prompt_text_label: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection/SystemPromptTextGroup/SystemPromptTextLabel
+@onready var _system_prompt_text_input: TextEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection/SystemPromptTextGroup/SystemPromptTextInput
+@onready var _system_prompt_file_group: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection/SystemPromptFileGroup
+@onready var _system_prompt_file_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection/SystemPromptFileGroup/SystemPromptFileInput
+@onready var _built_in_tools_summary: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/BuiltInToolsGroup/BuiltInToolsSummaryValue
+@onready var _built_in_tool_groups: GridContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/BuiltInToolsGroup/BuiltInToolsCard/BuiltInToolsMargin/BuiltInToolsBody/BuiltInToolGroups
+@onready var _tool_rules_advanced_toggle: Button = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedToggle
+@onready var _tool_rules_advanced_body: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody
+@onready var _allowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/AllowedToolsGroup/AllowedToolsInput
+@onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
+@onready var _mcp_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpSummaryValue
 @onready var _split_row: HSplitContainer = $Shell/Margin/Body/SplitRow
 @onready var _session_refresh_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/SessionRefreshButton
 @onready var _new_chat_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/NewChatButton
@@ -110,10 +106,13 @@ var _current_view := PANEL_VIEW_CHAT
 @onready var _cancel_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/CancelDeleteButton
 @onready var _transcript_scroll: ScrollContainer = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptScroll
 @onready var _transcript_list: VBoxContainer = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptScroll/TranscriptList
-@onready var _composer_hint: Label = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerActions/ComposerHintLabel
+@onready var _composer_hint: Label = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerHintLabel
+@onready var _chat_model_option: OptionButton = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/ModelQuickGroup/ModelQuickOption
+@onready var _chat_effort_option: OptionButton = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/EffortQuickGroup/EffortQuickOption
+@onready var _chat_permission_mode: OptionButton = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/PermissionQuickGroup/PermissionQuickOption
 @onready var _prompt_input: TextEdit = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/PromptInput
-@onready var _interrupt_button: Button = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerActions/InterruptButton
-@onready var _send_button: Button = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerActions/SendButton
+@onready var _interrupt_button: Button = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/ActionButtons/InterruptButton
+@onready var _send_button: Button = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/ActionButtons/SendButton
 
 
 func _init() -> void:
@@ -123,7 +122,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	_apply_static_button_icons()
-	_populate_permission_modes()
+	_populate_quick_setting_choices()
 	_populate_system_prompt_modes()
 	_populate_built_in_tool_groups()
 	_apply_initial_control_values()
@@ -246,18 +245,18 @@ func _wire_ui() -> void:
 		_chat_view_button.pressed.connect(_on_chat_view_pressed)
 	if not _settings_view_button.pressed.is_connected(_on_settings_view_pressed):
 		_settings_view_button.pressed.connect(_on_settings_view_pressed)
-	if not _open_settings_button.pressed.is_connected(_on_settings_view_pressed):
-		_open_settings_button.pressed.connect(_on_settings_view_pressed)
 	if not _interrupt_button.pressed.is_connected(_on_interrupt_pressed):
 		_interrupt_button.pressed.connect(_on_interrupt_pressed)
 	if not _send_button.pressed.is_connected(_on_send_pressed):
 		_send_button.pressed.connect(_on_send_pressed)
 	if not _prompt_input.text_changed.is_connected(_on_prompt_text_changed):
 		_prompt_input.text_changed.connect(_on_prompt_text_changed)
-	if not _model_input.text_changed.is_connected(_on_model_text_changed):
-		_model_input.text_changed.connect(_on_model_text_changed)
-	if not _permission_mode.item_selected.is_connected(_on_permission_mode_selected):
-		_permission_mode.item_selected.connect(_on_permission_mode_selected)
+	if not _chat_model_option.item_selected.is_connected(_on_model_option_selected):
+		_chat_model_option.item_selected.connect(_on_model_option_selected)
+	if not _chat_effort_option.item_selected.is_connected(_on_effort_option_selected):
+		_chat_effort_option.item_selected.connect(_on_effort_option_selected)
+	if not _chat_permission_mode.item_selected.is_connected(_on_permission_mode_selected):
+		_chat_permission_mode.item_selected.connect(_on_permission_mode_selected)
 	if not _system_prompt_mode.item_selected.is_connected(_on_system_prompt_mode_selected):
 		_system_prompt_mode.item_selected.connect(_on_system_prompt_mode_selected)
 	if not _system_prompt_text_input.text_changed.is_connected(_on_system_prompt_text_changed):
@@ -303,11 +302,17 @@ func _apply_static_button_icons() -> void:
 	_interrupt_button.icon = InterruptIcon
 
 
-func _populate_permission_modes() -> void:
-	if _permission_mode.item_count > 0:
+func _populate_quick_setting_choices() -> void:
+	if _chat_model_option.item_count == 0:
+		for model_name in MODEL_PRESETS:
+			_chat_model_option.add_item(model_name)
+	if _chat_effort_option.item_count == 0:
+		for effort_name in EFFORT_PRESETS:
+			_chat_effort_option.add_item(effort_name)
+	if _chat_permission_mode.item_count > 0:
 		return
 	for mode in ["default", "plan", "acceptEdits", "bypassPermissions"]:
-		_permission_mode.add_item(mode)
+		_chat_permission_mode.add_item(mode)
 
 
 func _populate_system_prompt_modes() -> void:
@@ -391,14 +396,15 @@ func _populate_built_in_tool_groups() -> void:
 func _apply_initial_control_values() -> void:
 	if _configured_options == null:
 		_configured_options = ClaudeAgentOptionsScript.new()
+	if _configured_options.model.is_empty():
+		_configured_options.model = MODEL_PRESETS[0]
+	if _configured_options.effort.is_empty():
+		_configured_options.effort = EFFORT_PRESETS[0]
 	_capture_base_session_defaults()
 	_suppress_configuration_sync = true
-	_model_input.text = _configured_options.model
-	var target_mode: String = _configured_options.permission_mode if not _configured_options.permission_mode.is_empty() else "default"
-	for index in range(_permission_mode.item_count):
-		if _permission_mode.get_item_text(index) == target_mode:
-			_permission_mode.select(index)
-			break
+	_select_chat_model_value(_configured_options.model)
+	_select_chat_effort_value(_configured_options.effort)
+	_select_permission_mode(_configured_options.permission_mode if not _configured_options.permission_mode.is_empty() else "default")
 	_apply_system_prompt_controls_from_options()
 	_apply_built_in_tool_controls_from_options()
 	_allowed_tools_input.text = ",".join(_configured_options.allowed_tools)
@@ -406,7 +412,6 @@ func _apply_initial_control_values() -> void:
 	var has_advanced_rules: bool = not _configured_options.allowed_tools.is_empty() or not _configured_options.disallowed_tools.is_empty()
 	_tool_rules_advanced_toggle.set_pressed_no_signal(has_advanced_rules)
 	_refresh_mcp_summary()
-	_refresh_chat_configuration_summary()
 	_refresh_configuration_field_visibility()
 	_suppress_configuration_sync = false
 
@@ -505,8 +510,6 @@ func _disconnect_client_signals(client_node: ClaudeClientNode) -> void:
 
 
 func _apply_preconnect_controls_to_options() -> void:
-	_configured_options.model = _model_input.text.strip_edges()
-	_configured_options.permission_mode = _current_permission_mode()
 	_configured_options.system_prompt = _system_prompt_from_controls()
 	_configured_options.tools = _built_in_tools_from_controls()
 	_configured_options.allowed_tools = _parse_tool_csv(_allowed_tools_input.text)
@@ -540,15 +543,16 @@ func _set_current_view(view: int) -> void:
 	_current_view = view
 	_chat_view_button.set_pressed_no_signal(view == PANEL_VIEW_CHAT)
 	_settings_view_button.set_pressed_no_signal(view == PANEL_VIEW_SETTINGS)
-	_chat_summary_card.visible = view == PANEL_VIEW_CHAT
 	_split_row.visible = view == PANEL_VIEW_CHAT
 	_settings_scroll.visible = view == PANEL_VIEW_SETTINGS
 
 
 func _refresh_configuration_controls() -> void:
 	var configuration_locked := _session_live or _is_connecting
-	_model_input.editable = not configuration_locked
-	_permission_mode.disabled = configuration_locked
+	_chat_model_option.disabled = _is_connecting
+	_chat_permission_mode.disabled = _is_connecting
+	_chat_effort_option.disabled = configuration_locked
+	_chat_effort_option.tooltip_text = "Reasoning effort applies on the next reconnect." if configuration_locked else ""
 	_system_prompt_mode.disabled = configuration_locked
 	_system_prompt_text_input.editable = not configuration_locked and _system_prompt_text_group.visible
 	_system_prompt_file_input.editable = not configuration_locked and _system_prompt_file_group.visible
@@ -585,16 +589,6 @@ func _refresh_mcp_summary() -> void:
 		elif _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
 			summary = "External MCP config: %s" % str(_configured_options.mcp_servers).strip_edges()
 	_mcp_summary_value.text = summary
-	_chat_summary_mcp.text = summary
-
-
-func _refresh_chat_configuration_summary() -> void:
-	if _configured_options == null:
-		return
-	_chat_summary_model.text = _configured_options.model if not _configured_options.model.is_empty() else "default"
-	_chat_summary_permission.text = _configured_options.permission_mode if not _configured_options.permission_mode.is_empty() else "default"
-	_chat_summary_prompt.text = _system_prompt_summary(_configured_options.system_prompt)
-	_chat_summary_tools.text = _built_in_tools_summary.text
 
 
 func _system_prompt_summary(system_prompt: Variant) -> String:
@@ -620,7 +614,6 @@ func _sync_configuration_from_controls() -> void:
 	_refresh_built_in_tool_group_buttons()
 	_refresh_configuration_field_visibility()
 	_refresh_mcp_summary()
-	_refresh_chat_configuration_summary()
 
 
 func _system_prompt_from_controls() -> Variant:
@@ -672,7 +665,6 @@ func _refresh_built_in_tools_summary() -> void:
 		_built_in_tools_summary.text = "All default built-in tools enabled."
 	else:
 		_built_in_tools_summary.text = "%d of %d built-in tools enabled." % [selected_count, total_count]
-	_chat_summary_tools.text = _built_in_tools_summary.text
 
 
 func _refresh_built_in_tool_group_buttons() -> void:
@@ -1336,8 +1328,7 @@ func _apply_initial_split_layout() -> void:
 		call_deferred("_apply_initial_split_layout")
 		return
 	var target_left_width := clampf(available_width * 0.4, 290.0, maxf(290.0, available_width - 420.0))
-	var center := available_width * 0.5
-	_split_row.split_offset = int(round(target_left_width - center))
+	_split_row.split_offset = int(round(target_left_width))
 	_did_apply_initial_split = true
 
 
@@ -1356,9 +1347,64 @@ func _auth_detail_text() -> String:
 
 
 func _current_permission_mode() -> String:
-	if _permission_mode.item_count == 0:
+	if _chat_permission_mode.item_count == 0:
 		return "default"
-	return _permission_mode.get_item_text(_permission_mode.get_selected_id())
+	return _chat_permission_mode.get_item_text(_chat_permission_mode.get_selected_id())
+
+
+func _select_chat_model_value(model_value: String) -> void:
+	_select_option_by_value(_chat_model_option, _infer_model_preset(model_value), MODEL_PRESETS[0])
+	var effective_value := model_value.strip_edges()
+	if effective_value.is_empty():
+		effective_value = MODEL_PRESETS[_chat_model_option.selected]
+	_chat_model_option.tooltip_text = effective_value
+
+
+func _select_chat_effort_value(effort_value: String) -> void:
+	_select_option_by_value(_chat_effort_option, _infer_effort_preset(effort_value), EFFORT_PRESETS[0])
+	var effective_value := effort_value.strip_edges()
+	if effective_value.is_empty():
+		effective_value = EFFORT_PRESETS[_chat_effort_option.selected]
+	_chat_effort_option.tooltip_text = effective_value
+
+
+func _select_permission_mode(mode_value: String) -> void:
+	_select_option_by_value(_chat_permission_mode, mode_value, "default")
+
+
+func _select_option_by_value(option: OptionButton, value: String, fallback: String) -> void:
+	var target := value.strip_edges()
+	if target.is_empty():
+		target = fallback
+	for index in range(option.item_count):
+		if option.get_item_text(index) == target:
+			option.select(index)
+			return
+	for index in range(option.item_count):
+		if option.get_item_text(index) == fallback:
+			option.select(index)
+			return
+	if option.item_count > 0:
+		option.select(0)
+
+
+func _infer_model_preset(model_value: String) -> String:
+	var normalized := model_value.strip_edges().to_lower()
+	for model_name in MODEL_PRESETS:
+		if normalized == model_name:
+			return model_name
+	for model_name in MODEL_PRESETS:
+		if normalized.contains(model_name):
+			return model_name
+	return ""
+
+
+func _infer_effort_preset(effort_value: String) -> String:
+	var normalized := effort_value.strip_edges().to_lower()
+	for effort_name in EFFORT_PRESETS:
+		if normalized == effort_name:
+			return effort_name
+	return ""
 
 
 func _assistant_text(message: ClaudeAssistantMessage) -> String:
@@ -1461,18 +1507,28 @@ func _on_prompt_text_changed() -> void:
 	_refresh_composer_state()
 
 
-func _on_model_text_changed(new_text: String) -> void:
-	if _session_live and not new_text.strip_edges().is_empty():
-		_client_node.set_model(new_text.strip_edges())
+func _on_model_option_selected(index: int) -> void:
+	var selected_model := _chat_model_option.get_item_text(index)
+	_configured_options.model = selected_model
+	_chat_model_option.tooltip_text = selected_model
+	if _session_live:
+		_client_node.set_model(selected_model)
 		return
-	_sync_configuration_from_controls()
+	_capture_base_session_defaults()
+
+
+func _on_effort_option_selected(index: int) -> void:
+	var selected_effort := _chat_effort_option.get_item_text(index)
+	_configured_options.effort = selected_effort
+	_chat_effort_option.tooltip_text = selected_effort
 
 
 func _on_permission_mode_selected(_index: int) -> void:
+	_configured_options.permission_mode = _current_permission_mode()
 	if _session_live:
 		_client_node.set_permission_mode(_current_permission_mode())
 		return
-	_sync_configuration_from_controls()
+	_capture_base_session_defaults()
 
 
 func _on_system_prompt_mode_selected(_index: int) -> void:
