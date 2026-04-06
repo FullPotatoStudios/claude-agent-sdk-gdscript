@@ -677,6 +677,156 @@ func test_panel_echo_suppression_keeps_user_side_tool_result_entries() -> void:
 	await _cleanup_panel(panel)
 
 
+func test_panel_hides_tool_linked_user_prompt_until_tools_toggle_is_enabled() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-tool-prompt-1",
+		"parent_tool_use_id": "toolu_prompt_1",
+		"message": {
+			"role": "user",
+			"content": "Explore the project structure thoroughly.",
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_prompt_card")).is_equal(0)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "tool_prompt_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "tool_prompt_card")).contains("Explore the project structure thoroughly.")
+
+	_button(panel, "RawToggle").button_pressed = true
+	_button(panel, "RawToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "raw_card")).is_greater_equal(1)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_tool_linked_prompt_uses_known_tool_name_in_title() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "default",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{"type": "tool_use", "id": "toolu_agent_1", "name": "agent", "input": {"prompt": "Explore"}},
+			],
+		},
+	})
+	await _await_frames(2)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-tool-prompt-2",
+		"parent_tool_use_id": "toolu_agent_1",
+		"message": {
+			"role": "user",
+			"content": "Explore the UI layer and summarize it.",
+		},
+	})
+	await _await_frames(2)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	var tool_prompt := _last_entry(panel, "tool_prompt_card")
+	assert_object(tool_prompt).is_not_null()
+	var toggle := tool_prompt.find_child("CardToggle", true, false) as Button
+	assert_object(toggle).is_not_null()
+	assert_str(str(toggle.text)).contains("Tool prompt · agent")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_tool_linked_prompt_does_not_consume_pending_prompt_echo() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Summarize the UI layer")
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-tool-prompt-pending-echo",
+		"parent_tool_use_id": "toolu_pending_echo",
+		"message": {
+			"role": "user",
+			"content": "Summarize the UI layer",
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-echo-after-tool-prompt",
+		"message": {
+			"role": "user",
+			"content": "Summarize the UI layer",
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "tool_prompt_card")).is_equal(0)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "tool_prompt_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "tool_prompt_card")).contains("Summarize the UI layer")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_tool_linked_user_message_keeps_text_and_nested_tool_result_under_tools() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-tool-prompt-mixed",
+		"parent_tool_use_id": "toolu_mixed",
+		"message": {
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "Search the repository and summarize findings."},
+				{"type": "tool_result", "tool_use_id": "toolu_mixed", "content": {"indexed": 3}, "is_error": false},
+			],
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_prompt_card")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(0)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "tool_prompt_card")).is_equal(1)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "tool_prompt_card")).contains("Search the repository and summarize findings.")
+	assert_str(_last_card_body_text(panel, "tool_result_card")).contains("\"indexed\": 3")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_live_assistant_bubble_reuses_same_node_across_stream_deltas() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport, ClaudeAgentOptionsScript.new({

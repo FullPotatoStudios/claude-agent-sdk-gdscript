@@ -63,6 +63,7 @@ var _built_in_tool_group_buttons: Dictionary = {}
 var _current_view := PANEL_VIEW_CHAT
 var _transcript_entries: Array[Dictionary] = []
 var _transcript_entry_views := {}
+var _tool_use_names := {}
 var _next_transcript_entry_id := 1
 var _current_assistant_entry_id := -1
 var _current_thinking_entry_id := -1
@@ -237,6 +238,7 @@ func refresh_auth_status() -> void:
 
 func clear_transcript() -> void:
 	_transcript_entries.clear()
+	_tool_use_names.clear()
 	_clear_transcript_views()
 	_begin_new_live_turn()
 
@@ -958,6 +960,7 @@ func _on_client_session_closed() -> void:
 
 
 func _handle_user_message(message: ClaudeUserMessage) -> void:
+	var is_tool_linked := not message.parent_tool_use_id.is_empty()
 	var has_recognized_blocks := false
 	var content_text := ""
 	if message.content is String:
@@ -973,17 +976,32 @@ func _handle_user_message(message: ClaudeUserMessage) -> void:
 				_render_user_detail_block(block, message.raw_data)
 
 	var suppressed_echo := false
-	if not _pending_prompt_echo.is_empty() and content_text == _pending_prompt_echo:
+	if not is_tool_linked and not _pending_prompt_echo.is_empty() and content_text == _pending_prompt_echo:
 		_pending_prompt_echo = ""
 		suppressed_echo = true
 
-	if not content_text.is_empty() and not suppressed_echo:
+	if suppressed_echo:
+		return
+
+	if not content_text.is_empty() and not suppressed_echo and not is_tool_linked:
 		_append_transcript_entry("user", {
 			"title": "User",
 			"text": content_text,
 			"align_right": false,
 			"raw_data": message.raw_data,
 		})
+		return
+
+	if not content_text.is_empty() and is_tool_linked:
+		_append_transcript_entry("tool_prompt", {
+			"title": _tool_prompt_title(message.parent_tool_use_id),
+			"text": content_text,
+			"payload": message.content,
+			"raw_data": message.raw_data,
+			"parent_tool_use_id": message.parent_tool_use_id,
+		})
+		if has_recognized_blocks:
+			return
 		return
 
 	if has_recognized_blocks:
@@ -1049,11 +1067,13 @@ func _render_user_detail_block(block: Variant, raw_data: Variant = null) -> void
 
 
 func _append_tool_use_entry(block: ClaudeToolUseBlock, raw_data: Variant = null) -> void:
+	_tool_use_names[block.id] = block.name
 	_append_transcript_entry("tool_use", {
 		"title": "Tool use · %s" % block.name,
 		"text": _json_pretty(block.input),
 		"payload": block.input,
 		"raw_data": block.raw_data if block.raw_data != null else raw_data,
+		"tool_use_id": block.id,
 	})
 
 
@@ -1290,6 +1310,8 @@ func _create_transcript_primary_view(entry: Dictionary) -> Control:
 			return _create_message_bubble("assistant", str(entry.get("text", "")), str(entry.get("title", "Claude")), bool(entry.get("align_right", false)))
 		"thinking":
 			return _create_detail_card("thinking", str(entry.get("title", "Thinking")), str(entry.get("text", "")), false)
+		"tool_prompt":
+			return _create_detail_card("tool_prompt", str(entry.get("title", "Tool prompt")), str(entry.get("text", "")), false)
 		"tool_use":
 			return _create_detail_card("tool_use", str(entry.get("title", "Tool use")), str(entry.get("text", "")), false)
 		"tool_result":
@@ -1314,7 +1336,7 @@ func _update_transcript_primary_view(primary: Control, entry: Dictionary) -> voi
 				str(entry.get("title", "You" if kind == "user" else "Claude")),
 				str(entry.get("text", ""))
 			)
-		"thinking", "tool_use", "tool_result", "system", "progress", "attachment":
+		"thinking", "tool_prompt", "tool_use", "tool_result", "system", "progress", "attachment":
 			_update_detail_card(primary, str(entry.get("title", "")), str(entry.get("text", "")), false)
 		"result":
 			_update_result_card(primary, entry)
@@ -1324,7 +1346,7 @@ func _is_transcript_entry_primary_visible(entry: Dictionary) -> bool:
 	match str(entry.get("kind", "")):
 		"thinking":
 			return _thinking_toggle.button_pressed
-		"tool_use", "tool_result":
+		"tool_prompt", "tool_use", "tool_result":
 			return _tools_toggle.button_pressed
 		"system", "progress", "attachment":
 			return _system_toggle.button_pressed
@@ -1337,6 +1359,13 @@ func _is_transcript_entry_primary_visible(entry: Dictionary) -> bool:
 func _should_show_raw_entry(entry: Dictionary) -> bool:
 	var kind := str(entry.get("kind", ""))
 	return kind != "user" and kind != "assistant" and entry.get("raw_data") != null
+
+
+func _tool_prompt_title(tool_use_id: String) -> String:
+	var tool_name := str(_tool_use_names.get(tool_use_id, "")).strip_edges()
+	if tool_name.is_empty():
+		return "Tool prompt"
+	return "Tool prompt · %s" % tool_name
 
 
 func _transcript_entry_title_kind(entry: Dictionary) -> String:
