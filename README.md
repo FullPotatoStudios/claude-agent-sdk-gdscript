@@ -45,6 +45,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeSDKClient` for interactive runtime usage
 - `ClaudeSessions` for local session history access, richer transcript detail reading, and basic session mutations
 - `ClaudeSessionTranscriptEntry` for normalized historical transcript detail
+- `ClaudeForkSessionResult` plus explicit session forking helpers for branching saved conversations
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -104,7 +105,7 @@ func _ready() -> void:
 - Claude CLI subprocess transport with inherited environment and explicit overrides
 - Typed message parsing for user, assistant, system, result, and partial stream events
 - One-shot queries plus interactive connected sessions
-- Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, and basic rename/tag/delete mutations
+- Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, session forking, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
@@ -118,7 +119,6 @@ func _ready() -> void:
 
 The current release still defers some broader upstream parity areas, including:
 
-- session forking helpers
 - broader settings and agent-definition parity beyond the current prompt/tool/runtime surface
 
 Use these as the canonical sources of truth for compatibility and parity status:

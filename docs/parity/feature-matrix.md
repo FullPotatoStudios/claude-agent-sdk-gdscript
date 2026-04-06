@@ -105,7 +105,7 @@ Phase 1 findings that constrain this matrix:
 | Session listing | `_internal/sessions.py`, `tests/test_sessions.py` | Useful for history browsers and chat restoration | Claude local storage knowledge | `v1 later` | Delivered in Phase 10A through `ClaudeSessions.list_sessions()` |
 | Session transcript reading | `_internal/sessions.py`, `tests/test_sessions.py` | Needed for conversation history tooling | session listing, transcript parsing | `v1 later` | Delivered in Phase 10A through `ClaudeSessions.get_session_messages()` and extended in Phase 10G with normalized transcript-detail reading through `ClaudeSessions.get_session_transcript()` |
 | Rename/tag/delete session helpers | `_internal/session_mutations.py`, `tests/test_session_mutations.py` | Useful for history management UIs | session file layout and mutation rules | `v1 later` | Delivered in Phase 10B through `ClaudeSessions.rename_session()`, `tag_session()`, and `delete_session()`; higher-layer wrapper and panel support shipped in Phase 10C |
-| Session forking helpers | `_internal/session_mutations.py` | Advanced workflow for branching conversation history | session transcript mutation | `deferred` | Too much surface for first release |
+| Session forking helpers | `_internal/session_mutations.py` | Advanced workflow for branching conversation history | session transcript mutation | `v1 later` | Delivered post-v1 in Phase 10H through `ClaudeSessions.fork_session()` plus adapter/node passthroughs |
 
 ## MCP integration and SDK MCP helpers
 

@@ -4,6 +4,7 @@ class_name ClaudeSessions
 const ClaudeSessionInfoScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_info.gd")
 const ClaudeSessionMessageScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_message.gd")
 const ClaudeSessionTranscriptEntryScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_transcript_entry.gd")
+const ClaudeForkSessionResultScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_fork_session_result.gd")
 
 const LITE_READ_BUF_SIZE := 65536
 const MAX_SANITIZED_LENGTH := 200
@@ -15,6 +16,12 @@ const TRANSCRIPT_ENTRY_TYPES := {
 	"system": true,
 	"attachment": true,
 }
+const FORK_CLEARED_FIELDS := [
+	"teamName",
+	"agentName",
+	"slug",
+	"sourceToolAssistantUUID",
+]
 
 static var _uuid_regex: RegEx
 static var _command_name_regex: RegEx
@@ -218,6 +225,129 @@ static func delete_session(session_id: String, directory: String = "") -> int:
 
 	_clear_last_error()
 	return OK
+
+
+static func fork_session(
+	session_id: String,
+	directory: String = "",
+	up_to_message_id: String = "",
+	title: String = ""
+):
+	if not _is_valid_uuid(session_id):
+		return _fail_fork("Invalid session_id: %s" % session_id)
+	if not up_to_message_id.is_empty() and not _is_valid_uuid(up_to_message_id):
+		return _fail_fork("Invalid up_to_message_id: %s" % up_to_message_id)
+
+	var source := _find_session_file_with_dir(session_id, directory) if not directory.is_empty() else _find_latest_visible_session_file(session_id)
+	if source.has("error"):
+		return _fail_fork(str(source.get("message", "Failed to locate session %s for fork" % session_id)))
+	if source.is_empty():
+		if directory.is_empty():
+			return _fail_fork("Session %s not found" % session_id)
+		return _fail_fork("Session %s not found in project directory for %s" % [session_id, directory])
+
+	var file_path := str(source.get("path", ""))
+	var project_dir := str(source.get("project_dir", ""))
+	var content := FileAccess.get_file_as_string(file_path)
+	var parsed := _parse_fork_transcript(content, session_id)
+	var transcript: Array[Dictionary] = parsed.get("transcript", [])
+	var content_replacements: Array = parsed.get("content_replacements", [])
+	if transcript.is_empty():
+		return _fail_fork("Session %s has no messages to fork" % session_id)
+
+	if not up_to_message_id.is_empty():
+		var cutoff := -1
+		for index in range(transcript.size()):
+			if str(transcript[index].get("uuid", "")) == up_to_message_id:
+				cutoff = index
+				break
+		if cutoff < 0:
+			return _fail_fork("Message %s not found in session %s" % [up_to_message_id, session_id])
+		transcript = transcript.slice(0, cutoff + 1)
+
+	var uuid_mapping := {}
+	for entry in transcript:
+		uuid_mapping[str(entry.get("uuid", ""))] = _generate_uuid_v4()
+
+	var writable: Array[Dictionary] = []
+	var by_uuid := {}
+	for entry in transcript:
+		by_uuid[str(entry.get("uuid", ""))] = entry
+		if str(entry.get("type", "")) != "progress":
+			writable.append(entry)
+	if writable.is_empty():
+		return _fail_fork("Session %s has no messages to fork" % session_id)
+
+	var forked_session_id := ""
+	var fork_path := ""
+	for _attempt in range(16):
+		forked_session_id = _generate_uuid_v4()
+		fork_path = _join_path(project_dir, "%s.jsonl" % forked_session_id)
+		if not FileAccess.file_exists(fork_path):
+			break
+		forked_session_id = ""
+		fork_path = ""
+	if forked_session_id.is_empty():
+		return _fail_fork("Failed to allocate a new session ID for fork of %s" % session_id)
+
+	var now := _utc_now_iso8601_z()
+	var lines: Array[String] = []
+	for index in range(writable.size()):
+		var original := writable[index]
+		var forked := _duplicate_variant(original)
+		if forked is not Dictionary:
+			continue
+		var original_uuid := str(original.get("uuid", ""))
+		var parent_uuid := _resolve_fork_parent_uuid(original, by_uuid, uuid_mapping)
+		var logical_parent := original.get("logicalParentUuid", null)
+		var forked_timestamp := now if index == writable.size() - 1 else str(original.get("timestamp", now))
+
+		forked["uuid"] = str(uuid_mapping.get(original_uuid, _generate_uuid_v4()))
+		forked["parentUuid"] = parent_uuid
+		forked["logicalParentUuid"] = uuid_mapping.get(str(logical_parent), null) \
+			if logical_parent is String and not str(logical_parent).is_empty() \
+			else null
+		forked["sessionId"] = forked_session_id
+		forked["timestamp"] = forked_timestamp
+		forked["isSidechain"] = false
+		forked["forkedFrom"] = {
+			"sessionId": session_id,
+			"messageUuid": original_uuid,
+		}
+		for stale_key in FORK_CLEARED_FIELDS:
+			forked.erase(stale_key)
+		lines.append(JSON.stringify(forked, "", false))
+
+	if not content_replacements.is_empty():
+		lines.append(JSON.stringify({
+			"type": "content-replacement",
+			"sessionId": forked_session_id,
+			"replacements": _duplicate_variant(content_replacements),
+		}, "", false))
+
+	var fork_title := title.strip_edges()
+	if fork_title.is_empty():
+		fork_title = "%s (fork)" % _derive_fork_title_base(content)
+	lines.append(JSON.stringify({
+		"type": "custom-title",
+		"sessionId": forked_session_id,
+		"customTitle": fork_title,
+	}, "", false))
+
+	if FileAccess.file_exists(fork_path):
+		return _fail_fork("Failed to create forked session file at %s" % fork_path)
+	var file := FileAccess.open(fork_path, FileAccess.WRITE)
+	if file == null:
+		return _fail_fork("Failed to create forked session file at %s" % fork_path)
+	file.store_string("\n".join(lines) + "\n")
+	var write_error := file.get_error()
+	file.close()
+	if write_error != OK:
+		DirAccess.remove_absolute(fork_path)
+		return _fail_fork("Failed to write forked session file at %s" % fork_path)
+
+	_clear_last_error()
+	return ClaudeForkSessionResultScript.new(forked_session_id)
 
 
 static func get_last_error() -> String:
@@ -1212,6 +1342,11 @@ static func _fail_mutation(error_code: int, message: String) -> int:
 	return error_code
 
 
+static func _fail_fork(message: String):
+	_last_error = message
+	return null
+
+
 static func _parse_transcript_entries(content: String) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	for line_variant in content.split("\n", false):
@@ -1228,6 +1363,33 @@ static func _parse_transcript_entries(content: String) -> Array[Dictionary]:
 			continue
 		entries.append(entry)
 	return entries
+
+
+static func _parse_fork_transcript(content: String, session_id: String) -> Dictionary:
+	var transcript: Array[Dictionary] = []
+	var content_replacements: Array = []
+	for line_variant in content.split("\n", false):
+		var line := str(line_variant).strip_edges()
+		if line.is_empty():
+			continue
+		var entry = JSON.parse_string(line)
+		if not (entry is Dictionary):
+			continue
+		var dictionary := entry as Dictionary
+		var entry_type := str(dictionary.get("type", ""))
+		if TRANSCRIPT_ENTRY_TYPES.has(entry_type) and dictionary.get("uuid") is String:
+			if bool(dictionary.get("isSidechain", false)):
+				continue
+			transcript.append(dictionary)
+			continue
+		if entry_type == "content-replacement" \
+			and str(dictionary.get("sessionId", "")) == session_id \
+			and dictionary.get("replacements") is Array:
+			content_replacements.append_array((dictionary.get("replacements") as Array).duplicate(true))
+	return {
+		"transcript": transcript,
+		"content_replacements": content_replacements,
+	}
 
 
 static func _build_conversation_chain(entries: Array[Dictionary]) -> Array[Dictionary]:
@@ -1307,6 +1469,71 @@ static func _pick_best_leaf(candidates: Array[Dictionary], entry_index: Dictiona
 			best = current
 			best_index = current_index
 	return best
+
+
+static func _resolve_fork_parent_uuid(original: Dictionary, by_uuid: Dictionary, uuid_mapping: Dictionary) -> Variant:
+	var parent_id := original.get("parentUuid", null)
+	while parent_id is String and not str(parent_id).is_empty():
+		var parent := by_uuid.get(str(parent_id), null)
+		if not (parent is Dictionary):
+			break
+		if str((parent as Dictionary).get("type", "")) != "progress":
+			return uuid_mapping.get(str(parent_id), null)
+		parent_id = (parent as Dictionary).get("parentUuid", null)
+	return null
+
+
+static func _derive_fork_title_base(content: String) -> String:
+	var head := content.substr(0, mini(content.length(), LITE_READ_BUF_SIZE))
+	var tail_start := maxi(0, content.length() - LITE_READ_BUF_SIZE)
+	var tail := content.substr(tail_start)
+	var custom_title = _extract_last_json_string_field(tail, "customTitle")
+	if custom_title == null:
+		custom_title = _extract_last_json_string_field(head, "customTitle")
+	if custom_title != null and not str(custom_title).strip_edges().is_empty():
+		return str(custom_title).strip_edges()
+	var ai_title = _extract_last_json_string_field(tail, "aiTitle")
+	if ai_title == null:
+		ai_title = _extract_last_json_string_field(head, "aiTitle")
+	if ai_title != null and not str(ai_title).strip_edges().is_empty():
+		return str(ai_title).strip_edges()
+	var first_prompt := _extract_first_prompt_from_head(head).strip_edges()
+	if not first_prompt.is_empty():
+		return first_prompt
+	return "Forked session"
+
+
+static func _generate_uuid_v4() -> String:
+	var random_bytes := Crypto.new().generate_random_bytes(16)
+	if random_bytes.size() < 16:
+		return "%08x-%04x-4%03x-8%03x-%012x" % [
+			randi(),
+			randi() & 0xffff,
+			randi() & 0x0fff,
+			randi() & 0x0fff,
+			randi(),
+		]
+	random_bytes[6] = (int(random_bytes[6]) & 0x0f) | 0x40
+	random_bytes[8] = (int(random_bytes[8]) & 0x3f) | 0x80
+	var parts := [
+		_hex_bytes(random_bytes, 0, 4),
+		_hex_bytes(random_bytes, 4, 2),
+		_hex_bytes(random_bytes, 6, 2),
+		_hex_bytes(random_bytes, 8, 2),
+		_hex_bytes(random_bytes, 10, 6),
+	]
+	return "-".join(parts)
+
+
+static func _hex_bytes(bytes: PackedByteArray, offset: int, count: int) -> String:
+	var result := ""
+	for index in range(offset, offset + count):
+		result += "%02x" % int(bytes[index])
+	return result
+
+
+static func _utc_now_iso8601_z() -> String:
+	return Time.get_datetime_string_from_system(true, true).replace(" ", "T") + "Z"
 
 
 static func _is_visible_message(entry: Dictionary) -> bool:

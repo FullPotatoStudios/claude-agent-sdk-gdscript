@@ -157,11 +157,11 @@ Outputs:
 - basic session mutation helpers
 - scene-free SDK-hosted MCP tool/server helpers
 - richer chat-configuration parity for prompt and built-in tool selection
-- future session forking helpers
+- runtime-first session forking helpers
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10G: transcript-detail parity and panel transcript controls
+- Phase 10H: runtime-first session forking helpers
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -206,10 +206,15 @@ Delivered in Phase 10G:
 - transcript filtering and de-duplication controls in `ClaudeChatPanel`
 - incremental live transcript rendering and live user-side tool-result classification under the `Tools` toggle
 
+Delivered in Phase 10H:
+- `ClaudeForkSessionResult`
+- `ClaudeSessions.fork_session()` with optional cutoff/title support
+- `ClaudeClientAdapter.fork_session()` and `ClaudeClientNode.fork_session()`
+- runtime-first saved-session branching with UUID remapping, `forkedFrom` metadata, worktree-aware lookup, and title/content-replacement preservation
+
 Still deferred within Phase 10:
-- session forking helpers
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize Phase 10G.
+Work should currently prioritize the next post-10H parity slice from the upstream ledger.

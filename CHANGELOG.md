@@ -18,10 +18,12 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - scene-free `ClaudeBuiltInToolCatalog` helper plus a grouped built-in tool picker in the reference panel, with advanced allow/deny passthrough preserved behind a collapsed section
 - `ClaudeSessionTranscriptEntry` plus richer normalized transcript-detail reading through `ClaudeSessions.get_session_transcript()`
 - transcript-detail convenience passthroughs on `ClaudeClientAdapter` and `ClaudeClientNode`
+- `ClaudeForkSessionResult` plus runtime-first saved-session forking through `ClaudeSessions.fork_session()`, `ClaudeClientAdapter.fork_session()`, and `ClaudeClientNode.fork_session()`
 
 ### Changed
 
 - `ClaudeChatPanel` now uses a conversation-first `Chat` view with a separate `Settings` view, quick chat controls, transcript granularity toggles, de-duplicated result rendering, and richer saved/live transcript detail handling
+- session-history docs and parity tracking now reflect explicit saved-session branching support
 
 ## [0.1.0] - 2026-04-04
 

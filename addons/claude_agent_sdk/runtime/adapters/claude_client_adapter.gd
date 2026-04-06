@@ -135,6 +135,20 @@ func delete_session(session_id: String, directory: String = "") -> int:
 	return _handle_session_mutation_result(ClaudeSessionsScript.delete_session(session_id, directory))
 
 
+func fork_session(
+	session_id: String,
+	directory: String = "",
+	up_to_message_id: String = "",
+	title: String = ""
+):
+	var result = ClaudeSessionsScript.fork_session(session_id, directory, up_to_message_id, title)
+	if result != null:
+		_last_error = ""
+		return result
+	_emit_error(ClaudeSessionsScript.get_last_error())
+	return null
+
+
 func get_context_usage() -> Dictionary:
 	return await _client.get_context_usage()
 

@@ -648,6 +648,268 @@ func test_scoped_mutation_falls_through_primary_access_error_to_worktree_session
 	assert_bool(FileAccess.get_file_as_string(worktree_file).contains('"customTitle":"Worktree title"')).is_true()
 
 
+func test_fork_session_validates_inputs_and_errors_cleanly() -> void:
+	var config_root := _create_config_root("fork-errors")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	assert_that(ClaudeSessions.fork_session("not-a-uuid")).is_null()
+	assert_str(ClaudeSessions.get_last_error()).contains("Invalid session_id")
+	assert_that(ClaudeSessions.fork_session("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "", "not-a-uuid")).is_null()
+	assert_str(ClaudeSessions.get_last_error()).contains("Invalid up_to_message_id")
+	assert_that(ClaudeSessions.fork_session("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")).is_null()
+	assert_str(ClaudeSessions.get_last_error()).contains("not found")
+
+	var project_path := "/tmp/fork-error-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "24242424-2424-4242-8242-242424242424"
+	_write_session_file(project_dir, session_id, [
+		{"type": "summary", "summary": "Metadata only"},
+	], 1712302500)
+
+	assert_that(ClaudeSessions.fork_session(session_id, project_path)).is_null()
+	assert_str(ClaudeSessions.get_last_error()).contains("has no messages to fork")
+
+
+func test_fork_session_creates_new_session_with_remapped_chain_and_metadata() -> void:
+	var config_root := _create_config_root("fork-main")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/fork-main-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "25252525-2525-4252-8252-252525252525"
+	_write_session_file(project_dir, session_id, [
+		{
+			"type": "user",
+			"uuid": "11111111-1111-4111-8111-111111111111",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T15:00:00Z",
+			"cwd": project_path,
+			"message": {"role": "user", "content": "Original prompt"},
+		},
+		{
+			"type": "progress",
+			"uuid": "22222222-2222-4222-8222-222222222222",
+			"parentUuid": "11111111-1111-4111-8111-111111111111",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T15:00:01Z",
+			"message": {"summary": "Scanning"},
+		},
+		{
+			"type": "system",
+			"uuid": "33333333-3333-4333-8333-333333333333",
+			"parentUuid": "22222222-2222-4222-8222-222222222222",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T15:00:02Z",
+			"logicalParentUuid": "11111111-1111-4111-8111-111111111111",
+			"teamName": "team",
+			"message": {"message": "Loaded context"},
+		},
+		{
+			"type": "attachment",
+			"uuid": "44444444-4444-4444-8444-444444444444",
+			"parentUuid": "33333333-3333-4333-8333-333333333333",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T15:00:03Z",
+			"agentName": "agent",
+			"message": {"path": "res://scene.tscn"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "55555555-5555-4555-8555-555555555555",
+			"parentUuid": "44444444-4444-4444-8444-444444444444",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T15:00:04Z",
+			"logicalParentUuid": "11111111-1111-4111-8111-111111111111",
+			"slug": "slug",
+			"sourceToolAssistantUUID": "source-tool",
+			"message": {"role": "assistant", "content": "Original answer"},
+		},
+		{
+			"type": "content-replacement",
+			"sessionId": session_id,
+			"replacements": [{"path": "res://scene.tscn", "content": "forked"}],
+		},
+		{"type": "summary", "customTitle": "Original title"},
+	], 1712302600)
+
+	var result = ClaudeSessions.fork_session(session_id, project_path)
+	assert_object(result).is_not_null()
+	if result == null:
+		return
+	assert_str(ClaudeSessions.get_last_error()).is_empty()
+	assert_str(result.session_id).is_not_equal(session_id)
+
+	var fork_path := project_dir.path_join("%s.jsonl" % result.session_id)
+	assert_bool(FileAccess.file_exists(fork_path)).is_true()
+
+	var original_messages := ClaudeSessions.get_session_messages(session_id, project_path)
+	var fork_messages := ClaudeSessions.get_session_messages(result.session_id, project_path)
+	assert_int(fork_messages.size()).is_equal(original_messages.size())
+
+	var fork_entries := _read_session_entries(fork_path)
+	assert_int(fork_entries.size()).is_equal(6)
+	assert_str(str(fork_entries[-2].get("type", ""))).is_equal("content-replacement")
+	assert_str(str(fork_entries[-1].get("type", ""))).is_equal("custom-title")
+	assert_str(str(fork_entries[-1].get("customTitle", ""))).is_equal("Original title (fork)")
+	assert_str(str(fork_entries[-2].get("sessionId", ""))).is_equal(result.session_id)
+	assert_array(fork_entries[-2].get("replacements", [])).has_size(1)
+
+	var written_entries := fork_entries.slice(0, 4)
+	for entry in written_entries:
+		assert_str(str(entry.get("sessionId", ""))).is_equal(result.session_id)
+		assert_bool(entry.has("forkedFrom")).is_true()
+		assert_bool(entry.has("teamName")).is_false()
+		assert_bool(entry.has("agentName")).is_false()
+		assert_bool(entry.has("slug")).is_false()
+		assert_bool(entry.has("sourceToolAssistantUUID")).is_false()
+		assert_str(str(entry.get("uuid", ""))).is_not_equal("")
+		assert_str(str(entry.get("uuid", ""))).not_contains("fork-")
+
+	assert_str(str(written_entries[0].get("type", ""))).is_equal("user")
+	assert_that(written_entries[0].get("parentUuid")).is_null()
+	assert_str(str(written_entries[1].get("type", ""))).is_equal("system")
+	assert_str(str(written_entries[2].get("type", ""))).is_equal("attachment")
+	assert_str(str(written_entries[3].get("type", ""))).is_equal("assistant")
+	assert_str(str(written_entries[1].get("parentUuid", ""))).is_equal(str(written_entries[0].get("uuid", "")))
+	assert_str(str(written_entries[2].get("parentUuid", ""))).is_equal(str(written_entries[1].get("uuid", "")))
+	assert_str(str(written_entries[3].get("parentUuid", ""))).is_equal(str(written_entries[2].get("uuid", "")))
+	assert_str(str(written_entries[1].get("logicalParentUuid", ""))).is_equal(str(written_entries[0].get("uuid", "")))
+	assert_str(str(written_entries[3].get("logicalParentUuid", ""))).is_equal(str(written_entries[0].get("uuid", "")))
+	assert_str(str((written_entries[3].get("forkedFrom", {}) as Dictionary).get("sessionId", ""))).is_equal(session_id)
+	assert_str(str((written_entries[3].get("forkedFrom", {}) as Dictionary).get("messageUuid", ""))).is_equal("55555555-5555-4555-8555-555555555555")
+	assert_str(str(written_entries[3].get("timestamp", ""))).is_not_equal("2026-04-05T15:00:04Z")
+
+	var fork_info = ClaudeSessions.get_session_info(result.session_id, project_path)
+	assert_object(fork_info).is_not_null()
+	if fork_info != null:
+		assert_str(fork_info.custom_title).is_equal("Original title (fork)")
+
+
+func test_fork_session_honors_cutoff_and_custom_title() -> void:
+	var config_root := _create_config_root("fork-cutoff")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/fork-cutoff-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "26262626-2626-4262-8262-262626262626"
+	_write_session_file(project_dir, session_id, [
+		{
+			"type": "user",
+			"uuid": "66666666-6666-4666-8666-666666666661",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T16:00:00Z",
+			"message": {"role": "user", "content": "First"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "66666666-6666-4666-8666-666666666662",
+			"parentUuid": "66666666-6666-4666-8666-666666666661",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T16:00:01Z",
+			"message": {"role": "assistant", "content": "First answer"},
+		},
+		{
+			"type": "user",
+			"uuid": "66666666-6666-4666-8666-666666666663",
+			"parentUuid": "66666666-6666-4666-8666-666666666662",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T16:00:02Z",
+			"message": {"role": "user", "content": "Second"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "66666666-6666-4666-8666-666666666664",
+			"parentUuid": "66666666-6666-4666-8666-666666666663",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T16:00:03Z",
+			"message": {"role": "assistant", "content": "Second answer"},
+		},
+	], 1712302700)
+
+	var result = ClaudeSessions.fork_session(
+		session_id,
+		project_path,
+		"66666666-6666-4666-8666-666666666662",
+		"My Fork"
+	)
+	assert_object(result).is_not_null()
+	if result == null:
+		return
+
+	var fork_messages := ClaudeSessions.get_session_messages(result.session_id, project_path)
+	assert_int(fork_messages.size()).is_equal(2)
+
+	var fork_info = ClaudeSessions.get_session_info(result.session_id, project_path)
+	assert_object(fork_info).is_not_null()
+	if fork_info != null:
+		assert_str(fork_info.custom_title).is_equal("My Fork")
+
+	assert_that(ClaudeSessions.fork_session(session_id, project_path, "27272727-2727-4272-8272-272727272727")).is_null()
+	assert_str(ClaudeSessions.get_last_error()).contains("not found in session")
+
+
+func test_fork_session_supports_worktree_lookup_and_unscoped_duplicate_resolution() -> void:
+	var config_root := _create_config_root("fork-lookup")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var repo_root := _create_temp_root("git-fork-repo")
+	var worktree_parent := _create_temp_root("git-fork-worktree-parent")
+	var worktree_root := worktree_parent.path_join("feature-fork")
+	_init_git_repo(repo_root)
+	_create_git_worktree(repo_root, worktree_root, "feature/fork")
+
+	var scoped_session_id := "28282828-2828-4282-8282-282828282828"
+	var repo_project_dir := _make_project_dir(config_root, repo_root)
+	var worktree_project_dir := _make_project_dir(config_root, worktree_root)
+	_write_session_file(repo_project_dir, scoped_session_id, [
+		{
+			"type": "user",
+			"uuid": "77777777-7777-4777-8777-777777777771",
+			"sessionId": scoped_session_id,
+			"cwd": repo_root,
+			"message": {"role": "user", "content": "Repo copy"},
+		},
+	], 1712302800)
+	_write_session_file(worktree_project_dir, scoped_session_id, [
+		{
+			"type": "user",
+			"uuid": "77777777-7777-4777-8777-777777777772",
+			"sessionId": scoped_session_id,
+			"cwd": worktree_root,
+			"message": {"role": "user", "content": "Worktree copy"},
+		},
+	], 1712302900)
+
+	var scoped_fork = ClaudeSessions.fork_session(scoped_session_id, repo_root)
+	assert_object(scoped_fork).is_not_null()
+	if scoped_fork != null:
+		var scoped_info = ClaudeSessions.get_session_info(scoped_fork.session_id, repo_root)
+		assert_object(scoped_info).is_not_null()
+		if scoped_info != null:
+			assert_str(str(scoped_info.cwd)).is_equal(repo_root)
+
+	var older_dir := _make_project_dir(config_root, "/tmp/fork-older-project")
+	var newer_dir := _make_project_dir(config_root, "/tmp/fork-newer-project")
+	var duplicate_session_id := "29292929-2929-4292-8292-292929292929"
+	_write_session_file(older_dir, duplicate_session_id, [
+		{"type": "user", "uuid": "dup-old-u", "sessionId": duplicate_session_id, "message": {"role": "user", "content": "Older prompt"}},
+		{"type": "summary", "summary": "Older summary"},
+	], 1712303000)
+	_write_session_file(newer_dir, duplicate_session_id, [
+		{"type": "user", "uuid": "dup-new-u", "sessionId": duplicate_session_id, "message": {"role": "user", "content": "Newer prompt"}},
+		{"type": "summary", "summary": "Newer summary"},
+	], 1712303100)
+
+	var unscoped_fork = ClaudeSessions.fork_session(duplicate_session_id)
+	assert_object(unscoped_fork).is_not_null()
+	if unscoped_fork == null:
+		return
+	var older_fork_info = ClaudeSessions.get_session_info(unscoped_fork.session_id, "/tmp/fork-older-project")
+	var newer_fork_info = ClaudeSessions.get_session_info(unscoped_fork.session_id, "/tmp/fork-newer-project")
+	assert_that(older_fork_info).is_null()
+	assert_object(newer_fork_info).is_not_null()
+
+
 func _create_config_root(label: String) -> String:
 	var root_path := _create_temp_root("claude-config-%s" % label)
 	DirAccess.make_dir_recursive_absolute(root_path.path_join("projects"))
@@ -686,6 +948,18 @@ func _write_session_text_file(project_dir: String, session_id: String, content: 
 	file.store_string(content)
 	file.close()
 	_set_session_file_mtime(path, mtime)
+
+
+func _read_session_entries(path: String) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for line_variant in FileAccess.get_file_as_string(path).split("\n", false):
+		var line := str(line_variant).strip_edges()
+		if line.is_empty():
+			continue
+		var parsed = JSON.parse_string(line)
+		if parsed is Dictionary:
+			entries.append(parsed)
+	return entries
 
 
 func _set_session_file_mtime(path: String, mtime: int) -> void:

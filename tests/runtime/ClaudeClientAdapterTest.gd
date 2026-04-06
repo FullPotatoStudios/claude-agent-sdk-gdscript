@@ -431,6 +431,13 @@ func test_adapter_session_passthrough_reads_and_mutates_sessions() -> void:
 	assert_int(transcript.size()).is_equal(2)
 	assert_str(transcript[0].kind).is_equal("user")
 	assert_str(transcript[1].kind).is_equal("assistant")
+	var fork_result = adapter.fork_session(session_id, project_path, "", "Adapter fork")
+	assert_object(fork_result).is_not_null()
+	if fork_result != null:
+		var fork_info = adapter.get_session_info(fork_result.session_id, project_path)
+		assert_object(fork_info).is_not_null()
+		if fork_info != null:
+			assert_str(fork_info.custom_title).is_equal("Adapter fork")
 	assert_str(adapter.get_last_error()).is_empty()
 
 
@@ -443,6 +450,8 @@ func test_adapter_session_mutation_failure_updates_last_error_and_emits_signal()
 	assert_str(adapter.get_last_error()).contains("Invalid session_id")
 	assert_int(errors.size()).is_equal(1)
 	assert_str(errors[0]).contains("Invalid session_id")
+	assert_that(adapter.fork_session("not-a-uuid")).is_null()
+	assert_str(adapter.get_last_error()).contains("Invalid session_id")
 
 
 func _await_frames(count: int) -> void:

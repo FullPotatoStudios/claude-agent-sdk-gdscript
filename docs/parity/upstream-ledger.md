@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10G transcript-detail parity and panel transcript controls
+- Active roadmap slice: Phase 10H runtime-first session forking helpers
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -58,6 +58,7 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeSessions.rename_session()`
   - `ClaudeSessions.tag_session()`
   - `ClaudeSessions.delete_session()`
+  - `ClaudeSessions.fork_session()`
   - `ClaudeSessions.get_last_error()` for mutation failures
   - `ClaudeClientAdapter` session-history and mutation convenience methods
   - `ClaudeClientNode` session-history and mutation convenience methods
@@ -71,11 +72,11 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` conversation-first `Chat` / `Settings` split with quick chat controls and secondary prompt/tool configuration
   - `ClaudeChatPanel` transcript granularity controls for thinking, tools, results, system, and raw detail
   - richer saved-session transcript restoration using normalized thinking/tool/system/result detail
+  - runtime-first session forking helpers with adapter/node passthroughs, UUID remapping, cutoff support, and preserved `content-replacement` / title metadata
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
 - Still deferred:
-  - session forking helpers
   - broader settings and agent-definition parity slices
 
 ## Update process

@@ -2,7 +2,7 @@
 
 `ClaudeSessions` provides scene-free access to Claude's local session history without opening a live `ClaudeSDKClient` connection.
 
-This Phase 10G-capable API is intended for history browsers, transcript viewers, restore-style tooling, and basic session management. It supports visible-message history access, richer normalized transcript detail, and rename/tag/delete mutations. Session forking remains deferred.
+This Phase 10H-capable API is intended for history browsers, transcript viewers, restore-style tooling, and basic session management. It supports visible-message history access, richer normalized transcript detail, explicit session forking, and rename/tag/delete mutations.
 
 The canonical low-level entrypoint remains `ClaudeSessions`, but the same session surface is now also exposed through:
 
@@ -17,6 +17,7 @@ var sessions := ClaudeSessions.list_sessions()
 var session_info := ClaudeSessions.get_session_info(session_id)
 var messages := ClaudeSessions.get_session_messages(session_id)
 var transcript := ClaudeSessions.get_session_transcript(session_id)
+var fork_result := ClaudeSessions.fork_session(session_id)
 var rename_error := ClaudeSessions.rename_session(session_id, "My session title")
 ```
 
@@ -26,6 +27,7 @@ Available methods:
 - `ClaudeSessions.get_session_info(session_id: String, directory := "")`
 - `ClaudeSessions.get_session_messages(session_id: String, directory := "", limit := 0, offset := 0)`
 - `ClaudeSessions.get_session_transcript(session_id: String, directory := "", limit := 0, offset := 0)`
+- `ClaudeSessions.fork_session(session_id: String, directory := "", up_to_message_id := "", title := "")`
 - `ClaudeSessions.rename_session(session_id: String, title: String, directory := "")`
 - `ClaudeSessions.tag_session(session_id: String, tag := null, directory := "")`
 - `ClaudeSessions.delete_session(session_id: String, directory := "")`
@@ -37,6 +39,7 @@ Return types:
 - `get_session_info()` returns `ClaudeSessionInfo` or `null`
 - `get_session_messages()` returns `Array[ClaudeSessionMessage]`
 - `get_session_transcript()` returns `Array[ClaudeSessionTranscriptEntry]`
+- `fork_session()` returns `ClaudeForkSessionResult` or `null`
 - mutation methods return Godot `Error` codes and populate `ClaudeSessions.get_last_error()` on failure
 
 ## Directory semantics
@@ -74,6 +77,7 @@ Project sessions are expected under:
 - missing exact long-path directories fall back to prefix matching
 - git worktrees are included when project-scoped listing is requested and `include_worktrees` is left enabled
 - scoped rename, tag, and delete mutations use the same primary-project plus worktree lookup behavior
+- scoped forking uses the same primary-project plus worktree lookup behavior as the other local mutation helpers
 
 If `git` is unavailable or worktree discovery fails, lookup falls back to the primary project path.
 
@@ -108,6 +112,11 @@ Transcript reading reconstructs the main visible conversation chain and skips si
 
 Basic mutation behavior:
 
+- `fork_session()` creates a new session file with a fresh session UUID and remapped message UUIDs
+- `fork_session()` can optionally stop at `up_to_message_id` inclusive and apply an explicit fork title
+- forked entries preserve the visible parent chain while skipping historical `progress` entries in the written output
+- forked entries include `forkedFrom = { "sessionId": <source>, "messageUuid": <original> }`
+- forked sessions preserve `content-replacement` metadata and append a `custom-title` entry for the fork title
 - `rename_session()` appends a `custom-title` JSONL entry and the latest title wins in `list_sessions()` / `get_session_info()`
 - `tag_session()` appends a `tag` JSONL entry; passing `null` clears the tag by appending an empty-string tag entry
 - `delete_session()` hard-deletes the session `.jsonl` file
@@ -133,6 +142,10 @@ if not history.is_empty():
 	for entry in detail:
 		print(entry.kind, ": ", entry.title)
 
+	var fork_result := ClaudeSessions.fork_session(session_id, "res://", "", "Branch A")
+	if fork_result != null:
+		print("Forked to ", fork_result.session_id)
+
 	var rename_error := ClaudeSessions.rename_session(session_id, "Review notes", "res://")
 	if rename_error != OK:
 		push_error(ClaudeSessions.get_last_error())
@@ -140,7 +153,7 @@ if not history.is_empty():
 
 ## Current scope
 
-Phase 10G still intentionally stops before session forking. Use the parity docs for the current status of broader session and upstream parity work:
+Phase 10H delivers explicit session forking, but broader settings and agent-definition parity are still deferred. Use the parity docs for the current status of broader session and upstream parity work:
 
 - `docs/parity/feature-matrix.md`
 - `docs/parity/upstream-ledger.md`

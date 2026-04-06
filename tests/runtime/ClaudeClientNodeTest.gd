@@ -110,6 +110,13 @@ func test_node_exposes_session_passthrough_methods() -> void:
 	var transcript := node.get_session_transcript(session_id, project_path)
 	assert_int(transcript.size()).is_equal(1)
 	assert_str(transcript[0].kind).is_equal("user")
+	var fork_result = node.fork_session(session_id, project_path, "", "Node fork")
+	assert_object(fork_result).is_not_null()
+	if fork_result != null:
+		var fork_info = node.get_session_info(fork_result.session_id, project_path)
+		assert_object(fork_info).is_not_null()
+		if fork_info != null:
+			assert_str(fork_info.custom_title).is_equal("Node fork")
 
 	var info = node.get_session_info(session_id, project_path)
 	assert_object(info).is_not_null()

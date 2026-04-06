@@ -109,6 +109,15 @@ func delete_session(session_id: String, directory: String = "") -> int:
 	return _adapter.delete_session(session_id, directory)
 
 
+func fork_session(
+	session_id: String,
+	directory: String = "",
+	up_to_message_id: String = "",
+	title: String = ""
+):
+	return _adapter.fork_session(session_id, directory, up_to_message_id, title)
+
+
 func get_context_usage() -> Dictionary:
 	return await _adapter.get_context_usage()
 
