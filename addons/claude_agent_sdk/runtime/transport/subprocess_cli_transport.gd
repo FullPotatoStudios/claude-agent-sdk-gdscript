@@ -89,6 +89,7 @@ func build_command_args() -> PackedStringArray:
 		args.append("--include-partial-messages")
 	if not _options.setting_sources.is_empty():
 		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
+	_append_extra_args(args)
 	var resolved_max_thinking_tokens := _resolved_max_thinking_tokens()
 	if resolved_max_thinking_tokens != null:
 		args.append_array(["--max-thinking-tokens", str(int(resolved_max_thinking_tokens))])
@@ -552,11 +553,32 @@ func _build_mcp_config_argument() -> String:
 	return ""
 
 
+func _append_extra_args(args: PackedStringArray) -> void:
+	if not (_options.extra_args is Dictionary) or (_options.extra_args as Dictionary).is_empty():
+		return
+	for key_variant in (_options.extra_args as Dictionary).keys():
+		var flag_name := str(key_variant).strip_edges()
+		if flag_name.is_empty():
+			continue
+		args.append("--%s" % flag_name)
+		var value: Variant = (_options.extra_args as Dictionary)[key_variant]
+		if value != null:
+			args.append(str(value))
+
+
 func _start_reader_threads() -> void:
 	_stdout_thread = Thread.new()
 	_stdout_thread.start(_read_pipe.bind("stdout"))
 	_stderr_thread = Thread.new()
 	_stderr_thread.start(_read_pipe.bind("stderr"))
+
+
+func _should_consume_stderr() -> bool:
+	if _options.stderr.is_valid():
+		return true
+	if _options.extra_args is Dictionary:
+		return (_options.extra_args as Dictionary).has("debug-to-stderr")
+	return false
 
 
 func _read_pipe(stream_name: String) -> void:
@@ -574,6 +596,8 @@ func _read_pipe(stream_name: String) -> void:
 
 		if read_error == OK:
 			if not line.is_empty():
+				if stream_name == "stderr" and not _should_consume_stderr():
+					continue
 				_queue_line(stream_name, line)
 				continue
 		elif read_error == ERR_FILE_EOF:
@@ -641,6 +665,8 @@ func _drain_pending_events() -> void:
 		stdout_line.emit(line)
 	for line in stderr_lines:
 		stderr_line.emit(line)
+		if _options.stderr.is_valid() and not line.is_empty():
+			_options.stderr.call_deferred(line)
 	for message in errors:
 		_report_transport_error(message, true, true)
 

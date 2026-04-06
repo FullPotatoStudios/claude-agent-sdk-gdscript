@@ -161,10 +161,11 @@ Outputs:
 - runtime-first agent definitions and `setting_sources` parity
 - transport-first advanced CLI option parity
 - transport-first `settings` and `sandbox` parity
+- transport-first diagnostics and escape-hatch parity
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10K: transport-first `settings` and `sandbox` parity
+- Phase 10L: transport-first diagnostics and escape-hatch parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -231,9 +232,14 @@ Delivered in Phase 10K:
 - upstream-style `--settings` pass-through and sandbox merge behavior, including JSON-string passthrough, file-path loading, and sandbox-only fallback on parse/load failure
 - initialize/runtime boundary coverage proving `settings` and `sandbox` stay CLI-only rather than entering initialize payloads
 
+Delivered in Phase 10L:
+- transport-first `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
+- upstream-style extra-flag passthrough ordering and best-effort per-line stderr diagnostics callback delivery
+- initialize/runtime boundary coverage proving `extra_args` and `stderr` stay CLI-only rather than entering initialize payloads
+
 Still deferred within Phase 10:
-- broader transport/runtime parity beyond the current settings, sandbox, and agent-definition surface
+- broader transport/runtime parity beyond the current settings, sandbox, diagnostics, and agent-definition surface
 
 ## Current focus
 
-Work should currently prioritize the next post-10K parity slice from the upstream ledger.
+Work should currently prioritize the next post-10L parity slice from the upstream ledger.

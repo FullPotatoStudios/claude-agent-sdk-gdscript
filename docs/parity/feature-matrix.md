@@ -59,7 +59,7 @@ Phase 1 findings that constrain this matrix:
 | Initialize handshake and control routing | `_internal/query.py`, `tests/test_query.py` | Core to streaming mode and client capability negotiation | transport, parser | `v1 core` | Required for both one-shot and interactive flows |
 | String-prompt stdin lifetime rules | `tests/test_query.py` | Prevents deadlocks around late control requests | initialize flow, result tracking | `v1 core` | Important for hooks/MCP compatibility even before those features ship |
 | CLI discovery fallback search | `_internal/transport/subprocess_cli.py` | Nice UX, but not essential if `claude` on `PATH` plus explicit path works | subprocess transport | `v1 later` | Start with `claude` on `PATH` plus override path |
-| Broader CLI flag passthrough via `extra_args` | `ClaudeAgentOptions.extra_args` | Helps edge cases without widening the stable API too early | subprocess transport | `v1 later` | Useful once core behavior is stable |
+| Broader CLI flag passthrough via `extra_args` | `ClaudeAgentOptions.extra_args` | Helps edge cases without widening the stable API too early | subprocess transport | `v1 later` | Delivered post-v1 in Phase 10L as transport-first ordered passthrough with flag/value support |
 | Bundled CLI inside the SDK package | `_bundled/`, subprocess transport | Upstream convenience for Python packaging | packaging pipeline | `not applicable` | Conflicts with current addon strategy of using a user-installed CLI |
 
 ## Message parsing and typed event models
@@ -126,12 +126,12 @@ Phase 1 findings that constrain this matrix:
 | System prompt preset/file variants | `types.py`, transport tests | Good parity with upstream configuration ergonomics | command building | `v1 later` | Delivered post-v1 in Phase 10E through preset omission, preset+append, and file-path support |
 | Structured output (`output_format`) | `types.py`, `e2e-tests/test_structured_output.py` | Valuable for game/tool integrations consuming machine-readable results | result parsing, option encoding | `v1 later` | Strong candidate once the normal result flow is stable |
 | Partial-message option (`include_partial_messages`) | `types.py`, `e2e-tests/test_include_partial_messages.py` | Needed for token-delta UIs | stream-event parsing | `v1 later` | Pair with `StreamEvent` support |
-| Stderr callback / debug output plumbing | `types.py`, `examples/stderr_callback_example.py`, `e2e-tests/test_stderr_callback.py` | Important for diagnostics and developer UX | stderr draining | `v1 later` | Internal draining is core; public callback can arrive shortly after |
+| Stderr callback / debug output plumbing | `types.py`, `examples/stderr_callback_example.py`, `e2e-tests/test_stderr_callback.py` | Important for diagnostics and developer UX | stderr draining | `v1 later` | Delivered post-v1 in Phase 10L through `ClaudeAgentOptions.stderr`; deprecated Python `debug_stderr` remains not applicable in GDScript |
 | Agent definitions in initialize payload | `types.py`, `examples/agents.py`, `e2e-tests/test_agents_and_settings.py` | Advanced control over sub-agent behavior | initialize flow, typed models | `v1 later` | Delivered post-v1 in Phase 10I through `ClaudeAgentDefinition` and `ClaudeAgentOptions.agents` |
 | Setting-source controls | `types.py`, `examples/setting_sources.py`, `e2e-tests/test_agents_and_settings.py` | Useful for advanced config control | option encoding, CLI settings model | `v1 later` | Delivered post-v1 in Phase 10I through `ClaudeAgentOptions.setting_sources` and `--setting-sources` parity |
 | Continue-conversation flag, fallback model, betas, permission prompt tool, add_dirs, max budget, task budget, and advanced thinking config | `types.py`, examples, transport tests | Useful advanced transport/runtime parity once the core option model is stable | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10J through additive `ClaudeAgentOptions` fields and transport-only flag emission without initialize payload changes |
 | Settings and sandbox passthrough/merge behavior | `types.py`, `subprocess_cli.py`, transport tests | Important advanced transport parity for teams that already rely on Claude settings files or bash sandboxing | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10K through `ClaudeAgentOptions.settings`, `ClaudeAgentOptions.sandbox`, and upstream-style `--settings` merge behavior |
-| Broader plugin, user, `fork_session` option flag, and arbitrary extra-arg passthrough | `types.py`, examples, transport tests | Legitimate parity surface, but broader and easier to destabilize than the smaller post-v1 slices | command building, process-launch parity | `deferred` | Revisit after the bounded transport/runtime slices land |
+| Broader plugin, user, and `fork_session` option flag parity | `types.py`, examples, transport tests | Legitimate parity surface, but broader and easier to destabilize than the smaller post-v1 slices | command building, process-launch parity | `deferred` | Revisit after the bounded transport/runtime slices land |
 
 ## Godot-only additions
 
@@ -166,4 +166,5 @@ Status note:
 - Phase 10I adds runtime-first agent definitions and `setting_sources` parity
 - Phase 10J adds transport-first advanced CLI option parity without widening the initialize payload surface
 - Phase 10K adds transport-first `settings` and `sandbox` parity without widening the initialize payload surface
+- Phase 10L adds transport-first `extra_args` and `stderr` diagnostics parity without widening the initialize payload surface
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

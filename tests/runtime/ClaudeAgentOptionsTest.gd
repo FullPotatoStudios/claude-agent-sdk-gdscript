@@ -248,6 +248,29 @@ func test_duplicate_options_preserves_settings_and_sandbox_fields() -> void:
 	})
 
 
+func test_duplicate_options_preserves_extra_args_and_stderr_callback() -> void:
+	var stderr_lines: Array[String] = []
+	var stderr_callback := func(line: String) -> void:
+		stderr_lines.append(line)
+	var options = ClaudeAgentOptions.new({
+		"extra_args": {
+			"debug-to-stderr": null,
+			"verbose-json": "1",
+		},
+		"stderr": stderr_callback,
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_dict(duplicated.extra_args).is_equal({
+		"debug-to-stderr": null,
+		"verbose-json": "1",
+	})
+	assert_bool(duplicated.stderr == stderr_callback).is_true()
+	duplicated.stderr.call("hello")
+	assert_array(stderr_lines).is_equal(["hello"])
+
+
 func test_apply_normalizes_agent_definitions_from_upstream_wire_keys() -> void:
 	var options = ClaudeAgentOptions.new({
 		"agents": {
@@ -337,6 +360,27 @@ func test_apply_normalizes_sandbox_from_snake_case_and_camel_case_keys() -> void
 		},
 		"enable_weaker_nested_sandbox": true,
 	})
+
+
+func test_apply_preserves_extra_args_and_stderr_callback() -> void:
+	var stderr_lines: Array[String] = []
+	var stderr_callback := func(line: String) -> void:
+		stderr_lines.append(line)
+	var options = ClaudeAgentOptions.new({
+		"extra_args": {
+			"debug-to-stderr": null,
+			"diagnostic-format": "json",
+		},
+		"stderr": stderr_callback,
+	})
+
+	assert_dict(options.extra_args).is_equal({
+		"debug-to-stderr": null,
+		"diagnostic-format": "json",
+	})
+	assert_bool(options.stderr == stderr_callback).is_true()
+	options.stderr.call("line")
+	assert_array(stderr_lines).is_equal(["line"])
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -510,6 +554,57 @@ func test_subprocess_transport_supports_transport_first_advanced_cli_flags() -> 
 	assert_int(add_dir_indices.size()).is_equal(2)
 	assert_str(args[add_dir_indices[0] + 1]).is_equal("res://addons")
 	assert_str(args[add_dir_indices[1] + 1]).is_equal("/tmp/project")
+
+
+func test_subprocess_transport_supports_extra_args_and_stderr_diagnostics_rules() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"setting_sources": ["project"],
+		"extra_args": {
+			"debug-to-stderr": null,
+			"diagnostic-format": "json",
+		},
+		"thinking": {"type": "enabled", "budget_tokens": 8192},
+		"effort": "high",
+	}))
+	var args := transport.build_command_args()
+	var setting_sources_index := args.find("--setting-sources")
+	var debug_index := args.find("--debug-to-stderr")
+	var diagnostic_index := args.find("--diagnostic-format")
+	var thinking_index := args.find("--max-thinking-tokens")
+	var effort_index := args.find("--effort")
+
+	assert_int(setting_sources_index).is_not_equal(-1)
+	assert_int(debug_index).is_not_equal(-1)
+	assert_int(diagnostic_index).is_not_equal(-1)
+	assert_int(thinking_index).is_not_equal(-1)
+	assert_int(effort_index).is_not_equal(-1)
+	assert_int(debug_index).is_greater(setting_sources_index)
+	assert_int(diagnostic_index).is_greater(debug_index)
+	assert_int(thinking_index).is_greater(diagnostic_index)
+	assert_int(effort_index).is_greater(thinking_index)
+	assert_str(args[setting_sources_index + 1]).is_equal("project")
+	assert_str(args[diagnostic_index + 1]).is_equal("json")
+	assert_bool(transport._should_consume_stderr()).is_true()
+
+	var callback_lines: Array[String] = []
+	var callback_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"stderr": func(line: String) -> void:
+			callback_lines.append(line),
+	}))
+	assert_bool(callback_transport._should_consume_stderr()).is_true()
+	callback_transport._queue_line("stderr", "")
+	callback_transport._queue_line("stderr", "debug line")
+	callback_transport._drain_pending_events()
+	await get_tree().process_frame
+	assert_array(callback_lines).is_equal(["debug line"])
+
+	var debug_only_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"extra_args": {"debug-to-stderr": null},
+	}))
+	assert_bool(debug_only_transport._should_consume_stderr()).is_true()
+
+	var quiet_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
+	assert_bool(quiet_transport._should_consume_stderr()).is_false()
 
 
 func test_subprocess_transport_supports_settings_passthrough_and_sandbox_merging() -> void:

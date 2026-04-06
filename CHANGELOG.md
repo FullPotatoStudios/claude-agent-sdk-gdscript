@@ -22,6 +22,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` parity through `ClaudeAgentOptions`
 - transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
+- transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and best-effort `ClaudeAgentOptions.stderr` callback delivery
 
 ### Changed
 
@@ -30,6 +31,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - initialize and transport parity now cover agent definitions via initialize payloads and `--setting-sources` passthrough without adding panel-specific agent UI
 - transport parity now covers the current advanced CLI option slice while keeping those fields out of initialize payloads and preserving the existing `can_use_tool` auto-`stdio` path
 - transport parity now covers `settings` and `sandbox` with upstream-style `--settings` merging while keeping those fields out of initialize payloads
+- transport parity now also covers ordered `extra_args` passthrough and best-effort stderr callback diagnostics without widening the initialize payload surface
 
 ## [0.1.0] - 2026-04-04
 

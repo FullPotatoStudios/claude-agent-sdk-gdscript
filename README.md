@@ -49,6 +49,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` control
 - transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
+- transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -116,6 +117,7 @@ func _ready() -> void:
 - `setting_sources` support for controlling user/project/local Claude settings loading
 - transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` support through `ClaudeAgentOptions`, including plain `settings` pass-through and sandbox-to-`--settings` JSON merging
+- transport-first diagnostics support through `ClaudeAgentOptions.extra_args` and per-line stderr callback delivery
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
@@ -174,4 +176,6 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - `thinking` now takes precedence over the deprecated `max_thinking_tokens` field when both are configured.
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path.
 - `sandbox` is transport-only in the current slice and is implemented by building a `--settings` value; it does not add new initialize payload fields.
+- `extra_args` and `stderr` are also transport-only in the current slice; they do not enter initialize payloads.
+- the deprecated Python `debug_stderr` shim is intentionally not mirrored in GDScript; use `ClaudeAgentOptions.stderr` and optional `extra_args = {"debug-to-stderr": null}` instead.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.

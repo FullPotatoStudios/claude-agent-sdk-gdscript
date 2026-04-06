@@ -172,6 +172,9 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 			"task_budget": {"total": 5000},
 			"settings": "{\"verbose\": true}",
 			"sandbox": {"enabled": true},
+			"extra_args": {"debug-to-stderr": null},
+			"stderr": func(_line: String) -> void:
+				pass,
 		})
 	)
 
@@ -191,6 +194,8 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("task_budget")).is_false()
 	assert_bool(request.has("settings")).is_false()
 	assert_bool(request.has("sandbox")).is_false()
+	assert_bool(request.has("extra_args")).is_false()
+	assert_bool(request.has("stderr")).is_false()
 
 
 func test_initialize_error_fails_pending_streams() -> void:
