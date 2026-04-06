@@ -1840,23 +1840,25 @@ func _user_message_text(content: Variant) -> String:
 
 
 func _extract_stream_text(event: Dictionary) -> String:
-	if event.has("delta") and event["delta"] is Dictionary:
-		var delta: Dictionary = event["delta"]
-		if delta.has("text") and delta["text"] is String:
-			return str(delta["text"])
-	if event.has("text") and event["text"] is String:
-		return str(event["text"])
-	return ""
+	return _extract_stream_delta_string(event, "text", "text_delta")
 
 
 func _extract_stream_thinking(event: Dictionary) -> String:
-	if event.has("delta") and event["delta"] is Dictionary:
-		var delta: Dictionary = event["delta"]
-		if delta.has("thinking") and delta["thinking"] is String:
-			return str(delta["thinking"])
-	if event.has("thinking") and event["thinking"] is String:
-		return str(event["thinking"])
-	return ""
+	return _extract_stream_delta_string(event, "thinking", "thinking_delta")
+
+
+func _extract_stream_delta_string(event: Dictionary, field_name: String, expected_delta_type: String) -> String:
+	if str(event.get("type", "")) != "content_block_delta":
+		return ""
+	if not event.has("delta") or not event["delta"] is Dictionary:
+		return ""
+	var delta: Dictionary = event["delta"]
+	if not delta.has(field_name) or not delta[field_name] is String:
+		return ""
+	var delta_type := str(delta.get("type", ""))
+	if not delta_type.is_empty() and delta_type != expected_delta_type:
+		return ""
+	return str(delta[field_name])
 
 
 func _json_pretty(value: Variant) -> String:

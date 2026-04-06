@@ -423,13 +423,13 @@ func test_panel_coalesces_partial_stream_events_into_single_assistant_bubble() -
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-1",
-		"event": {"delta": {"text": "1, 2, "}},
+		"event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "1, 2, "}},
 	})
 	transport.emit_stdout_message({
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-2",
-		"event": {"delta": {"text": "3, 4"}},
+		"event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "3, 4"}},
 	})
 	transport.emit_stdout_message({
 		"type": "assistant",
@@ -465,13 +465,31 @@ func test_panel_ignores_non_text_stream_event_payloads_in_assistant_bubble() -> 
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-json",
-		"event": {"delta": {"partial_json": "{\"answer\":\"4\"}"}},
+		"event": {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{\"answer\":\"4\"}"}},
 	})
 	transport.emit_stdout_message({
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-thinking",
-		"event": {"delta": {"thinking": "working"}},
+		"event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "working"}},
+	})
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-top-level",
+		"event": {"text": "Top-level fallback should stay hidden"},
+	})
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-top-level-thinking",
+		"event": {"thinking": "Top-level thinking should stay hidden"},
+	})
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-non-chat",
+		"event": {"type": "message_start", "message": {"id": "msg_1"}},
 	})
 	await _await_frames(2)
 
@@ -481,12 +499,47 @@ func test_panel_ignores_non_text_stream_event_payloads_in_assistant_bubble() -> 
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-text",
-		"event": {"delta": {"text": "Plain text only"}},
+		"event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Plain text only"}},
 	})
 	await _await_frames(2)
 
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_str(_last_assistant_text(panel)).is_equal("Plain text only")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_accepts_content_block_delta_without_explicit_delta_type() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport, ClaudeAgentOptionsScript.new({
+		"include_partial_messages": true,
+	}))
+
+	panel.submit_prompt("Count")
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-text-legacy",
+		"event": {"type": "content_block_delta", "delta": {"text": "Legacy text delta"}},
+	})
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-thinking-legacy",
+		"event": {"type": "content_block_delta", "delta": {"thinking": "Legacy thinking delta"}},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).is_equal("Legacy text delta")
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(0)
+
+	_button(panel, "ThinkingToggle").button_pressed = true
+	_button(panel, "ThinkingToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "thinking_card")).contains("Legacy thinking delta")
 
 	await _cleanup_panel(panel)
 
@@ -501,13 +554,13 @@ func test_panel_transcript_toggles_reveal_live_thinking_tools_and_raw_trace() ->
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-thinking-1",
-		"event": {"delta": {"thinking": "Inspecting the request."}},
+		"event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "Inspecting the request."}},
 	})
 	transport.emit_stdout_message({
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "stream-thinking-2",
-		"event": {"delta": {"thinking": "Preparing a tool call."}},
+		"event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "Preparing a tool call."}},
 	})
 	await _await_frames(2)
 
@@ -635,7 +688,7 @@ func test_panel_live_assistant_bubble_reuses_same_node_across_stream_deltas() ->
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "reuse-stream-1",
-		"event": {"delta": {"text": "Hello"}},
+		"event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello"}},
 	})
 	await _await_frames(2)
 
@@ -645,7 +698,7 @@ func test_panel_live_assistant_bubble_reuses_same_node_across_stream_deltas() ->
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "reuse-stream-2",
-		"event": {"delta": {"text": " world"}},
+		"event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": " world"}},
 	})
 	await _await_frames(2)
 
@@ -667,7 +720,7 @@ func test_panel_live_filter_toggles_reuse_existing_detail_nodes() -> void:
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "toggle-thinking-1",
-		"event": {"delta": {"thinking": "Inspecting the request."}},
+		"event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "Inspecting the request."}},
 	})
 	await _await_frames(2)
 
@@ -681,7 +734,7 @@ func test_panel_live_filter_toggles_reuse_existing_detail_nodes() -> void:
 		"type": "stream_event",
 		"session_id": "default",
 		"uuid": "toggle-thinking-2",
-		"event": {"delta": {"thinking": "Preparing a response."}},
+		"event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "Preparing a response."}},
 	})
 	await _await_frames(2)
 	assert_array(_entry_instance_ids(panel, "thinking_card")).is_equal(thinking_ids)
