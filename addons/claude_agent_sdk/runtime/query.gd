@@ -13,7 +13,7 @@ static func query(prompt: String, options = null, transport = null):
 		var failed_stream = ClaudeMessageStreamScript.new(true)
 		failed_stream.fail(client.get_last_error())
 		return failed_stream
-	client.query(prompt, resolved_options.get_effective_session_id())
+	client.query(prompt, resolved_options.get_effective_session_id(""))
 	var stream = client.receive_response()
 	stream.retain(client)
 	stream.set_finish_callback(client.disconnect_client)

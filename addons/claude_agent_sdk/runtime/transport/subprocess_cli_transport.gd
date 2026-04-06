@@ -62,6 +62,8 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--effort", _options.effort])
 	if _options.include_partial_messages:
 		args.append("--include-partial-messages")
+	if not _options.setting_sources.is_empty():
+		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
 	if _options.can_use_tool.is_valid():
 		args.append_array(["--permission-prompt-tool", "stdio"])
 	var json_schema := _build_json_schema_argument()

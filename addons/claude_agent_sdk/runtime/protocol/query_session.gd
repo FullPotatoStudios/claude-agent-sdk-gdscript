@@ -13,6 +13,7 @@ const ClaudeToolPermissionContextScript := preload("res://addons/claude_agent_sd
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
 const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
+const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
 
 var _transport = null
 var _options = null
@@ -372,10 +373,14 @@ func _finish_streams() -> void:
 
 
 func _build_initialize_request() -> Dictionary:
-	return {
+	var request := {
 		"subtype": "initialize",
 		"hooks": _build_hooks_configuration(),
 	}
+	var agents_config := _build_agents_configuration()
+	if agents_config != null:
+		request["agents"] = agents_config
+	return request
 
 
 func _build_hooks_configuration() -> Variant:
@@ -423,6 +428,29 @@ func _coerce_hook_matcher(value: Variant):
 		return value
 	if value is Dictionary:
 		return ClaudeHookMatcherScript.new(value)
+	return null
+
+
+func _build_agents_configuration() -> Variant:
+	if _options == null or _options.agents.is_empty():
+		return null
+
+	var agents_config: Dictionary = {}
+	for agent_name_variant in _options.agents.keys():
+		var agent_name := str(agent_name_variant)
+		var agent_value: Variant = _options.agents[agent_name_variant]
+		var definition = _coerce_agent_definition(agent_value)
+		if definition == null:
+			continue
+		agents_config[agent_name] = definition.to_initialize_dict()
+	return agents_config if not agents_config.is_empty() else null
+
+
+func _coerce_agent_definition(value: Variant):
+	if value is ClaudeAgentDefinition:
+		return value
+	if value is Dictionary:
+		return ClaudeAgentDefinitionScript.new(value as Dictionary)
 	return null
 
 

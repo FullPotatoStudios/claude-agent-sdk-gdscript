@@ -295,6 +295,57 @@ func test_one_shot_query_supports_hook_configuration_for_string_prompts() -> voi
 	await get_tree().process_frame
 
 
+func test_one_shot_query_initializes_with_agents_before_writing_prompt() -> void:
+	var transport = FakeTransportScript.new()
+	var options = ClaudeAgentOptions.new({
+		"agents": {
+			"test-agent": {
+				"description": "A test agent",
+				"prompt": "Always mention that you are the test agent.",
+				"tools": ["Read"],
+				"model": "sonnet",
+			},
+		},
+	})
+
+	var stream = ClaudeQuery.query("Hi", options, transport)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var init_payload: Dictionary = init_request.get("request", {}) if init_request.get("request", {}) is Dictionary else {}
+	assert_dict(init_payload).contains_keys(["agents"])
+	assert_dict(init_payload["agents"]).contains_keys(["test-agent"])
+	assert_int(transport.writes.size()).is_equal(1)
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"agents": ["test-agent"]},
+		},
+	})
+
+	assert_int(transport.writes.size()).is_equal(2)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("type", ""))).is_equal("user")
+	assert_str(str(prompt_payload.get("session_id", "<missing>"))).is_equal("")
+	assert_str(str(((prompt_payload.get("message", {}) as Dictionary).get("content", "")))).is_equal("Hi")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "Done",
+	})
+
+	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await stream.next_message()).is_null()
+	await get_tree().process_frame
+
+
 func test_one_shot_query_fails_when_initialize_fails() -> void:
 	var transport = FakeTransportScript.new()
 	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new(), transport)

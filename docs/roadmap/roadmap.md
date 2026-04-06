@@ -158,10 +158,11 @@ Outputs:
 - scene-free SDK-hosted MCP tool/server helpers
 - richer chat-configuration parity for prompt and built-in tool selection
 - runtime-first session forking helpers
+- runtime-first agent definitions and `setting_sources` parity
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10H: runtime-first session forking helpers
+- Phase 10I: runtime-first agent definitions and `setting_sources`
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -212,9 +213,15 @@ Delivered in Phase 10H:
 - `ClaudeClientAdapter.fork_session()` and `ClaudeClientNode.fork_session()`
 - runtime-first saved-session branching with UUID remapping, `forkedFrom` metadata, worktree-aware lookup, and title/content-replacement preservation
 
+Delivered in Phase 10I:
+- `ClaudeAgentDefinition`
+- `ClaudeAgentOptions.agents` and `ClaudeAgentOptions.setting_sources`
+- initialize-payload agent serialization with upstream wire keys
+- `--setting-sources` CLI parity while keeping agents initialize-only
+
 Still deferred within Phase 10:
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize the next post-10H parity slice from the upstream ledger.
+Work should currently prioritize the next post-10I parity slice from the upstream ledger.

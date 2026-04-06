@@ -2,6 +2,7 @@
 extends GdUnitTestSuite
 
 const ClaudeSDKVersionScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_version.gd")
+const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
 
 func test_duplicate_options_preserves_phase_4_fields() -> void:
 	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
@@ -121,6 +122,81 @@ func test_duplicate_options_preserves_mixed_external_and_sdk_mcp_servers() -> vo
 	assert_str(str((duplicated_servers["sdk_tools"] as Dictionary).get("type", ""))).is_equal("sdk")
 	assert_bool((duplicated_servers["sdk_tools"] as Dictionary).get("instance") == (sdk_server as Dictionary).get("instance")).is_true()
 	assert_dict(duplicated_servers["filesystem"]).is_equal({"command": "mcp-server", "args": ["stdio"]})
+
+
+func test_duplicate_options_preserves_agents_and_setting_sources() -> void:
+	var options = ClaudeAgentOptions.new({
+		"agents": {
+			"reviewer": ClaudeAgentDefinitionScript.new({
+				"description": "Reviews code",
+				"prompt": "Be strict and helpful.",
+				"tools": ["Read", "Grep"],
+				"disallowed_tools": [],
+				"model": "sonnet",
+				"skills": ["code-review"],
+				"memory": "project",
+				"mcp_servers": ["filesystem", {"gameplay": {"command": "game-mcp"}}],
+				"initial_prompt": "Start by scanning tests.",
+				"max_turns": 3,
+				"background": false,
+				"effort": "high",
+				"permission_mode": "plan",
+			}),
+			"doc-writer": {
+				"description": "Writes docs",
+				"prompt": "Explain clearly.",
+			},
+		},
+		"setting_sources": ["user", "project"],
+	})
+
+	var duplicated = options.duplicate_options()
+	assert_dict(duplicated.agents).contains_keys(["reviewer", "doc-writer"])
+	assert_object(duplicated.agents["reviewer"]).is_instanceof(ClaudeAgentDefinitionScript)
+	assert_object(duplicated.agents["doc-writer"]).is_instanceof(ClaudeAgentDefinitionScript)
+
+	var reviewer: ClaudeAgentDefinition = duplicated.agents["reviewer"]
+	var doc_writer: ClaudeAgentDefinition = duplicated.agents["doc-writer"]
+	assert_str(reviewer.description).is_equal("Reviews code")
+	assert_str(reviewer.prompt).is_equal("Be strict and helpful.")
+	assert_array(reviewer.tools).is_equal(["Read", "Grep"])
+	assert_array(reviewer.disallowed_tools).is_empty()
+	assert_str(reviewer.model).is_equal("sonnet")
+	assert_array(reviewer.skills).is_equal(["code-review"])
+	assert_str(reviewer.memory).is_equal("project")
+	assert_array(reviewer.mcp_servers).is_equal(["filesystem", {"gameplay": {"command": "game-mcp"}}])
+	assert_str(reviewer.initial_prompt).is_equal("Start by scanning tests.")
+	assert_int(reviewer.max_turns).is_equal(3)
+	assert_bool(reviewer.background).is_false()
+	assert_str(str(reviewer.effort)).is_equal("high")
+	assert_str(reviewer.permission_mode).is_equal("plan")
+	assert_str(doc_writer.description).is_equal("Writes docs")
+	assert_str(doc_writer.prompt).is_equal("Explain clearly.")
+	assert_that(doc_writer.tools).is_null()
+	assert_array(duplicated.setting_sources).is_equal(["user", "project"])
+
+
+func test_apply_normalizes_agent_definitions_from_upstream_wire_keys() -> void:
+	var options = ClaudeAgentOptions.new({
+		"agents": {
+			"wire-agent": {
+				"description": "Wire-format agent",
+				"prompt": "Use upstream-style keys.",
+				"disallowedTools": ["Write"],
+				"mcpServers": ["filesystem"],
+				"initialPrompt": "Start carefully.",
+				"maxTurns": 3,
+				"permissionMode": "plan",
+			},
+		},
+	})
+
+	var agent: ClaudeAgentDefinition = options.agents["wire-agent"]
+	assert_array(agent.disallowed_tools).is_equal(["Write"])
+	assert_array(agent.mcp_servers).is_equal(["filesystem"])
+	assert_str(agent.initial_prompt).is_equal("Start carefully.")
+	assert_int(int(agent.max_turns)).is_equal(3)
+	assert_str(agent.permission_mode).is_equal("plan")
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -248,6 +324,24 @@ func test_subprocess_transport_supports_tools_unset_empty_and_preset() -> void:
 	}))
 	var normalized_preset_args := normalized_preset_transport.build_command_args()
 	assert_array(normalized_preset_args).contains(["--tools", "default"])
+
+
+func test_subprocess_transport_supports_setting_sources_only_when_non_empty() -> void:
+	var unset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
+	var unset_args := unset_transport.build_command_args()
+	assert_bool(unset_args.has("--setting-sources")).is_false()
+
+	var empty_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"setting_sources": [],
+	}))
+	var empty_args := empty_transport.build_command_args()
+	assert_bool(empty_args.has("--setting-sources")).is_false()
+
+	var configured_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"setting_sources": ["user", "project", "local"],
+	}))
+	var configured_args := configured_transport.build_command_args()
+	assert_array(configured_args).contains(["--setting-sources", "user,project,local"])
 
 
 func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:

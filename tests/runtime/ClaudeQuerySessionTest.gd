@@ -95,6 +95,67 @@ func test_initialize_includes_hook_matchers_with_generated_callback_ids() -> voi
 	assert_float(float(matcher.get("timeout", 0.0))).is_equal(15.0)
 
 
+func test_initialize_includes_serialized_agents_and_preserves_hooks() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"hooks": {
+				"PreToolUse": [
+					ClaudeHookMatcherScript.new({
+						"matcher": "Bash",
+						"hooks": [Callable(self, "_async_hook_callback")],
+					}),
+				],
+			},
+			"agents": {
+				"code-reviewer": {
+					"description": "Reviews code for issues",
+					"prompt": "Review the code and summarize the biggest risks.",
+					"tools": ["Read", "Grep"],
+					"disallowed_tools": ["Write"],
+					"model": "sonnet",
+					"skills": ["code-review"],
+					"memory": "project",
+					"mcp_servers": ["filesystem", {"gameplay": {"command": "game-mcp"}}],
+					"initial_prompt": "Start with the changed files.",
+					"max_turns": 2,
+					"background": false,
+					"effort": "high",
+					"permission_mode": "plan",
+				},
+			},
+		})
+	)
+
+	session.open_session()
+
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request: Dictionary = initialize_request.get("request", {}) if initialize_request.get("request", {}) is Dictionary else {}
+	var hooks_config: Dictionary = request.get("hooks", {}) if request.get("hooks", {}) is Dictionary else {}
+	var agents_config: Dictionary = request.get("agents", {}) if request.get("agents", {}) is Dictionary else {}
+
+	assert_dict(hooks_config).contains_keys(["PreToolUse"])
+	assert_dict(agents_config).contains_keys(["code-reviewer"])
+	var agent_config: Dictionary = agents_config["code-reviewer"]
+	assert_int(int(agent_config.get("maxTurns", -1))).is_equal(2)
+	agent_config.erase("maxTurns")
+	assert_dict(agent_config).is_equal({
+		"description": "Reviews code for issues",
+		"prompt": "Review the code and summarize the biggest risks.",
+		"tools": ["Read", "Grep"],
+		"disallowedTools": ["Write"],
+		"model": "sonnet",
+		"skills": ["code-review"],
+		"memory": "project",
+		"mcpServers": ["filesystem", {"gameplay": {"command": "game-mcp"}}],
+		"initialPrompt": "Start with the changed files.",
+		"background": false,
+		"effort": "high",
+		"permissionMode": "plan",
+	})
+
+
 func test_initialize_error_fails_pending_streams() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)

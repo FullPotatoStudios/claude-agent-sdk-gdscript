@@ -2,6 +2,7 @@ extends RefCounted
 class_name ClaudeAgentOptions
 
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
+const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
 
 var model: String = ""
 var effort: String = ""
@@ -21,6 +22,8 @@ var can_use_tool: Callable = Callable()
 var include_partial_messages: bool = false
 var output_format: Dictionary = {}
 var mcp_servers: Variant = {}
+var agents: Dictionary = {}
+var setting_sources: Array[String] = []
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -68,6 +71,10 @@ func apply(config: Dictionary):
 			mcp_servers = _duplicate_nested_variant(config["mcp_servers"])
 		elif config["mcp_servers"] is String:
 			mcp_servers = str(config["mcp_servers"])
+	if config.has("agents") and config["agents"] is Dictionary:
+		agents = _normalize_agents(config["agents"] as Dictionary)
+	if config.has("setting_sources") and config["setting_sources"] is Array:
+		setting_sources = _to_string_array(config["setting_sources"] as Array)
 	return self
 
 
@@ -91,6 +98,8 @@ func duplicate_options():
 			"include_partial_messages": include_partial_messages,
 			"output_format": output_format.duplicate(true),
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
+			"agents": _duplicate_agents(agents),
+			"setting_sources": setting_sources.duplicate(),
 		})
 
 
@@ -124,6 +133,22 @@ static func _normalize_hooks(value: Dictionary) -> Dictionary:
 
 static func _duplicate_hooks(value: Dictionary) -> Dictionary:
 	return _normalize_hooks(value)
+
+
+static func _normalize_agents(value: Dictionary) -> Dictionary:
+	var normalized: Dictionary = {}
+	for agent_name_variant in value.keys():
+		var agent_name := str(agent_name_variant)
+		var agent_value: Variant = value[agent_name_variant]
+		if agent_value is ClaudeAgentDefinition:
+			normalized[agent_name] = (agent_value as ClaudeAgentDefinition).duplicate_definition()
+		elif agent_value is Dictionary:
+			normalized[agent_name] = ClaudeAgentDefinitionScript.new(agent_value as Dictionary)
+	return normalized
+
+
+static func _duplicate_agents(value: Dictionary) -> Dictionary:
+	return _normalize_agents(value)
 
 
 static func _normalize_system_prompt(value: Variant) -> Variant:

@@ -15,6 +15,8 @@ Use `ClaudeSDKClient` directly when:
 - your own code is already comfortable working with `await`
 - you want to keep your integration scene-free and fully under your own control
 - you want to attach SDK-hosted MCP tools through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
+- you want to define custom agents through `ClaudeAgentDefinition` and `ClaudeAgentOptions.agents`
+- you want to control user/project/local Claude settings loading through `ClaudeAgentOptions.setting_sources`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
@@ -75,6 +77,8 @@ The integration layer is intentionally thin.
 - It does not replace the reusable chat panel for users who want a drop-in UI
 - It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
+- agent definitions are also runtime-first and are sent through the initialize payload rather than through panel-specific configuration
+- `setting_sources` is transport/runtime configuration for Claude settings discovery, not a panel concern
 - richer `system_prompt` modes and base built-in tool selection live in `ClaudeAgentOptions` and flow through every layer, including the panel
 - `ClaudeBuiltInToolCatalog` is the shared runtime source of truth for built-in Claude Code tool metadata used by the reference panel and available to custom panels
 

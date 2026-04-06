@@ -46,6 +46,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeSessions` for local session history access, richer transcript detail reading, and basic session mutations
 - `ClaudeSessionTranscriptEntry` for normalized historical transcript detail
 - `ClaudeForkSessionResult` plus explicit session forking helpers for branching saved conversations
+- `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` control
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -109,6 +110,8 @@ func _ready() -> void:
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
+- Runtime-first agent definitions through `ClaudeAgentOptions.agents` and initialize-payload serialization
+- `setting_sources` support for controlling user/project/local Claude settings loading
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs

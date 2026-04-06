@@ -99,52 +99,52 @@ text = "Connect"
 layout_mode = 2
 text = "Disconnect"
 
-[node name="ViewNavigation" type="HBoxContainer" parent="Shell/Margin/Body"]
+[node name="ViewNavigation" type="HBoxContainer" parent="Shell/Margin/Body" unique_id=1911361634]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="ChatViewButton" type="Button" parent="Shell/Margin/Body/ViewNavigation"]
+[node name="ChatViewButton" type="Button" parent="Shell/Margin/Body/ViewNavigation" unique_id=975072430]
 layout_mode = 2
 toggle_mode = true
 button_pressed = true
 text = "Chat"
 
-[node name="SettingsViewButton" type="Button" parent="Shell/Margin/Body/ViewNavigation"]
+[node name="SettingsViewButton" type="Button" parent="Shell/Margin/Body/ViewNavigation" unique_id=641180152]
 layout_mode = 2
 toggle_mode = true
 text = "Settings"
 
-[node name="SettingsScroll" type="ScrollContainer" parent="Shell/Margin/Body"]
+[node name="SettingsScroll" type="ScrollContainer" parent="Shell/Margin/Body" unique_id=963055858]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="SettingsBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll"]
+[node name="SettingsBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll" unique_id=892503250]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 14
 
-[node name="SettingsIntroCard" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody"]
+[node name="SettingsIntroCard" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody" unique_id=1666154142]
 layout_mode = 2
 
-[node name="SettingsIntroMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard"]
+[node name="SettingsIntroMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard" unique_id=1197323802]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 14
 
-[node name="SettingsIntroBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin"]
+[node name="SettingsIntroBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin" unique_id=1548552589]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="SettingsIntroEyebrow" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin/SettingsIntroBody"]
+[node name="SettingsIntroEyebrow" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin/SettingsIntroBody" unique_id=1197134462]
 layout_mode = 2
 text = "Settings"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="SettingsIntroText" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin/SettingsIntroBody"]
+[node name="SettingsIntroText" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/SettingsIntroCard/SettingsIntroMargin/SettingsIntroBody" unique_id=88863090]
 layout_mode = 2
 text = "Edit chat configuration while disconnected. These controls update the same runtime options used when you connect."
 label_settings = SubResource("LabelSettings_bjn48")
@@ -169,11 +169,11 @@ layout_mode = 2
 text = "Chat configuration"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="SystemPromptSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow"]
+[node name="SystemPromptSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=1240184721]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="SystemPromptSectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection"]
+[node name="SystemPromptSectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection" unique_id=1017689214]
 layout_mode = 2
 text = "System prompt"
 label_settings = SubResource("LabelSettings_bjn48")
@@ -218,11 +218,11 @@ label_settings = SubResource("LabelSettings_bjn48")
 layout_mode = 2
 placeholder_text = "res://prompts/game-assistant.md"
 
-[node name="ToolsSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow"]
+[node name="ToolsSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=2076947041]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="ToolsSectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection"]
+[node name="ToolsSectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection" unique_id=1731766588]
 layout_mode = 2
 text = "Built-in tools"
 label_settings = SubResource("LabelSettings_bjn48")
@@ -321,11 +321,11 @@ label_settings = SubResource("LabelSettings_bjn48")
 layout_mode = 2
 placeholder_text = "Edit,Bash"
 
-[node name="McpSummarySection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow"]
+[node name="McpSummarySection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=1067656512]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="McpSummarySectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection"]
+[node name="McpSummarySectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection" unique_id=1922779059]
 layout_mode = 2
 text = "Custom tool environment"
 label_settings = SubResource("LabelSettings_bjn48")
@@ -518,45 +518,45 @@ custom_minimum_size = Vector2(0, 220)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="TranscriptMargin" type="MarginContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard"]
+[node name="TranscriptMargin" type="MarginContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard" unique_id=203488531]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="TranscriptBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin"]
+[node name="TranscriptBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin" unique_id=1163331713]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 10
 
-[node name="TranscriptToolbar" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody"]
+[node name="TranscriptToolbar" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody" unique_id=1757410609]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="TranscriptToolbarLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+[node name="TranscriptToolbarLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar" unique_id=2100273562]
 layout_mode = 2
 text = "Trace"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="ThinkingToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+[node name="ThinkingToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar" unique_id=1189191683]
 layout_mode = 2
 text = "Thinking"
 
-[node name="ToolsToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+[node name="ToolsToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar" unique_id=1531879143]
 layout_mode = 2
 text = "Tools"
 
-[node name="ResultsToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+[node name="ResultsToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar" unique_id=1505013770]
 layout_mode = 2
 button_pressed = true
 text = "Results"
 
-[node name="SystemToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+[node name="SystemToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar" unique_id=1261370653]
 layout_mode = 2
 text = "System"
 
-[node name="RawToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+[node name="RawToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar" unique_id=1115657081]
 layout_mode = 2
 text = "Raw"
 
@@ -610,51 +610,51 @@ autowrap_mode = 3
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="QuickSettingsRow" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions"]
+[node name="QuickSettingsRow" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions" unique_id=1601385406]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
-[node name="ModelQuickGroup" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow"]
+[node name="ModelQuickGroup" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow" unique_id=473028245]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="ModelQuickLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/ModelQuickGroup"]
+[node name="ModelQuickLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/ModelQuickGroup" unique_id=1119597543]
 layout_mode = 2
 text = "Model"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="ModelQuickOption" type="OptionButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/ModelQuickGroup"]
+[node name="ModelQuickOption" type="OptionButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/ModelQuickGroup" unique_id=1583085750]
 custom_minimum_size = Vector2(112, 0)
 layout_mode = 2
 
-[node name="EffortQuickGroup" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow"]
+[node name="EffortQuickGroup" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow" unique_id=392887091]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="EffortQuickLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/EffortQuickGroup"]
+[node name="EffortQuickLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/EffortQuickGroup" unique_id=1405957007]
 layout_mode = 2
 text = "Effort"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="EffortQuickOption" type="OptionButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/EffortQuickGroup"]
+[node name="EffortQuickOption" type="OptionButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/EffortQuickGroup" unique_id=341428724]
 custom_minimum_size = Vector2(116, 0)
 layout_mode = 2
 
-[node name="PermissionQuickGroup" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow"]
+[node name="PermissionQuickGroup" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow" unique_id=2056496259]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="PermissionQuickLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/PermissionQuickGroup"]
+[node name="PermissionQuickLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/PermissionQuickGroup" unique_id=817873199]
 layout_mode = 2
 text = "Permissions"
 label_settings = SubResource("LabelSettings_bjn48")
 
-[node name="PermissionQuickOption" type="OptionButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/PermissionQuickGroup"]
+[node name="PermissionQuickOption" type="OptionButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/PermissionQuickGroup" unique_id=919512914]
 custom_minimum_size = Vector2(154, 0)
 layout_mode = 2
 
-[node name="ActionButtons" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions"]
+[node name="ActionButtons" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions" unique_id=1445112208]
 layout_mode = 2
 theme_override_constants/separation = 10
 
