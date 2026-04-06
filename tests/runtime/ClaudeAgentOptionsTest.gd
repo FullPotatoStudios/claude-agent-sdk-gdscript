@@ -202,6 +202,52 @@ func test_duplicate_options_preserves_transport_first_advanced_cli_fields() -> v
 	assert_dict(duplicated.task_budget).is_equal({"total": 12345})
 
 
+func test_duplicate_options_preserves_settings_and_sandbox_fields() -> void:
+	var options = ClaudeAgentOptions.new({
+		"settings": "user://settings.json",
+		"sandbox": {
+			"enabled": true,
+			"auto_allow_bash_if_sandboxed": true,
+			"excluded_commands": ["git"],
+			"allow_unsandboxed_commands": false,
+			"network": {
+				"allow_unix_sockets": ["/tmp/ssh-agent.sock"],
+				"allow_all_unix_sockets": false,
+				"allow_local_binding": true,
+				"http_proxy_port": 8080,
+				"socks_proxy_port": 8081,
+			},
+			"ignore_violations": {
+				"file": ["/tmp/cache"],
+				"network": ["localhost"],
+			},
+			"enable_weaker_nested_sandbox": true,
+		},
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_str(duplicated.settings).is_equal("user://settings.json")
+	assert_dict(duplicated.sandbox).is_equal({
+		"enabled": true,
+		"auto_allow_bash_if_sandboxed": true,
+		"excluded_commands": ["git"],
+		"allow_unsandboxed_commands": false,
+		"network": {
+			"allow_unix_sockets": ["/tmp/ssh-agent.sock"],
+			"allow_all_unix_sockets": false,
+			"allow_local_binding": true,
+			"http_proxy_port": 8080,
+			"socks_proxy_port": 8081,
+		},
+		"ignore_violations": {
+			"file": ["/tmp/cache"],
+			"network": ["localhost"],
+		},
+		"enable_weaker_nested_sandbox": true,
+	})
+
+
 func test_apply_normalizes_agent_definitions_from_upstream_wire_keys() -> void:
 	var options = ClaudeAgentOptions.new({
 		"agents": {
@@ -247,6 +293,50 @@ func test_apply_normalizes_transport_first_advanced_cli_fields() -> void:
 	assert_int(int(options.max_thinking_tokens)).is_equal(2048)
 	assert_dict(options.thinking).is_equal({"type": "adaptive"})
 	assert_dict(options.task_budget).is_equal({"total": 5000})
+
+
+func test_apply_normalizes_sandbox_from_snake_case_and_camel_case_keys() -> void:
+	var options = ClaudeAgentOptions.new({
+		"settings": "{\"verbose\": true}",
+		"sandbox": {
+			"enabled": true,
+			"autoAllowBashIfSandboxed": true,
+			"excludedCommands": ["git", "docker"],
+			"allowUnsandboxedCommands": false,
+			"network": {
+				"allowUnixSockets": ["/var/run/docker.sock"],
+				"allowAllUnixSockets": false,
+				"allowLocalBinding": true,
+				"httpProxyPort": 8080,
+				"socksProxyPort": 8081,
+			},
+			"ignoreViolations": {
+				"file": ["/tmp/cache"],
+				"network": ["localhost"],
+			},
+			"enableWeakerNestedSandbox": true,
+		},
+	})
+
+	assert_str(options.settings).is_equal("{\"verbose\": true}")
+	assert_dict(options.sandbox).is_equal({
+		"enabled": true,
+		"auto_allow_bash_if_sandboxed": true,
+		"excluded_commands": ["git", "docker"],
+		"allow_unsandboxed_commands": false,
+		"network": {
+			"allow_unix_sockets": ["/var/run/docker.sock"],
+			"allow_all_unix_sockets": false,
+			"allow_local_binding": true,
+			"http_proxy_port": 8080,
+			"socks_proxy_port": 8081,
+		},
+		"ignore_violations": {
+			"file": ["/tmp/cache"],
+			"network": ["localhost"],
+		},
+		"enable_weaker_nested_sandbox": true,
+	})
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -422,6 +512,111 @@ func test_subprocess_transport_supports_transport_first_advanced_cli_flags() -> 
 	assert_str(args[add_dir_indices[1] + 1]).is_equal("/tmp/project")
 
 
+func test_subprocess_transport_supports_settings_passthrough_and_sandbox_merging() -> void:
+	var unset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
+	assert_bool(unset_transport.build_command_args().has("--settings")).is_false()
+
+	var path_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"settings": "user://phase10k-path-settings.json",
+	}))
+	var path_args := path_transport.build_command_args()
+	assert_array(path_args).contains([
+		"--settings",
+		ProjectSettings.globalize_path("user://phase10k-path-settings.json"),
+	])
+
+	var json_settings := "{\"permissions\": {\"allow\": [\"Bash(ls:*)\"]}, \"verbose\": true}"
+	var json_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"settings": json_settings,
+	}))
+	var json_args := json_transport.build_command_args()
+	assert_array(json_args).contains(["--settings", json_settings])
+
+	var sandbox_only_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"sandbox": {
+			"enabled": true,
+			"auto_allow_bash_if_sandboxed": true,
+			"network": {
+				"allow_local_binding": true,
+				"allow_unix_sockets": ["/var/run/docker.sock"],
+			},
+		},
+	}))
+	var sandbox_only_args := sandbox_only_transport.build_command_args()
+	var sandbox_only_settings: Dictionary = JSON.parse_string(sandbox_only_args[sandbox_only_args.find("--settings") + 1])
+	assert_dict(sandbox_only_settings).is_equal({
+		"sandbox": {
+			"enabled": true,
+			"autoAllowBashIfSandboxed": true,
+			"network": {
+				"allowLocalBinding": true,
+				"allowUnixSockets": ["/var/run/docker.sock"],
+			},
+		},
+	})
+
+	var merged_json_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"settings": json_settings,
+		"sandbox": {
+			"enabled": true,
+			"excluded_commands": ["git", "docker"],
+		},
+	}))
+	var merged_json_args := merged_json_transport.build_command_args()
+	var merged_json_settings: Dictionary = JSON.parse_string(merged_json_args[merged_json_args.find("--settings") + 1])
+	assert_dict(merged_json_settings).is_equal({
+		"permissions": {"allow": ["Bash(ls:*)"]},
+		"verbose": true,
+		"sandbox": {
+			"enabled": true,
+			"excludedCommands": ["git", "docker"],
+		},
+	})
+
+	var file_settings_path := "user://phase10k-file-settings-%s.json" % str(Time.get_ticks_usec())
+	_write_settings_file(
+		file_settings_path,
+		"{\"permissions\": {\"allow\": [\"Read\"]}, \"verbose\": false}"
+	)
+	var merged_file_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"settings": file_settings_path,
+		"sandbox": {
+			"enabled": true,
+			"ignore_violations": {
+				"file": ["/tmp/cache"],
+				"network": ["localhost"],
+			},
+		},
+	}))
+	var merged_file_args := merged_file_transport.build_command_args()
+	var merged_file_settings: Dictionary = JSON.parse_string(merged_file_args[merged_file_args.find("--settings") + 1])
+	assert_dict(merged_file_settings).is_equal({
+		"permissions": {"allow": ["Read"]},
+		"verbose": false,
+		"sandbox": {
+			"enabled": true,
+			"ignoreViolations": {
+				"file": ["/tmp/cache"],
+				"network": ["localhost"],
+			},
+		},
+	})
+
+	var missing_file_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"settings": "user://missing-phase10k-settings.json",
+		"sandbox": {
+			"enabled": true,
+		},
+	}))
+	var missing_file_args := missing_file_transport.build_command_args()
+	var missing_file_settings: Dictionary = JSON.parse_string(missing_file_args[missing_file_args.find("--settings") + 1])
+	assert_dict(missing_file_settings).is_equal({
+		"sandbox": {
+			"enabled": true,
+		},
+	})
+
+
 func test_subprocess_transport_resolves_thinking_precedence() -> void:
 	var deprecated_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
@@ -532,3 +727,14 @@ func test_subprocess_transport_allows_explicit_claudecode_override() -> void:
 
 func test_sdk_version_reads_canonical_version_file() -> void:
 	assert_str(ClaudeSDKVersionScript.get_version()).is_equal("0.1.0")
+
+
+func _write_settings_file(path: String, contents: String) -> void:
+	var absolute_path := ProjectSettings.globalize_path(path)
+	var base_dir := absolute_path.get_base_dir()
+	if not DirAccess.dir_exists_absolute(base_dir):
+		DirAccess.make_dir_recursive_absolute(base_dir)
+	var file := FileAccess.open(absolute_path, FileAccess.WRITE)
+	assert_that(file).is_not_null()
+	file.store_string(contents)
+	file.close()

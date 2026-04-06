@@ -23,6 +23,7 @@ var session_id: String = ""
 var fallback_model: String = ""
 var betas: Array[String] = []
 var permission_prompt_tool_name: String = ""
+var settings: String = ""
 var add_dirs: Array[String] = []
 var hooks: Dictionary = {}
 var can_use_tool: Callable = Callable()
@@ -33,6 +34,7 @@ var output_format: Dictionary = {}
 var mcp_servers: Variant = {}
 var agents: Dictionary = {}
 var setting_sources: Array[String] = []
+var sandbox: Variant = null
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -79,6 +81,8 @@ func apply(config: Dictionary):
 		betas = _to_string_array(config["betas"] as Array)
 	if config.has("permission_prompt_tool_name"):
 		permission_prompt_tool_name = str(config["permission_prompt_tool_name"])
+	if config.has("settings"):
+		settings = str(config["settings"])
 	if config.has("add_dirs") and config["add_dirs"] is Array:
 		add_dirs = _to_string_array(config["add_dirs"] as Array)
 	if config.has("hooks") and config["hooks"] is Dictionary:
@@ -102,6 +106,8 @@ func apply(config: Dictionary):
 		agents = _normalize_agents(config["agents"] as Dictionary)
 	if config.has("setting_sources") and config["setting_sources"] is Array:
 		setting_sources = _to_string_array(config["setting_sources"] as Array)
+	if config.has("sandbox"):
+		sandbox = _normalize_sandbox(config["sandbox"])
 	return self
 
 
@@ -126,6 +132,7 @@ func duplicate_options():
 			"fallback_model": fallback_model,
 			"betas": betas.duplicate(),
 			"permission_prompt_tool_name": permission_prompt_tool_name,
+			"settings": settings,
 			"add_dirs": add_dirs.duplicate(),
 			"hooks": _duplicate_hooks(hooks),
 			"can_use_tool": can_use_tool,
@@ -136,6 +143,7 @@ func duplicate_options():
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
 			"agents": _duplicate_agents(agents),
 			"setting_sources": setting_sources.duplicate(),
+			"sandbox": _duplicate_variant(sandbox),
 		})
 
 
@@ -302,6 +310,60 @@ static func _normalize_thinking(value: Variant) -> Variant:
 			return {"type": "disabled"}
 		_:
 			return null
+
+
+static func _normalize_sandbox(value: Variant) -> Variant:
+	if value == null:
+		return null
+	if not (value is Dictionary):
+		return null
+	var source := value as Dictionary
+	var normalized: Dictionary = {}
+	if source.has("enabled"):
+		normalized["enabled"] = bool(source["enabled"])
+	if source.has("auto_allow_bash_if_sandboxed") or source.has("autoAllowBashIfSandboxed"):
+		normalized["auto_allow_bash_if_sandboxed"] = bool(source.get("auto_allow_bash_if_sandboxed", source.get("autoAllowBashIfSandboxed", false)))
+	if source.has("excluded_commands") or source.has("excludedCommands"):
+		var excluded_value: Variant = source.get("excluded_commands", source.get("excludedCommands", []))
+		if excluded_value is Array:
+			normalized["excluded_commands"] = _to_string_array(excluded_value as Array)
+	if source.has("allow_unsandboxed_commands") or source.has("allowUnsandboxedCommands"):
+		normalized["allow_unsandboxed_commands"] = bool(source.get("allow_unsandboxed_commands", source.get("allowUnsandboxedCommands", false)))
+	if source.has("network") and source["network"] is Dictionary:
+		normalized["network"] = _normalize_sandbox_network(source["network"] as Dictionary)
+	if source.has("ignore_violations") or source.has("ignoreViolations"):
+		var ignore_value: Variant = source.get("ignore_violations", source.get("ignoreViolations", null))
+		if ignore_value is Dictionary:
+			normalized["ignore_violations"] = _normalize_sandbox_ignore_violations(ignore_value as Dictionary)
+	if source.has("enable_weaker_nested_sandbox") or source.has("enableWeakerNestedSandbox"):
+		normalized["enable_weaker_nested_sandbox"] = bool(source.get("enable_weaker_nested_sandbox", source.get("enableWeakerNestedSandbox", false)))
+	return normalized
+
+
+static func _normalize_sandbox_network(value: Dictionary) -> Dictionary:
+	var normalized: Dictionary = {}
+	if value.has("allow_unix_sockets") or value.has("allowUnixSockets"):
+		var allow_sockets: Variant = value.get("allow_unix_sockets", value.get("allowUnixSockets", []))
+		if allow_sockets is Array:
+			normalized["allow_unix_sockets"] = _to_string_array(allow_sockets as Array)
+	if value.has("allow_all_unix_sockets") or value.has("allowAllUnixSockets"):
+		normalized["allow_all_unix_sockets"] = bool(value.get("allow_all_unix_sockets", value.get("allowAllUnixSockets", false)))
+	if value.has("allow_local_binding") or value.has("allowLocalBinding"):
+		normalized["allow_local_binding"] = bool(value.get("allow_local_binding", value.get("allowLocalBinding", false)))
+	if value.has("http_proxy_port") or value.has("httpProxyPort"):
+		normalized["http_proxy_port"] = int(value.get("http_proxy_port", value.get("httpProxyPort", 0)))
+	if value.has("socks_proxy_port") or value.has("socksProxyPort"):
+		normalized["socks_proxy_port"] = int(value.get("socks_proxy_port", value.get("socksProxyPort", 0)))
+	return normalized
+
+
+static func _normalize_sandbox_ignore_violations(value: Dictionary) -> Dictionary:
+	var normalized: Dictionary = {}
+	if value.has("file") and value["file"] is Array:
+		normalized["file"] = _to_string_array(value["file"] as Array)
+	if value.has("network") and value["network"] is Array:
+		normalized["network"] = _to_string_array(value["network"] as Array)
+	return normalized
 
 
 static func _duplicate_variant(value: Variant) -> Variant:

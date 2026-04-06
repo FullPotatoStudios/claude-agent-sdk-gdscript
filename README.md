@@ -48,6 +48,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeForkSessionResult` plus explicit session forking helpers for branching saved conversations
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` control
 - transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, `max_thinking_tokens`, and `task_budget`
+- transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -114,6 +115,7 @@ func _ready() -> void:
 - Runtime-first agent definitions through `ClaudeAgentOptions.agents` and initialize-payload serialization
 - `setting_sources` support for controlling user/project/local Claude settings loading
 - transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
+- transport-first `settings` and `sandbox` support through `ClaudeAgentOptions`, including plain `settings` pass-through and sandbox-to-`--settings` JSON merging
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
@@ -124,7 +126,7 @@ func _ready() -> void:
 
 The current release still defers some broader upstream parity areas, including:
 
-- broader settings and agent-definition parity beyond the current prompt/tool/runtime surface
+- remaining broader settings and transport parity beyond the current prompt/tool/runtime surface
 
 Use these as the canonical sources of truth for compatibility and parity status:
 
@@ -170,4 +172,6 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - advanced CLI transport options stay transport-only in this slice; they do not appear in initialize payloads.
 - `permission_prompt_tool_name` cannot be combined with `can_use_tool`; the existing `can_use_tool` path still auto-configures the CLI permission prompt tool as `stdio`.
 - `thinking` now takes precedence over the deprecated `max_thinking_tokens` field when both are configured.
+- `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path.
+- `sandbox` is transport-only in the current slice and is implemented by building a `--settings` value; it does not add new initialize payload fields.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.

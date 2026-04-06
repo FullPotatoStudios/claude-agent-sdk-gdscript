@@ -170,6 +170,8 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 			"max_thinking_tokens": 2048,
 			"thinking": {"type": "enabled", "budget_tokens": 8192},
 			"task_budget": {"total": 5000},
+			"settings": "{\"verbose\": true}",
+			"sandbox": {"enabled": true},
 		})
 	)
 
@@ -187,6 +189,8 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("max_thinking_tokens")).is_false()
 	assert_bool(request.has("thinking")).is_false()
 	assert_bool(request.has("task_budget")).is_false()
+	assert_bool(request.has("settings")).is_false()
+	assert_bool(request.has("sandbox")).is_false()
 
 
 func test_initialize_error_fails_pending_streams() -> void:

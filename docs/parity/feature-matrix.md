@@ -130,7 +130,8 @@ Phase 1 findings that constrain this matrix:
 | Agent definitions in initialize payload | `types.py`, `examples/agents.py`, `e2e-tests/test_agents_and_settings.py` | Advanced control over sub-agent behavior | initialize flow, typed models | `v1 later` | Delivered post-v1 in Phase 10I through `ClaudeAgentDefinition` and `ClaudeAgentOptions.agents` |
 | Setting-source controls | `types.py`, `examples/setting_sources.py`, `e2e-tests/test_agents_and_settings.py` | Useful for advanced config control | option encoding, CLI settings model | `v1 later` | Delivered post-v1 in Phase 10I through `ClaudeAgentOptions.setting_sources` and `--setting-sources` parity |
 | Continue-conversation flag, fallback model, betas, permission prompt tool, add_dirs, max budget, task budget, and advanced thinking config | `types.py`, examples, transport tests | Useful advanced transport/runtime parity once the core option model is stable | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10J through additive `ClaudeAgentOptions` fields and transport-only flag emission without initialize payload changes |
-| Broader settings, sandbox, plugin, and user passthrough | `types.py`, examples, transport tests | Legitimate parity surface, but broader and easier to destabilize than the current post-v1 slices | command building, CLI settings parity | `deferred` | Revisit after the smaller post-v1 transport-first option slices land |
+| Settings and sandbox passthrough/merge behavior | `types.py`, `subprocess_cli.py`, transport tests | Important advanced transport parity for teams that already rely on Claude settings files or bash sandboxing | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10K through `ClaudeAgentOptions.settings`, `ClaudeAgentOptions.sandbox`, and upstream-style `--settings` merge behavior |
+| Broader plugin, user, `fork_session` option flag, and arbitrary extra-arg passthrough | `types.py`, examples, transport tests | Legitimate parity surface, but broader and easier to destabilize than the smaller post-v1 slices | command building, process-launch parity | `deferred` | Revisit after the bounded transport/runtime slices land |
 
 ## Godot-only additions
 
@@ -164,4 +165,5 @@ Status note:
 - Phase 10H adds runtime-first session forking helpers with adapter/node passthroughs
 - Phase 10I adds runtime-first agent definitions and `setting_sources` parity
 - Phase 10J adds transport-first advanced CLI option parity without widening the initialize payload surface
+- Phase 10K adds transport-first `settings` and `sandbox` parity without widening the initialize payload surface
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

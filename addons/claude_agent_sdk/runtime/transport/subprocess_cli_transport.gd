@@ -73,6 +73,9 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--resume", _options.resume])
 	if not _options.session_id.is_empty():
 		args.append_array(["--session-id", _options.session_id])
+	var settings_value := _build_settings_argument()
+	if not settings_value.is_empty():
+		args.append_array(["--settings", settings_value])
 	if not _options.add_dirs.is_empty():
 		for directory in _options.add_dirs:
 			args.append_array(["--add-dir", directory])
@@ -137,6 +140,13 @@ func _append_tools_args(args: PackedStringArray) -> void:
 
 
 func _resolve_system_prompt_file_path(path: String) -> String:
+	var normalized_path := path.strip_edges()
+	if normalized_path.is_empty():
+		return ""
+	return _resolve_project_path(normalized_path)
+
+
+func _resolve_project_path(path: String) -> String:
 	var normalized_path := path.strip_edges()
 	if normalized_path.is_empty():
 		return ""
@@ -417,6 +427,100 @@ func _resolved_max_thinking_tokens() -> Variant:
 			"disabled":
 				resolved = 0
 	return resolved
+
+
+func _build_settings_argument() -> String:
+	var has_settings: bool = not str(_options.settings).is_empty()
+	var has_sandbox: bool = _options.sandbox is Dictionary
+	if not has_settings and not has_sandbox:
+		return ""
+	if has_settings and not has_sandbox:
+		if _looks_like_json_object(str(_options.settings)):
+			return str(_options.settings)
+		return _resolve_project_path(str(_options.settings))
+
+	var merged_settings: Dictionary = {}
+	if has_settings:
+		var raw_settings := str(_options.settings)
+		if _looks_like_json_object(raw_settings):
+			var parsed_settings := _parse_json_dictionary(raw_settings)
+			if parsed_settings is Dictionary:
+				merged_settings = (parsed_settings as Dictionary).duplicate(true)
+		else:
+			var settings_path := _resolve_project_path(raw_settings)
+			var file_settings := _load_settings_dictionary_from_path(settings_path)
+			if file_settings is Dictionary:
+				merged_settings = (file_settings as Dictionary).duplicate(true)
+	if has_sandbox:
+		merged_settings["sandbox"] = _serialize_sandbox_config(_options.sandbox as Dictionary)
+	return JSON.stringify(merged_settings)
+
+
+func _looks_like_json_object(value: String) -> bool:
+	var trimmed := value.strip_edges()
+	return not trimmed.is_empty() and trimmed.begins_with("{") and trimmed.ends_with("}")
+
+
+func _parse_json_dictionary(value: String) -> Variant:
+	var parser := JSON.new()
+	if parser.parse(value) != OK:
+		return null
+	if parser.data is Dictionary:
+		return parser.data
+	return null
+
+
+func _load_settings_dictionary_from_path(path: String) -> Variant:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return null
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return null
+	var contents := file.get_as_text()
+	return _parse_json_dictionary(contents)
+
+
+func _serialize_sandbox_config(config: Dictionary) -> Dictionary:
+	var serialized: Dictionary = {}
+	if config.has("enabled"):
+		serialized["enabled"] = bool(config["enabled"])
+	if config.has("auto_allow_bash_if_sandboxed"):
+		serialized["autoAllowBashIfSandboxed"] = bool(config["auto_allow_bash_if_sandboxed"])
+	if config.has("excluded_commands"):
+		serialized["excludedCommands"] = (config["excluded_commands"] as Array).duplicate()
+	if config.has("allow_unsandboxed_commands"):
+		serialized["allowUnsandboxedCommands"] = bool(config["allow_unsandboxed_commands"])
+	if config.has("network") and config["network"] is Dictionary:
+		serialized["network"] = _serialize_sandbox_network(config["network"] as Dictionary)
+	if config.has("ignore_violations") and config["ignore_violations"] is Dictionary:
+		serialized["ignoreViolations"] = _serialize_sandbox_ignore_violations(config["ignore_violations"] as Dictionary)
+	if config.has("enable_weaker_nested_sandbox"):
+		serialized["enableWeakerNestedSandbox"] = bool(config["enable_weaker_nested_sandbox"])
+	return serialized
+
+
+func _serialize_sandbox_network(config: Dictionary) -> Dictionary:
+	var serialized: Dictionary = {}
+	if config.has("allow_unix_sockets"):
+		serialized["allowUnixSockets"] = (config["allow_unix_sockets"] as Array).duplicate()
+	if config.has("allow_all_unix_sockets"):
+		serialized["allowAllUnixSockets"] = bool(config["allow_all_unix_sockets"])
+	if config.has("allow_local_binding"):
+		serialized["allowLocalBinding"] = bool(config["allow_local_binding"])
+	if config.has("http_proxy_port"):
+		serialized["httpProxyPort"] = int(config["http_proxy_port"])
+	if config.has("socks_proxy_port"):
+		serialized["socksProxyPort"] = int(config["socks_proxy_port"])
+	return serialized
+
+
+func _serialize_sandbox_ignore_violations(config: Dictionary) -> Dictionary:
+	var serialized: Dictionary = {}
+	if config.has("file"):
+		serialized["file"] = (config["file"] as Array).duplicate()
+	if config.has("network"):
+		serialized["network"] = (config["network"] as Array).duplicate()
+	return serialized
 
 
 func _build_json_schema_argument() -> String:

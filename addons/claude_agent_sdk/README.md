@@ -26,6 +26,7 @@ The current addon does not require `plugin.cfg`, autoloads, or editor-plugin ena
 - richer `system_prompt` and base `tools` configuration is available through `ClaudeAgentOptions`
 - runtime-first custom agent definitions and `setting_sources` control are available through `ClaudeAgentOptions`
 - transport-first advanced CLI option parity is also available through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
+- transport-first `settings` and `sandbox` support is available through `ClaudeAgentOptions`, with sandbox merged into the CLI `--settings` value when configured
 - `ClaudeBuiltInToolCatalog` exposes the shipped built-in Claude Code tool metadata for custom panel/tool-picker UIs
 - SDK-hosted MCP/custom-tool registration stays code-driven through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
 
@@ -39,6 +40,7 @@ This payload includes:
 - `ClaudeForkSessionResult`
 - `ClaudeAgentDefinition`
 - transport-first advanced CLI option fields on `ClaudeAgentOptions`
+- transport-first `settings` and `sandbox` fields on `ClaudeAgentOptions`
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer`
 - `ClaudeBuiltInToolCatalog`
 - `ClaudeClientAdapter`

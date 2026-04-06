@@ -160,10 +160,11 @@ Outputs:
 - runtime-first session forking helpers
 - runtime-first agent definitions and `setting_sources` parity
 - transport-first advanced CLI option parity
+- transport-first `settings` and `sandbox` parity
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10J: transport-first advanced CLI option parity
+- Phase 10K: transport-first `settings` and `sandbox` parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -225,9 +226,14 @@ Delivered in Phase 10J:
 - local conflict validation for `permission_prompt_tool_name` versus `can_use_tool` while preserving the existing auto-`stdio` callback path
 - initialize/runtime boundary coverage proving these options stay CLI-only rather than entering initialize payloads
 
+Delivered in Phase 10K:
+- transport-first `ClaudeAgentOptions.settings` and `ClaudeAgentOptions.sandbox`
+- upstream-style `--settings` pass-through and sandbox merge behavior, including JSON-string passthrough, file-path loading, and sandbox-only fallback on parse/load failure
+- initialize/runtime boundary coverage proving `settings` and `sandbox` stay CLI-only rather than entering initialize payloads
+
 Still deferred within Phase 10:
-- broader settings and agent-definition parity
+- broader transport/runtime parity beyond the current settings, sandbox, and agent-definition surface
 
 ## Current focus
 
-Work should currently prioritize the next post-10J parity slice from the upstream ledger.
+Work should currently prioritize the next post-10K parity slice from the upstream ledger.
