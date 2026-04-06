@@ -114,6 +114,15 @@ func get_session_messages(
 	return ClaudeSessionsScript.get_session_messages(session_id, directory, limit, offset)
 
 
+func get_session_transcript(
+	session_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionTranscriptEntry]:
+	return ClaudeSessionsScript.get_session_transcript(session_id, directory, limit, offset)
+
+
 func rename_session(session_id: String, title: String, directory: String = "") -> int:
 	return _handle_session_mutation_result(ClaudeSessionsScript.rename_session(session_id, title, directory))
 

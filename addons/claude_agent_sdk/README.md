@@ -22,7 +22,7 @@ The current addon does not require `plugin.cfg`, autoloads, or editor-plugin ena
 - the addon uses the system-installed `claude` CLI
 - existing Claude auth is reused from the caller's environment
 - the packaged chat panel is optional and can be replaced with custom UI built on the lower runtime layers
-- session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`
+- session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`, including richer normalized transcript detail via `get_session_transcript()`
 - richer `system_prompt` and base `tools` configuration is available through `ClaudeAgentOptions`
 - `ClaudeBuiltInToolCatalog` exposes the shipped built-in Claude Code tool metadata for custom panel/tool-picker UIs
 - SDK-hosted MCP/custom-tool registration stays code-driven through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
@@ -38,7 +38,7 @@ This payload includes:
 - `ClaudeBuiltInToolCatalog`
 - `ClaudeClientAdapter`
 - `ClaudeClientNode`
-- `ClaudeChatPanel` with saved-session browsing, transcript restoration, idle-time live switching, resume, basic rename/tag/delete controls, and disconnected prompt/tool configuration controls
+- `ClaudeChatPanel` with saved-session browsing, transcript restoration, transcript granularity filters, idle-time live switching, resume, basic rename/tag/delete controls, and disconnected prompt/tool configuration controls
 - the canonical addon `VERSION`
 - the addon-local `LICENSE.txt`
 

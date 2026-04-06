@@ -53,6 +53,7 @@ var _session_infos: Array[ClaudeSessionInfo] = []
 var _selected_session_id := ""
 var _selected_session_info: ClaudeSessionInfo = null
 var _selected_session_messages: Array[ClaudeSessionMessage] = []
+var _selected_session_transcript: Array[ClaudeSessionTranscriptEntry] = []
 var _delete_confirm_armed := false
 var _connected_session_id := "default"
 var _did_apply_initial_split := false
@@ -60,6 +61,11 @@ var _suppress_configuration_sync := false
 var _built_in_tool_checks: Dictionary = {}
 var _built_in_tool_group_buttons: Dictionary = {}
 var _current_view := PANEL_VIEW_CHAT
+var _transcript_entries: Array[Dictionary] = []
+var _transcript_entry_views := {}
+var _next_transcript_entry_id := 1
+var _current_assistant_entry_id := -1
+var _current_thinking_entry_id := -1
 
 @onready var _shell: PanelContainer = $Shell
 @onready var _status_badge: PanelContainer = $Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge
@@ -104,8 +110,13 @@ var _current_view := PANEL_VIEW_CHAT
 @onready var _delete_session_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid/DeleteSessionButton
 @onready var _confirm_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/ConfirmDeleteButton
 @onready var _cancel_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/CancelDeleteButton
-@onready var _transcript_scroll: ScrollContainer = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptScroll
-@onready var _transcript_list: VBoxContainer = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptScroll/TranscriptList
+@onready var _thinking_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ThinkingToggle
+@onready var _tools_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ToolsToggle
+@onready var _results_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ResultsToggle
+@onready var _system_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/SystemToggle
+@onready var _raw_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/RawToggle
+@onready var _transcript_scroll: ScrollContainer = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptScroll
+@onready var _transcript_list: VBoxContainer = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptScroll/TranscriptList
 @onready var _composer_hint: Label = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerHintLabel
 @onready var _chat_model_option: OptionButton = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/ModelQuickGroup/ModelQuickOption
 @onready var _chat_effort_option: OptionButton = $Shell/Margin/Body/SplitRow/ChatColumn/ComposerCard/ComposerMargin/ComposerBody/ComposerFooter/ComposerActions/QuickSettingsRow/EffortQuickGroup/EffortQuickOption
@@ -195,11 +206,13 @@ func submit_prompt(prompt: String) -> void:
 		_emit_error("Wait for the current turn to finish before sending another prompt")
 		return
 
-	_append_message_bubble("user", trimmed, "You", true)
+	_begin_new_live_turn()
+	_append_transcript_entry("user", {
+		"title": "You",
+		"text": trimmed,
+		"align_right": true,
+	})
 	_pending_prompt_echo = trimmed
-	_streaming_assistant_entry = null
-	_streaming_assistant_body = null
-	_streaming_assistant_buffer = ""
 	_prompt_input.text = ""
 	_refresh_composer_state()
 	prompt_submitted.emit(trimmed)
@@ -223,11 +236,9 @@ func refresh_auth_status() -> void:
 
 
 func clear_transcript() -> void:
-	for child in _transcript_list.get_children():
-		child.queue_free()
-	_streaming_assistant_entry = null
-	_streaming_assistant_body = null
-	_streaming_assistant_buffer = ""
+	_transcript_entries.clear()
+	_clear_transcript_views()
+	_begin_new_live_turn()
 
 
 func get_client_node() -> ClaudeClientNode:
@@ -249,6 +260,16 @@ func _wire_ui() -> void:
 		_interrupt_button.pressed.connect(_on_interrupt_pressed)
 	if not _send_button.pressed.is_connected(_on_send_pressed):
 		_send_button.pressed.connect(_on_send_pressed)
+	if not _thinking_toggle.toggled.is_connected(_on_transcript_filter_toggled):
+		_thinking_toggle.toggled.connect(_on_transcript_filter_toggled)
+	if not _tools_toggle.toggled.is_connected(_on_transcript_filter_toggled):
+		_tools_toggle.toggled.connect(_on_transcript_filter_toggled)
+	if not _results_toggle.toggled.is_connected(_on_transcript_filter_toggled):
+		_results_toggle.toggled.connect(_on_transcript_filter_toggled)
+	if not _system_toggle.toggled.is_connected(_on_transcript_filter_toggled):
+		_system_toggle.toggled.connect(_on_transcript_filter_toggled)
+	if not _raw_toggle.toggled.is_connected(_on_transcript_filter_toggled):
+		_raw_toggle.toggled.connect(_on_transcript_filter_toggled)
 	if not _prompt_input.text_changed.is_connected(_on_prompt_text_changed):
 		_prompt_input.text_changed.connect(_on_prompt_text_changed)
 	if not _chat_model_option.item_selected.is_connected(_on_model_option_selected):
@@ -754,6 +775,7 @@ func _clear_selected_session(clear_transcript_too: bool) -> void:
 	_selected_session_id = ""
 	_selected_session_info = null
 	_selected_session_messages.clear()
+	_selected_session_transcript.clear()
 	_delete_confirm_armed = false
 	_connected_session_id = _effective_connect_session_id()
 	_session_list.deselect_all()
@@ -776,37 +798,15 @@ func _reload_selected_session_transcript() -> void:
 		return
 	_selected_session_info = session_info
 	_selected_session_messages = _client_node.get_session_messages(_selected_session_id, _selected_session_directory())
+	_selected_session_transcript = _client_node.get_session_transcript(_selected_session_id, _selected_session_directory())
 	_render_selected_session_transcript()
 	_refresh_selected_session_metadata()
 
 
 func _render_selected_session_transcript() -> void:
 	clear_transcript()
-	for message in _selected_session_messages:
-		var text := _historical_message_text(message.message)
-		if text.is_empty():
-			text = _json_pretty(message.message)
-		if message.type == "user":
-			_append_message_bubble("user", text, "You", true)
-		elif message.type == "assistant":
-			_append_message_bubble("assistant", text, "Claude", false)
-
-
-func _historical_message_text(payload: Variant) -> String:
-	if payload is String:
-		return str(payload)
-	if not (payload is Dictionary):
-		return ""
-	var content: Variant = payload.get("content")
-	if content is String:
-		return str(content)
-	if content is Array:
-		var parts: Array[String] = []
-		for block in content:
-			if block is Dictionary and str(block.get("type", "")) == "text":
-				parts.append(str(block.get("text", "")))
-		return "\n\n".join(parts)
-	return ""
+	for entry in _selected_session_transcript:
+		_append_saved_transcript_entry(entry)
 
 
 func _session_list_label(info: ClaudeSessionInfo) -> String:
@@ -886,9 +886,7 @@ func _can_switch_sessions() -> bool:
 func _restore_disconnected_view() -> void:
 	_is_connecting = false
 	_session_live = false
-	_streaming_assistant_entry = null
-	_streaming_assistant_body = null
-	_streaming_assistant_buffer = ""
+	_begin_new_live_turn()
 	if _has_selected_session():
 		_reload_selected_session_transcript()
 	_update_status_from_state()
@@ -916,7 +914,12 @@ func _on_client_message_received(message: Variant) -> void:
 	message_received.emit(message)
 	if message is ClaudeSystemMessage:
 		if message.subtype != "init":
-			_append_detail_card("system", "System · %s" % message.subtype.capitalize(), _json_pretty(message.raw_data), false)
+			_append_transcript_entry("system", {
+				"title": "System · %s" % message.subtype.capitalize(),
+				"text": _json_pretty(message.raw_data),
+				"raw_data": message.raw_data,
+				"collapsed": false,
+			})
 		return
 
 	if message is ClaudeUserMessage:
@@ -936,9 +939,7 @@ func _on_client_message_received(message: Variant) -> void:
 
 
 func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
-	_streaming_assistant_entry = null
-	_streaming_assistant_body = null
-	_streaming_assistant_buffer = ""
+	_begin_new_live_turn()
 	turn_finished.emit(result_message)
 
 
@@ -957,69 +958,431 @@ func _on_client_session_closed() -> void:
 
 
 func _handle_user_message(message: ClaudeUserMessage) -> void:
-	var content_text := _user_message_text(message.content)
+	var has_recognized_blocks := false
+	var content_text := ""
+	if message.content is String:
+		content_text = str(message.content).strip_edges()
+	elif message.content is Array:
+		content_text = _user_message_text(message.content)
+		for block in message.content:
+			if block is ClaudeTextBlock:
+				has_recognized_blocks = true
+				continue
+			if block is ClaudeToolUseBlock or block is ClaudeToolResultBlock:
+				has_recognized_blocks = true
+				_render_user_detail_block(block, message.raw_data)
+
+	var suppressed_echo := false
 	if not _pending_prompt_echo.is_empty() and content_text == _pending_prompt_echo:
 		_pending_prompt_echo = ""
+		suppressed_echo = true
+
+	if not content_text.is_empty() and not suppressed_echo:
+		_append_transcript_entry("user", {
+			"title": "User",
+			"text": content_text,
+			"align_right": false,
+			"raw_data": message.raw_data,
+		})
 		return
-	if content_text.is_empty():
-		content_text = _json_pretty(message.raw_data)
-	_append_message_bubble("user", content_text, "User", false)
+
+	if has_recognized_blocks:
+		return
+
+	var fallback_text := _json_pretty(message.raw_data)
+	_append_transcript_entry("user", {
+		"title": "User",
+		"text": fallback_text,
+		"align_right": false,
+		"raw_data": message.raw_data,
+	})
 
 
 func _handle_assistant_message(message: ClaudeAssistantMessage) -> void:
 	var assistant_text := _assistant_text(message)
-	if assistant_text.is_empty():
-		for block in message.content:
-			_render_assistant_detail_block(block)
-		return
-
-	var bubble_label := _ensure_streaming_assistant_bubble()
-	_streaming_assistant_buffer = assistant_text
-	bubble_label.text = assistant_text
+	if not assistant_text.is_empty():
+		_upsert_live_assistant_entry(assistant_text, message.raw_data)
 	for block in message.content:
 		if block is ClaudeTextBlock:
 			continue
-		_render_assistant_detail_block(block)
-	_scroll_to_bottom_deferred()
+		_render_assistant_detail_block(block, message.raw_data)
 
 
 func _handle_stream_event(message: ClaudeStreamEvent) -> void:
 	var text_delta := _extract_stream_text(message.event)
-	if text_delta.is_empty():
+	if not text_delta.is_empty():
+		_append_live_assistant_delta(text_delta, message.raw_data)
+	var thinking_delta := _extract_stream_thinking(message.event)
+	if not thinking_delta.is_empty():
+		_append_or_merge_thinking_entry(thinking_delta, message.raw_data)
+	if text_delta.is_empty() and thinking_delta.is_empty():
 		return
-	var bubble_label := _ensure_streaming_assistant_bubble()
-	_streaming_assistant_buffer += text_delta
-	bubble_label.text = _streaming_assistant_buffer
-	_scroll_to_bottom_deferred()
 
 
 func _handle_result_message(message: ClaudeResultMessage) -> void:
-	_append_result_card(message)
+	_append_transcript_entry("result", {
+		"title": "Result · %s" % ("Error" if message.is_error else "Success"),
+		"text": message.result,
+		"payload": message,
+		"raw_data": message.raw_data,
+		"show_result": _should_render_result_card(message),
+		"show_result_text": _should_render_result_text(message),
+	})
 	_update_status_from_state()
 	_refresh_composer_state()
 
 
-func _render_assistant_detail_block(block: Variant) -> void:
+func _render_assistant_detail_block(block: Variant, raw_data: Variant = null) -> void:
 	if block is ClaudeThinkingBlock:
-		_append_detail_card("thinking", "Thinking", str(block.thinking), true)
+		_append_or_merge_thinking_entry(str(block.thinking), block.raw_data if block.raw_data != null else raw_data)
 	elif block is ClaudeToolUseBlock:
-		_append_detail_card("tool_use", "Tool use · %s" % block.name, _json_pretty(block.input), true)
+		_append_tool_use_entry(block, raw_data)
 	elif block is ClaudeToolResultBlock:
-		var title := "Tool result"
-		if block.is_error:
-			title += " · error"
-		_append_detail_card("tool_result", title, _json_pretty(block.content), true)
+		_append_tool_result_entry(block, raw_data)
 
 
-func _ensure_streaming_assistant_bubble() -> RichTextLabel:
-	if _streaming_assistant_body != null and is_instance_valid(_streaming_assistant_body):
-		return _streaming_assistant_body
-	_streaming_assistant_entry = _append_message_bubble("assistant", "", "Claude", false)
-	_streaming_assistant_body = _streaming_assistant_entry.find_child("BubbleBody", true, false) as RichTextLabel
-	return _streaming_assistant_body
+func _render_user_detail_block(block: Variant, raw_data: Variant = null) -> void:
+	if block is ClaudeToolUseBlock:
+		_append_tool_use_entry(block, raw_data)
+	elif block is ClaudeToolResultBlock:
+		_append_tool_result_entry(block, raw_data)
 
 
-func _append_message_bubble(role: String, text: String, label_text: String, align_right: bool) -> Control:
+func _append_tool_use_entry(block: ClaudeToolUseBlock, raw_data: Variant = null) -> void:
+	_append_transcript_entry("tool_use", {
+		"title": "Tool use · %s" % block.name,
+		"text": _json_pretty(block.input),
+		"payload": block.input,
+		"raw_data": block.raw_data if block.raw_data != null else raw_data,
+	})
+
+
+func _append_tool_result_entry(block: ClaudeToolResultBlock, raw_data: Variant = null) -> void:
+	var title := "Tool result"
+	if block.is_error:
+		title += " · error"
+	_append_transcript_entry("tool_result", {
+		"title": title,
+		"text": _json_pretty(block.content),
+		"payload": block.content,
+		"raw_data": block.raw_data if block.raw_data != null else raw_data,
+	})
+
+
+func _append_saved_transcript_entry(entry: ClaudeSessionTranscriptEntry) -> void:
+	match entry.kind:
+		"user":
+			_append_transcript_entry("user", {
+				"title": entry.title if not entry.title.is_empty() else "You",
+				"text": entry.text,
+				"align_right": true,
+				"payload": entry.payload,
+				"raw_data": entry.raw_data,
+				"uuid": entry.uuid,
+				"session_id": entry.session_id,
+			})
+		"assistant":
+			_append_transcript_entry("assistant", {
+				"title": entry.title if not entry.title.is_empty() else "Claude",
+				"text": entry.text,
+				"align_right": false,
+				"payload": entry.payload,
+				"raw_data": entry.raw_data,
+				"uuid": entry.uuid,
+				"session_id": entry.session_id,
+			})
+		"thinking", "tool_use", "tool_result", "system", "progress", "attachment", "result":
+			_append_transcript_entry(entry.kind, {
+				"title": entry.title,
+				"text": entry.text,
+				"payload": entry.payload,
+				"raw_data": entry.raw_data,
+				"uuid": entry.uuid,
+				"session_id": entry.session_id,
+			})
+
+
+func _begin_new_live_turn() -> void:
+	_current_assistant_entry_id = -1
+	_current_thinking_entry_id = -1
+	_streaming_assistant_entry = null
+	_streaming_assistant_body = null
+	_streaming_assistant_buffer = ""
+
+
+func _append_live_assistant_delta(text_delta: String, raw_data: Variant = null) -> void:
+	if _current_assistant_entry_id < 0:
+		_current_assistant_entry_id = _append_transcript_entry("assistant", {
+			"title": "Claude",
+			"text": text_delta,
+			"align_right": false,
+			"raw_data": raw_data,
+			"payload": {"partial": true},
+		})
+		return
+	var entry := _get_transcript_entry(_current_assistant_entry_id)
+	if entry.is_empty():
+		return
+	entry["text"] = str(entry.get("text", "")) + text_delta
+	if raw_data != null:
+		entry["raw_data"] = raw_data
+	_set_transcript_entry(_current_assistant_entry_id, entry)
+
+
+func _upsert_live_assistant_entry(text: String, raw_data: Variant = null) -> void:
+	if _current_assistant_entry_id < 0:
+		_current_assistant_entry_id = _append_transcript_entry("assistant", {
+			"title": "Claude",
+			"text": text,
+			"align_right": false,
+			"raw_data": raw_data,
+		})
+		return
+	var entry := _get_transcript_entry(_current_assistant_entry_id)
+	if entry.is_empty():
+		return
+	entry["text"] = text
+	if raw_data != null:
+		entry["raw_data"] = raw_data
+	_set_transcript_entry(_current_assistant_entry_id, entry)
+
+
+func _append_or_merge_thinking_entry(text: String, raw_data: Variant = null) -> void:
+	var normalized := text.strip_edges()
+	if normalized.is_empty():
+		return
+	if _current_thinking_entry_id < 0:
+		_current_thinking_entry_id = _append_transcript_entry("thinking", {
+			"title": "Thinking",
+			"text": normalized,
+			"raw_data": raw_data,
+		})
+		return
+	var entry := _get_transcript_entry(_current_thinking_entry_id)
+	if entry.is_empty():
+		return
+	var existing := str(entry.get("text", ""))
+	if existing.is_empty():
+		entry["text"] = normalized
+	elif existing == normalized or existing.ends_with(normalized):
+		pass
+	elif normalized.begins_with(existing):
+		entry["text"] = normalized
+	else:
+		entry["text"] = "%s\n\n%s" % [existing, normalized]
+	if raw_data != null:
+		entry["raw_data"] = raw_data
+	_set_transcript_entry(_current_thinking_entry_id, entry)
+
+
+func _append_transcript_entry(kind: String, data: Dictionary) -> int:
+	var entry := data.duplicate(true)
+	entry["id"] = _next_transcript_entry_id
+	entry["kind"] = kind
+	_next_transcript_entry_id += 1
+	_transcript_entries.append(entry)
+	_ensure_transcript_entry_view(entry)
+	return int(entry.get("id", -1))
+
+
+func _get_transcript_entry(entry_id: int) -> Dictionary:
+	for entry in _transcript_entries:
+		if int(entry.get("id", -1)) == entry_id:
+			return entry
+	return {}
+
+
+func _set_transcript_entry(entry_id: int, updated_entry: Dictionary) -> void:
+	for index in range(_transcript_entries.size()):
+		if int(_transcript_entries[index].get("id", -1)) == entry_id:
+			_transcript_entries[index] = updated_entry
+			_update_transcript_entry_view(updated_entry)
+			return
+
+
+func _render_transcript_entries() -> void:
+	_clear_transcript_views()
+	for entry in _transcript_entries:
+		_ensure_transcript_entry_view(entry)
+
+
+func _render_transcript_entry(entry: Dictionary) -> void:
+	_ensure_transcript_entry_view(entry)
+
+
+func _ensure_transcript_entry_view(entry: Dictionary) -> void:
+	var entry_id := int(entry.get("id", -1))
+	if entry_id < 0:
+		return
+	if _transcript_entry_views.has(entry_id):
+		_refresh_transcript_entry_view(entry)
+		return
+	var container := VBoxContainer.new()
+	container.name = "TranscriptEntry_%d" % entry_id
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_theme_constant_override("separation", 8)
+	container.set_meta("transcript_entry_id", entry_id)
+	_transcript_list.add_child(container)
+	var primary := _create_transcript_primary_view(entry)
+	if primary == null:
+		container.queue_free()
+		return
+	container.add_child(primary)
+	_transcript_entry_views[entry_id] = {
+		"container": container,
+		"primary": primary,
+		"raw": null,
+	}
+	_refresh_transcript_entry_view(entry)
+	_scroll_to_bottom_deferred()
+
+
+func _refresh_transcript_entry_view(entry: Dictionary) -> void:
+	var entry_id := int(entry.get("id", -1))
+	var view: Dictionary = _transcript_entry_views.get(entry_id, {})
+	if view.is_empty():
+		return
+	var primary := view.get("primary") as Control
+	if primary != null:
+		_update_transcript_primary_view(primary, entry)
+		primary.visible = _is_transcript_entry_primary_visible(entry)
+	if _should_show_raw_entry(entry):
+		var raw_view := view.get("raw") as Control
+		if raw_view == null:
+			raw_view = _create_raw_entry_view(entry)
+			if raw_view != null:
+				(view.get("container") as VBoxContainer).add_child(raw_view)
+				view["raw"] = raw_view
+				_transcript_entry_views[entry_id] = view
+		elif raw_view != null:
+			_update_detail_card(raw_view, "Raw · %s" % _transcript_entry_title_kind(entry), _json_pretty(entry.get("raw_data")), true)
+	if view.get("raw") is Control:
+		(view.get("raw") as Control).visible = _raw_toggle.button_pressed
+	var container := view.get("container") as VBoxContainer
+	if container != null:
+		var primary_visible := primary != null and primary.visible
+		var raw_visible := view.get("raw") is Control and (view.get("raw") as Control).visible
+		container.visible = primary_visible or raw_visible
+
+
+func _update_transcript_entry_view(entry: Dictionary) -> void:
+	var entry_id := int(entry.get("id", -1))
+	if entry_id < 0:
+		return
+	if not _transcript_entry_views.has(entry_id):
+		_ensure_transcript_entry_view(entry)
+		return
+	_refresh_transcript_entry_view(entry)
+	_scroll_to_bottom_deferred()
+
+
+func _refresh_transcript_entry_views_visibility() -> void:
+	for entry in _transcript_entries:
+		_refresh_transcript_entry_view(entry)
+
+
+func _create_transcript_primary_view(entry: Dictionary) -> Control:
+	var kind := str(entry.get("kind", ""))
+	match kind:
+		"user":
+			return _create_message_bubble("user", str(entry.get("text", "")), str(entry.get("title", "You")), bool(entry.get("align_right", true)))
+		"assistant":
+			return _create_message_bubble("assistant", str(entry.get("text", "")), str(entry.get("title", "Claude")), bool(entry.get("align_right", false)))
+		"thinking":
+			return _create_detail_card("thinking", str(entry.get("title", "Thinking")), str(entry.get("text", "")), false)
+		"tool_use":
+			return _create_detail_card("tool_use", str(entry.get("title", "Tool use")), str(entry.get("text", "")), false)
+		"tool_result":
+			return _create_detail_card("tool_result", str(entry.get("title", "Tool result")), str(entry.get("text", "")), false)
+		"system":
+			return _create_detail_card("system", str(entry.get("title", "System")), str(entry.get("text", "")), false)
+		"progress":
+			return _create_detail_card("progress", str(entry.get("title", "Progress")), str(entry.get("text", "")), false)
+		"attachment":
+			return _create_detail_card("attachment", str(entry.get("title", "Attachment")), str(entry.get("text", "")), false)
+		"result":
+			return _create_result_card(entry)
+	return null
+
+
+func _update_transcript_primary_view(primary: Control, entry: Dictionary) -> void:
+	var kind := str(entry.get("kind", ""))
+	match kind:
+		"user", "assistant":
+			_update_message_bubble(
+				primary,
+				str(entry.get("title", "You" if kind == "user" else "Claude")),
+				str(entry.get("text", ""))
+			)
+		"thinking", "tool_use", "tool_result", "system", "progress", "attachment":
+			_update_detail_card(primary, str(entry.get("title", "")), str(entry.get("text", "")), false)
+		"result":
+			_update_result_card(primary, entry)
+
+
+func _is_transcript_entry_primary_visible(entry: Dictionary) -> bool:
+	match str(entry.get("kind", "")):
+		"thinking":
+			return _thinking_toggle.button_pressed
+		"tool_use", "tool_result":
+			return _tools_toggle.button_pressed
+		"system", "progress", "attachment":
+			return _system_toggle.button_pressed
+		"result":
+			return _results_toggle.button_pressed and bool(entry.get("show_result", true))
+		_:
+			return true
+
+
+func _should_show_raw_entry(entry: Dictionary) -> bool:
+	var kind := str(entry.get("kind", ""))
+	return kind != "user" and kind != "assistant" and entry.get("raw_data") != null
+
+
+func _transcript_entry_title_kind(entry: Dictionary) -> String:
+	return str(entry.get("kind", "")).capitalize().replace("_", " ")
+
+
+func _should_render_result_card(message: ClaudeResultMessage) -> bool:
+	if message.is_error:
+		return true
+	if message.structured_output != null:
+		return true
+	if not message.errors.is_empty():
+		return true
+	if message.subtype != "success":
+		return true
+	return _should_render_result_text(message)
+
+
+func _should_render_result_text(message: ClaudeResultMessage) -> bool:
+	var result_text := message.result.strip_edges()
+	if result_text.is_empty():
+		return false
+	var assistant_text := _current_assistant_text()
+	if assistant_text.is_empty():
+		return true
+	return result_text != assistant_text
+
+
+func _current_assistant_text() -> String:
+	if _current_assistant_entry_id < 0:
+		return ""
+	return str(_get_transcript_entry(_current_assistant_entry_id).get("text", "")).strip_edges()
+
+
+func _clear_transcript_list_children() -> void:
+	for child in _transcript_list.get_children():
+		_transcript_list.remove_child(child)
+		child.queue_free()
+
+
+func _clear_transcript_views() -> void:
+	_transcript_entry_views.clear()
+	_clear_transcript_list_children()
+
+
+func _create_message_bubble(role: String, text: String, label_text: String, align_right: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_theme_constant_override("separation", 12)
@@ -1038,6 +1401,7 @@ func _append_message_bubble(role: String, text: String, label_text: String, alig
 	bubble.add_child(bubble_body)
 
 	var bubble_label := Label.new()
+	bubble_label.name = "BubbleLabel"
 	bubble_label.text = label_text
 	bubble_label.add_theme_color_override("font_color", COLOR_MUTED)
 	bubble_label.add_theme_font_size_override("font_size", 12)
@@ -1062,12 +1426,19 @@ func _append_message_bubble(role: String, text: String, label_text: String, alig
 		row.add_child(bubble)
 		row.add_child(spacer)
 
-	_transcript_list.add_child(row)
-	_scroll_to_bottom_deferred()
 	return row
 
 
-func _append_detail_card(kind: String, title: String, body_text: String, collapsed: bool) -> Control:
+func _update_message_bubble(row: Control, label_text: String, body_text: String) -> void:
+	var bubble_label := row.find_child("BubbleLabel", true, false) as Label
+	if bubble_label != null:
+		bubble_label.text = label_text
+	var bubble_body := row.find_child("BubbleBody", true, false) as RichTextLabel
+	if bubble_body != null:
+		bubble_body.text = body_text
+
+
+func _create_detail_card(kind: String, title: String, body_text: String, collapsed: bool) -> Control:
 	var row := VBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.set_meta("entry_kind", "%s_card" % kind)
@@ -1082,6 +1453,7 @@ func _append_detail_card(kind: String, title: String, body_text: String, collaps
 	card.add_child(card_body)
 
 	var toggle := Button.new()
+	toggle.name = "CardToggle"
 	toggle.text = _card_title(title, collapsed)
 	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	toggle.flat = true
@@ -1109,12 +1481,33 @@ func _append_detail_card(kind: String, title: String, body_text: String, collaps
 		_scroll_to_bottom_deferred()
 	)
 
-	_transcript_list.add_child(row)
-	_scroll_to_bottom_deferred()
 	return row
 
 
-func _append_result_card(message: ClaudeResultMessage) -> void:
+func _update_detail_card(card: Control, title: String, body_text: String, collapsed: bool) -> void:
+	var toggle := card.find_child("CardToggle", true, false) as Button
+	var content := card.find_child("CardBody", true, false) as RichTextLabel
+	if toggle == null or content == null:
+		return
+	var should_collapse := collapsed if content.text.is_empty() else not content.visible
+	content.text = body_text
+	content.visible = not should_collapse
+	toggle.text = _card_title(title, should_collapse)
+
+
+func _create_raw_entry_view(entry: Dictionary) -> Control:
+	return _create_detail_card(
+		"raw",
+		"Raw · %s" % _transcript_entry_title_kind(entry),
+		_json_pretty(entry.get("raw_data")),
+		true
+	)
+
+
+func _create_result_card(entry: Dictionary) -> Control:
+	var message = entry.get("payload") as ClaudeResultMessage
+	if message == null:
+		return null
 	var card := _build_card_container(COLOR_PANEL_ALT, 20, 16)
 	card.set_meta("entry_kind", "result_card")
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1141,7 +1534,7 @@ func _append_result_card(message: ClaudeResultMessage) -> void:
 	summary.add_theme_color_override("font_color", COLOR_MUTED)
 	body.add_child(summary)
 
-	if not message.result.is_empty():
+	if bool(entry.get("show_result_text", true)) and not message.result.is_empty():
 		var result_body := RichTextLabel.new()
 		result_body.name = "ResultBodyLabel"
 		result_body.fit_content = true
@@ -1184,8 +1577,27 @@ func _append_result_card(message: ClaudeResultMessage) -> void:
 		errors.add_theme_color_override("default_color", COLOR_MUTED)
 		body.add_child(errors)
 
-	_transcript_list.add_child(card)
-	_scroll_to_bottom_deferred()
+	return card
+
+
+func _update_result_card(card: Control, entry: Dictionary) -> void:
+	var message = entry.get("payload") as ClaudeResultMessage
+	if message == null:
+		return
+	var existing_body := card.get_child(0) as VBoxContainer
+	if existing_body != null:
+		card.remove_child(existing_body)
+		existing_body.queue_free()
+	var rebuilt := _create_result_card(entry)
+	if rebuilt == null:
+		return
+	var rebuilt_body := rebuilt.get_child(0) as VBoxContainer
+	if rebuilt_body == null:
+		rebuilt.queue_free()
+		return
+	rebuilt.remove_child(rebuilt_body)
+	card.add_child(rebuilt_body)
+	rebuilt.queue_free()
 
 
 func _build_card_container(background: Color, radius: int, padding: int) -> PanelContainer:
@@ -1437,6 +1849,16 @@ func _extract_stream_text(event: Dictionary) -> String:
 	return ""
 
 
+func _extract_stream_thinking(event: Dictionary) -> String:
+	if event.has("delta") and event["delta"] is Dictionary:
+		var delta: Dictionary = event["delta"]
+		if delta.has("thinking") and delta["thinking"] is String:
+			return str(delta["thinking"])
+	if event.has("thinking") and event["thinking"] is String:
+		return str(event["thinking"])
+	return ""
+
+
 func _json_pretty(value: Variant) -> String:
 	if value == null:
 		return "null"
@@ -1505,6 +1927,10 @@ func _on_send_pressed() -> void:
 
 func _on_prompt_text_changed() -> void:
 	_refresh_composer_state()
+
+
+func _on_transcript_filter_toggled(_pressed: bool) -> void:
+	_refresh_transcript_entry_views_visibility()
 
 
 func _on_model_option_selected(index: int) -> void:

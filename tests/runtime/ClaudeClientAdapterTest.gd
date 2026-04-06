@@ -396,8 +396,20 @@ func test_adapter_session_passthrough_reads_and_mutates_sessions() -> void:
 	var project_dir := _make_project_dir(config_root, project_path)
 	var session_id := "31313131-3131-4313-8313-313131313131"
 	_write_session_file(project_dir, session_id, [
-		{"type": "user", "cwd": project_path, "message": {"content": "Saved prompt"}},
-		{"type": "assistant", "uuid": "adapter-a-1", "parentUuid": "adapter-u-1", "sessionId": session_id, "message": {"role": "assistant", "content": "Saved answer"}},
+		{
+			"type": "user",
+			"uuid": "adapter-u-1",
+			"sessionId": session_id,
+			"cwd": project_path,
+			"message": {"role": "user", "content": "Saved prompt"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "adapter-a-1",
+			"parentUuid": "adapter-u-1",
+			"sessionId": session_id,
+			"message": {"role": "assistant", "content": "Saved answer"},
+		},
 		{"type": "summary", "summary": "Saved summary"},
 	], 1712302000)
 
@@ -415,6 +427,10 @@ func test_adapter_session_passthrough_reads_and_mutates_sessions() -> void:
 		return
 	assert_str(info.summary).is_equal("Adapter renamed")
 	assert_str(str(info.tag)).is_equal("review")
+	var transcript := adapter.get_session_transcript(session_id, project_path)
+	assert_int(transcript.size()).is_equal(2)
+	assert_str(transcript[0].kind).is_equal("user")
+	assert_str(transcript[1].kind).is_equal("assistant")
 	assert_str(adapter.get_last_error()).is_empty()
 
 

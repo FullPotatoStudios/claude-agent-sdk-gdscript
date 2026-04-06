@@ -52,7 +52,7 @@ static func _parse_user_message(data: Dictionary) -> ClaudeUserMessage:
 		data,
 		str(data.get("uuid", "")),
 		str(data.get("parent_tool_use_id", "")),
-		data.get("tool_use_result", {}) if data.get("tool_use_result", {}) is Dictionary else {}
+		data.get("tool_use_result")
 	)
 
 

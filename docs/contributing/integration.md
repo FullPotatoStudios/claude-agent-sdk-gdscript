@@ -28,14 +28,14 @@ Use `ClaudeClientAdapter` when:
 - you want Godot signals without introducing a `Node`
 - you want a thin wrapper that drains the session-wide message stream for you
 - you are building your own game/tool state around typed runtime messages
-- you want adapter-level convenience access to session history and basic session mutations without calling `ClaudeSessions` directly
+- you want adapter-level convenience access to session history, richer transcript detail, and basic session mutations without calling `ClaudeSessions` directly
 
 Use `ClaudeClientNode` when:
 
 - you want scene-tree lifecycle hooks such as `_ready()` and `_exit_tree()`
 - you want signal-based integration from a scene script with minimal glue code
 - you want optional `auto_connect_on_ready` and `auto_disconnect_on_exit`
-- you want the same session-history and basic session-mutation convenience methods from a `Node`
+- you want the same session-history, transcript-detail, and basic session-mutation convenience methods from a `Node`
 
 Use `ClaudeChatPanel` when:
 
@@ -73,7 +73,7 @@ The integration layer is intentionally thin.
 - It does not add task-specific fanout signals
 - It does not add custom-tool or SDK-hosted MCP abstractions
 - It does not replace the reusable chat panel for users who want a drop-in UI
-- It does not replace `ClaudeSessions` as the canonical scene-free session-history surface
+- It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
 - richer `system_prompt` modes and base built-in tool selection live in `ClaudeAgentOptions` and flow through every layer, including the panel
 - `ClaudeBuiltInToolCatalog` is the shared runtime source of truth for built-in Claude Code tool metadata used by the reference panel and available to custom panels

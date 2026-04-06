@@ -161,7 +161,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10E: chat-configuration parity and panel tooling controls
+- Phase 10G: transcript-detail parity and panel transcript controls
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -194,10 +194,22 @@ Delivered in Phase 10E:
 - `ClaudeChatPanel` disconnected prompt/tool configuration controls and MCP environment summary
 - demo configuration updated to showcase prompt and custom-tool setup through the shipped panel
 
+Delivered in Phase 10F:
+- `ClaudeChatPanel` conversation-first `Chat` view and separate `Settings` view
+- quick chat-view controls for model, effort, and permission mode
+- the shipped panel documentation repositioned around reference-UI usage for custom project panels
+
+Delivered in Phase 10G:
+- `ClaudeSessionTranscriptEntry` and `ClaudeSessions.get_session_transcript()`
+- `ClaudeClientAdapter.get_session_transcript()` and `ClaudeClientNode.get_session_transcript()`
+- saved-session transcript restoration upgraded to normalized thinking/tool/system/result detail
+- transcript filtering and de-duplication controls in `ClaudeChatPanel`
+- incremental live transcript rendering and live user-side tool-result classification under the `Tools` toggle
+
 Still deferred within Phase 10:
 - session forking helpers
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize Phase 10E.
+Work should currently prioritize Phase 10G.

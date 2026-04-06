@@ -43,11 +43,12 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - A scene-free runtime core under `addons/claude_agent_sdk/runtime/`
 - `ClaudeQuery` for one-shot usage
 - `ClaudeSDKClient` for interactive runtime usage
-- `ClaudeSessions` for local session history access and basic session mutations
+- `ClaudeSessions` for local session history access, richer transcript detail reading, and basic session mutations
+- `ClaudeSessionTranscriptEntry` for normalized historical transcript detail
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
-- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history convenience methods
-- `ClaudeChatPanel` as a reusable reference chat UI with a conversation-first `Chat` view, secondary `Settings` view, saved-session browsing, idle-time live switching, resume, basic session management, and disconnected chat-configuration controls
+- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
+- `ClaudeChatPanel` as a reusable reference chat UI with a conversation-first `Chat` view, secondary `Settings` view, saved-session browsing, idle-time live switching, resume, basic session management, transcript granularity filters, and disconnected chat-configuration controls
 - A root-project demo under `demo/` for validation and onboarding
 
 Only `addons/claude_agent_sdk/` is the distributable addon payload. The `demo/`, `tests/`, and `tools/` directories stay outside the packaged artifact.
@@ -103,15 +104,15 @@ func _ready() -> void:
 - Claude CLI subprocess transport with inherited environment and explicit overrides
 - Typed message parsing for user, assistant, system, result, and partial stream events
 - One-shot queries plus interactive connected sessions
-- Local session history access for session listing, metadata lookup, transcript reading, and basic rename/tag/delete mutations
+- Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
-- Godot-native adapter and node layers with session-history convenience passthroughs
-- A reusable chat panel plus demo validation scene, now including a conversation-first main view, quick model/effort/permission controls, a secondary settings view for prompt/tool configuration, session browsing, transcript restoration, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
+- Godot-native adapter and node layers with session-history and transcript-detail convenience passthroughs
+- A reusable chat panel plus demo validation scene, now including a conversation-first main view, quick model/effort/permission controls, a secondary settings view for prompt/tool configuration, session browsing, transcript restoration, transcript granularity filters for thinking/tools/results/system/raw, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
 
 ## Current Gaps
 

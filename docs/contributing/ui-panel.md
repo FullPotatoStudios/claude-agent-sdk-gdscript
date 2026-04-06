@@ -6,7 +6,7 @@ It lives at:
 
 - `res://addons/claude_agent_sdk/ui/claude_chat_panel.tscn`
 
-The panel owns one internal `ClaudeClientNode`. In Phase 7 it does not support external client injection.
+The panel owns one internal `ClaudeClientNode`. It does not currently support external client injection.
 
 ## When to use it
 
@@ -71,6 +71,7 @@ Methods:
 - connection is manual
 - prompt submission is disabled until connected
 - the panel renders typed runtime messages and partial stream events from the internal client node
+- the default transcript view is simplified chat first, with thinking/tools/system/raw detail hidden behind transcript toggles
 
 ## Current scope
 
@@ -86,10 +87,18 @@ The shipped panel currently includes:
 - basic rename, tag, clear-tag, and delete controls for saved sessions
 - connect/disconnect controls
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
+- transcript granularity toggles for `Thinking`, `Tools`, `Results`, `System`, and `Raw`
 - interrupt support during active turns
 - live model and permission-mode changes while connected
 - reconnect-only effort changes, exposed in the chat view but disabled while connected
 - disconnected-only system prompt, built-in tool, advanced allow/deny, and MCP-summary editing in the separate `Settings` view
+
+Live transcript detail uses the same normalized transcript model as saved-session restoration:
+
+- user and assistant text stay visible as the primary chat surface
+- tool-use and tool-result entries stay grouped under the `Tools` toggle, including tool blocks carried inside top-level live `user` messages
+- raw inspection stays hidden by default and is only shown through the `Raw` toggle
+- saved-session transcript loading uses the richer `ClaudeSessions.get_session_transcript()` detail model under the same filter toggles
 
 The panel intentionally does not yet include:
 

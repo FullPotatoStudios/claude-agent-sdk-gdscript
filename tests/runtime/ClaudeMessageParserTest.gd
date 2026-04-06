@@ -68,6 +68,26 @@ func test_parse_user_system_and_result_messages() -> void:
 	assert_that(result.structured_output).is_null()
 
 
+func test_parse_user_message_preserves_tool_result_blocks_and_tool_use_result_variant() -> void:
+	var user: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "user",
+		"uuid": "user-tool-1",
+		"parent_tool_use_id": "toolu_123",
+		"tool_use_result": ["structured", "metadata"],
+		"message": {
+			"role": "user",
+			"content": [
+				{"type": "tool_result", "tool_use_id": "toolu_123", "content": {"ok": true}, "is_error": false},
+			],
+		},
+	})
+
+	assert_object(user).is_instanceof(ClaudeUserMessageScript)
+	assert_int((user.content as Array).size()).is_equal(1)
+	assert_object((user.content as Array)[0]).is_instanceof(ClaudeToolResultBlockScript)
+	assert_array(user.tool_use_result).is_equal(["structured", "metadata"])
+
+
 func test_parse_result_extras_and_stream_event() -> void:
 	var message: Variant = ClaudeMessageParserScript.parse_message({
 		"type": "result",

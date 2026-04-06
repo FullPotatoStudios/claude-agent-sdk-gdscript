@@ -58,6 +58,11 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 	assert_bool(_button(panel, "ChatViewButton").button_pressed).is_true()
 	assert_bool(_button(panel, "SettingsViewButton").button_pressed).is_false()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
+	assert_bool(_button(panel, "ThinkingToggle").button_pressed).is_false()
+	assert_bool(_button(panel, "ToolsToggle").button_pressed).is_false()
+	assert_bool(_button(panel, "ResultsToggle").button_pressed).is_true()
+	assert_bool(_button(panel, "SystemToggle").button_pressed).is_false()
+	assert_bool(_button(panel, "RawToggle").button_pressed).is_false()
 	assert_str(_selected_option_text(panel, "ModelQuickOption")).is_equal("haiku")
 	assert_str(_selected_option_text(panel, "EffortQuickOption")).is_equal("low")
 	assert_str(_selected_option_text(panel, "PermissionQuickOption")).is_equal("plan")
@@ -334,6 +339,10 @@ func test_panel_connects_and_enables_composer_after_initialize_without_system_in
 	assert_str(_status_badge(panel).text).is_equal("Connected")
 	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_bool(_button(panel, "ConnectButton").disabled).is_true()
+	assert_int(_count_entries(panel, "system_card")).is_equal(0)
+	_button(panel, "SystemToggle").button_pressed = true
+	_button(panel, "SystemToggle").toggled.emit(true)
+	await _await_frames(2)
 	assert_int(_count_entries(panel, "system_card")).is_equal(2)
 
 	await _cleanup_panel(panel)
@@ -397,7 +406,7 @@ func test_panel_submit_prompt_renders_user_assistant_and_result_entries() -> voi
 	assert_int(turn_finished_events.size()).is_equal(1)
 	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
-	assert_int(_count_entries(panel, "result_card")).is_equal(1)
+	assert_int(_count_entries(panel, "result_card")).is_equal(0)
 	assert_bool(_button(panel, "InterruptButton").disabled).is_true()
 
 	await _cleanup_panel(panel)
@@ -482,6 +491,243 @@ func test_panel_ignores_non_text_stream_event_payloads_in_assistant_bubble() -> 
 	await _cleanup_panel(panel)
 
 
+func test_panel_transcript_toggles_reveal_live_thinking_tools_and_raw_trace() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport, ClaudeAgentOptionsScript.new({
+		"include_partial_messages": true,
+	}))
+
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-thinking-1",
+		"event": {"delta": {"thinking": "Inspecting the request."}},
+	})
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "stream-thinking-2",
+		"event": {"delta": {"thinking": "Preparing a tool call."}},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(0)
+	_button(panel, "ThinkingToggle").button_pressed = true
+	_button(panel, "ThinkingToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "thinking_card")).contains("Inspecting the request.")
+	assert_str(_last_card_body_text(panel, "thinking_card")).contains("Preparing a tool call.")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "default",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{"type": "text", "text": "Done."},
+				{"type": "thinking", "thinking": "Final answer ready."},
+				{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"path": "README.md"}},
+				{"type": "tool_result", "tool_use_id": "tool-1", "content": {"ok": true}, "is_error": false},
+			],
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "thinking_card")).contains("Final answer ready.")
+	assert_int(_count_entries(panel, "tool_use_card")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(0)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "tool_use_card")).is_equal(1)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(1)
+
+	_button(panel, "RawToggle").button_pressed = true
+	_button(panel, "RawToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "raw_card")).is_greater_equal(3)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_hides_user_side_tool_result_until_tools_toggle_is_enabled() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-tool-result-1",
+		"message": {
+			"role": "user",
+			"content": [
+				{"type": "tool_result", "tool_use_id": "toolu_1", "content": {"ok": true}, "is_error": false},
+			],
+		},
+		"tool_use_result": ["metadata"],
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(0)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "tool_result_card")).contains("\"ok\": true")
+
+	_button(panel, "RawToggle").button_pressed = true
+	_button(panel, "RawToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "raw_card")).is_greater_equal(1)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_echo_suppression_keeps_user_side_tool_result_entries() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Search the repo")
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "user-tool-result-echo",
+		"message": {
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "Search the repo"},
+				{"type": "tool_result", "tool_use_id": "toolu_echo", "content": {"indexed": 4}, "is_error": false},
+			],
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	var user_body := _last_entry(panel, "user_bubble").find_child("BubbleBody", true, false) as RichTextLabel
+	assert_object(user_body).is_not_null()
+	assert_str(str(user_body.text)).is_equal("Search the repo")
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(0)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "tool_result_card")).contains("\"indexed\": 4")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_assistant_bubble_reuses_same_node_across_stream_deltas() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport, ClaudeAgentOptionsScript.new({
+		"include_partial_messages": true,
+	}))
+
+	panel.submit_prompt("Stream")
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "reuse-stream-1",
+		"event": {"delta": {"text": "Hello"}},
+	})
+	await _await_frames(2)
+
+	var bubble_ids := _entry_instance_ids(panel, "assistant_bubble")
+	var wrapper_count := _transcript_list(panel).get_child_count()
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "reuse-stream-2",
+		"event": {"delta": {"text": " world"}},
+	})
+	await _await_frames(2)
+
+	assert_array(_entry_instance_ids(panel, "assistant_bubble")).is_equal(bubble_ids)
+	assert_int(_transcript_list(panel).get_child_count()).is_equal(wrapper_count)
+	assert_str(_last_assistant_text(panel)).is_equal("Hello world")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_filter_toggles_reuse_existing_detail_nodes() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport, ClaudeAgentOptionsScript.new({
+		"include_partial_messages": true,
+	}))
+
+	panel.submit_prompt("Inspect")
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "toggle-thinking-1",
+		"event": {"delta": {"thinking": "Inspecting the request."}},
+	})
+	await _await_frames(2)
+
+	_button(panel, "ThinkingToggle").button_pressed = true
+	_button(panel, "ThinkingToggle").toggled.emit(true)
+	await _await_frames(2)
+	var thinking_ids := _entry_instance_ids(panel, "thinking_card")
+	var wrapper_count := _transcript_list(panel).get_child_count()
+
+	transport.emit_stdout_message({
+		"type": "stream_event",
+		"session_id": "default",
+		"uuid": "toggle-thinking-2",
+		"event": {"delta": {"thinking": "Preparing a response."}},
+	})
+	await _await_frames(2)
+	assert_array(_entry_instance_ids(panel, "thinking_card")).is_equal(thinking_ids)
+
+	_button(panel, "ThinkingToggle").button_pressed = false
+	_button(panel, "ThinkingToggle").toggled.emit(false)
+	await _await_frames(2)
+	_button(panel, "ThinkingToggle").button_pressed = true
+	_button(panel, "ThinkingToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_array(_entry_instance_ids(panel, "thinking_card")).is_equal(thinking_ids)
+	assert_int(_transcript_list(panel).get_child_count()).is_equal(wrapper_count)
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "default",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{"type": "text", "text": "Done."},
+				{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"path": "README.md"}},
+				{"type": "tool_result", "tool_use_id": "tool-1", "content": {"ok": true}, "is_error": false},
+			],
+		},
+	})
+	await _await_frames(2)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+	var tool_use_ids := _entry_instance_ids(panel, "tool_use_card")
+	var tool_result_ids := _entry_instance_ids(panel, "tool_result_card")
+
+	_button(panel, "ToolsToggle").button_pressed = false
+	_button(panel, "ToolsToggle").toggled.emit(false)
+	await _await_frames(2)
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_array(_entry_instance_ids(panel, "tool_use_card")).is_equal(tool_use_ids)
+	assert_array(_entry_instance_ids(panel, "tool_result_card")).is_equal(tool_result_ids)
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_renders_result_errors_and_structured_output() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
@@ -508,6 +754,16 @@ func test_panel_renders_result_errors_and_structured_output() -> void:
 	assert_object(result_errors_label).is_not_null()
 	assert_str(str(structured_output_label.text)).contains("\"answer\": \"4\"")
 	assert_str(str(result_errors_label.text)).contains("soft warning")
+
+	_button(panel, "ResultsToggle").button_pressed = false
+	_button(panel, "ResultsToggle").toggled.emit(false)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "result_card")).is_equal(0)
+
+	_button(panel, "ResultsToggle").button_pressed = true
+	_button(panel, "ResultsToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "result_card")).is_equal(1)
 
 	await _cleanup_panel(panel)
 
@@ -557,6 +813,40 @@ func test_panel_loads_scoped_sessions_and_renders_selected_transcript_without_co
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Restored session")
 	assert_str(_label(panel, "SelectedSessionMetaValue").text).contains("review")
 	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_saved_transcript_toggles_reveal_session_detail_entries() -> void:
+	var session_id := _create_panel_detail_session_fixture("panel-history-detail")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_use_card")).is_equal(0)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(0)
+
+	_button(panel, "ThinkingToggle").button_pressed = true
+	_button(panel, "ThinkingToggle").toggled.emit(true)
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	_button(panel, "RawToggle").button_pressed = true
+	_button(panel, "RawToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "thinking_card")).is_equal(1)
+	assert_int(_count_entries(panel, "tool_use_card")).is_equal(1)
+	assert_int(_count_entries(panel, "tool_result_card")).is_equal(1)
+	assert_int(_count_entries(panel, "raw_card")).is_greater_equal(3)
+	assert_str(_last_card_body_text(panel, "thinking_card")).contains("Thinking about the scene")
 
 	await _cleanup_panel(panel)
 
@@ -876,25 +1166,55 @@ func _session_id_from_panel(panel) -> String:
 
 
 func _count_entries(panel, kind: String) -> int:
-	var count := 0
-	for child in _transcript_list(panel).get_children():
-		if str(child.get_meta("entry_kind", "")) == kind:
-			count += 1
-	return count
+	return _collect_entries_by_kind(_transcript_list(panel), kind).size()
 
 
 func _last_entry(panel, kind: String) -> Node:
-	var found: Node = null
-	for child in _transcript_list(panel).get_children():
-		if str(child.get_meta("entry_kind", "")) == kind:
-			found = child
-	return found
+	var entries := _collect_entries_by_kind(_transcript_list(panel), kind)
+	return entries[-1] if not entries.is_empty() else null
+
+
+func _entry_instance_ids(panel, kind: String) -> Array[int]:
+	var ids: Array[int] = []
+	for entry in _collect_entries_by_kind(_transcript_list(panel), kind):
+		ids.append(entry.get_instance_id())
+	return ids
+
+
+func _collect_entries_by_kind(root: Node, kind: String) -> Array[Node]:
+	var entries: Array[Node] = []
+	_collect_entries_recursive(root, kind, entries)
+	return entries
+
+
+func _collect_entries_recursive(node: Node, kind: String, entries: Array[Node]) -> void:
+	var visible := true
+	if node is CanvasItem:
+		visible = (node as CanvasItem).is_visible_in_tree()
+	if str(node.get_meta("entry_kind", "")) == kind and visible:
+		entries.append(node)
+	for child in node.get_children():
+		_collect_entries_recursive(child, kind, entries)
 
 
 func _last_assistant_text(panel) -> String:
 	var entry := _last_entry(panel, "assistant_bubble")
+	if entry == null:
+		return ""
 	var bubble_body: RichTextLabel = entry.find_child("BubbleBody", true, false) as RichTextLabel
+	if bubble_body == null:
+		return ""
 	return bubble_body.text
+
+
+func _last_card_body_text(panel, kind: String) -> String:
+	var entry := _last_entry(panel, kind)
+	if entry == null:
+		return ""
+	var body: RichTextLabel = entry.find_child("CardBody", true, false) as RichTextLabel
+	if body == null:
+		return ""
+	return body.text
 
 
 func _await_frames(count: int) -> void:
@@ -910,6 +1230,43 @@ func _create_panel_session_fixture(label: String) -> String:
 	var project_dir := _make_project_dir(config_root, project_path)
 	var session_id := "41414141-4141-4414-8414-414141414141"
 	_write_panel_session(project_dir, project_path, session_id, "Restored session", "Saved prompt", "Saved answer", "review", 1712302200)
+	return session_id
+
+
+func _create_panel_detail_session_fixture(label: String) -> String:
+	var config_root := _create_config_root(label)
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "43434343-4343-4434-8434-434343434343"
+	_write_session_file(project_dir, session_id, [
+		{
+			"type": "user",
+			"uuid": "detail-u-1",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T13:00:00",
+			"cwd": project_path,
+			"message": {"role": "user", "content": "Saved prompt"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "detail-a-1",
+			"parentUuid": "detail-u-1",
+			"sessionId": session_id,
+			"message": {
+				"role": "assistant",
+				"content": [
+					{"type": "text", "text": "Saved answer"},
+					{"type": "thinking", "thinking": "Thinking about the scene."},
+					{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"path": "scene.tscn"}},
+					{"type": "tool_result", "tool_use_id": "tool-1", "content": {"ok": true}, "is_error": false},
+				],
+			},
+		},
+		{"type": "summary", "customTitle": "Detailed restored session"},
+		{"type": "tag", "tag": "review"},
+	], 1712302210)
 	return session_id
 
 

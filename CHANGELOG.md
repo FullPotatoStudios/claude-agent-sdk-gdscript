@@ -16,6 +16,12 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - richer `ClaudeAgentOptions.system_prompt` variants and upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
 - disconnected `ClaudeChatPanel` controls for prompt/tool configuration, plus read-only MCP environment summary
 - scene-free `ClaudeBuiltInToolCatalog` helper plus a grouped built-in tool picker in the reference panel, with advanced allow/deny passthrough preserved behind a collapsed section
+- `ClaudeSessionTranscriptEntry` plus richer normalized transcript-detail reading through `ClaudeSessions.get_session_transcript()`
+- transcript-detail convenience passthroughs on `ClaudeClientAdapter` and `ClaudeClientNode`
+
+### Changed
+
+- `ClaudeChatPanel` now uses a conversation-first `Chat` view with a separate `Settings` view, quick chat controls, transcript granularity toggles, de-duplicated result rendering, and richer saved/live transcript detail handling
 
 ## [0.1.0] - 2026-04-04
 

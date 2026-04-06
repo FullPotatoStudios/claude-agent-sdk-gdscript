@@ -203,6 +203,34 @@ func test_get_session_info_reads_optional_fields_and_worktree_fallback() -> void
 	assert_int(int(info.file_size)).is_greater(0)
 
 
+func test_get_session_info_ignores_partial_tail_fragments_and_keeps_latest_tag() -> void:
+	var config_root := _create_config_root("info-partial-tail")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/partial-tail-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "acacacac-acac-4aca-8aca-acacacacacac"
+	var large_prompt := "g".repeat(ClaudeSessionsScript.LITE_READ_BUF_SIZE + 128)
+	var lines := [
+		JSON.stringify({
+			"type": "user",
+			"timestamp": "2026-04-05T12:30:00",
+			"cwd": project_path,
+			"message": {"content": large_prompt},
+		}),
+		JSON.stringify({"type": "summary", "summary": "Large tail summary"}),
+		JSON.stringify({"type": "tag", "tag": "ship-it"}),
+	]
+	_write_session_text_file(project_dir, session_id, "\n".join(lines) + "\n", 1712301050)
+
+	var info = ClaudeSessions.get_session_info(session_id, project_path)
+	assert_object(info).is_not_null()
+	if info == null:
+		return
+	assert_str(info.summary).is_equal("Large tail summary")
+	assert_str(str(info.tag)).is_equal("ship-it")
+
+
 func test_get_session_messages_returns_visible_root_to_leaf_messages_with_pagination() -> void:
 	var config_root := _create_config_root("messages")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
@@ -266,6 +294,89 @@ func test_get_session_messages_returns_visible_root_to_leaf_messages_with_pagina
 func test_get_session_messages_returns_empty_for_invalid_or_missing_session() -> void:
 	assert_array(ClaudeSessions.get_session_messages("not-a-uuid")).is_empty()
 	assert_array(ClaudeSessions.get_session_messages("cccccccc-cccc-4ccc-8ccc-cccccccccccc")).is_empty()
+
+
+func test_get_session_transcript_expands_assistant_detail_blocks_without_changing_basic_message_api() -> void:
+	var config_root := _create_config_root("transcript")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/transcript-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "abababab-abab-4aba-8aba-abababababab"
+	_write_session_file(project_dir, session_id, [
+		{
+			"type": "user",
+			"uuid": "tx-u-1",
+			"sessionId": session_id,
+			"message": {"role": "user", "content": "Inspect this scene"},
+		},
+		{
+			"type": "system",
+			"uuid": "tx-s-1",
+			"parentUuid": "tx-u-1",
+			"sessionId": session_id,
+			"subtype": "context",
+			"message": {"message": "Loaded project context"},
+		},
+		{
+			"type": "progress",
+			"uuid": "tx-p-1",
+			"parentUuid": "tx-s-1",
+			"sessionId": session_id,
+			"message": {"summary": "Scanning files"},
+		},
+		{
+			"type": "attachment",
+			"uuid": "tx-att-1",
+			"parentUuid": "tx-p-1",
+			"sessionId": session_id,
+			"message": {"name": "scene.tscn", "path": "res://scene.tscn"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "tx-a-1",
+			"parentUuid": "tx-att-1",
+			"sessionId": session_id,
+			"message": {
+				"role": "assistant",
+				"content": [
+					{"type": "text", "text": "I can help."},
+					{"type": "thinking", "thinking": "Checking the available files."},
+					{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"path": "scene.tscn"}},
+					{"type": "tool_result", "tool_use_id": "tool-1", "content": {"ok": true}, "is_error": false},
+				],
+			},
+		},
+		{"type": "summary", "summary": "Transcript summary"},
+	], 1712301110)
+
+	var messages := ClaudeSessions.get_session_messages(session_id, project_path)
+	var transcript := ClaudeSessions.get_session_transcript(session_id, project_path)
+	var paged_transcript := ClaudeSessions.get_session_transcript(session_id, project_path, 2, 1)
+
+	assert_int(messages.size()).is_equal(2)
+	assert_int(transcript.size()).is_equal(8)
+	assert_str(transcript[0].kind).is_equal("user")
+	assert_str(transcript[1].kind).is_equal("system")
+	assert_str(transcript[1].title).is_equal("System · context")
+	assert_str(transcript[1].text).contains("Loaded project context")
+	assert_str(transcript[2].kind).is_equal("progress")
+	assert_str(transcript[2].text).contains("Scanning files")
+	assert_str(transcript[3].kind).is_equal("attachment")
+	assert_str(transcript[3].text).contains("scene.tscn")
+	assert_str(transcript[4].kind).is_equal("assistant")
+	assert_str(transcript[4].text).is_equal("I can help.")
+	assert_array(transcript[4].payload).has_size(1)
+	assert_str(transcript[5].kind).is_equal("thinking")
+	assert_str(transcript[5].text).contains("Checking")
+	assert_array(transcript[5].payload).has_size(1)
+	assert_str(transcript[6].kind).is_equal("tool_use")
+	assert_str(transcript[6].title).contains("Read")
+	assert_str(transcript[7].kind).is_equal("tool_result")
+	assert_dict(transcript[7].raw_data).contains_keys(["type", "content", "tool_use_id"])
+	assert_int(paged_transcript.size()).is_equal(2)
+	assert_str(paged_transcript[0].kind).is_equal("system")
+	assert_str(paged_transcript[1].kind).is_equal("progress")
 
 
 func test_rename_session_validates_inputs_and_updates_visible_title() -> void:
@@ -566,11 +677,23 @@ func _write_session_file(project_dir: String, session_id: String, entries: Array
 	for entry in entries:
 		file.store_line(JSON.stringify(entry))
 	file.close()
+	_set_session_file_mtime(project_dir.path_join("%s.jsonl" % session_id), mtime)
+
+
+func _write_session_text_file(project_dir: String, session_id: String, content: String, mtime: int) -> void:
+	var path := project_dir.path_join("%s.jsonl" % session_id)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(content)
+	file.close()
+	_set_session_file_mtime(path, mtime)
+
+
+func _set_session_file_mtime(path: String, mtime: int) -> void:
 	var output: Array = []
 	OS.execute("python3", [
 		"-c",
 		"import os, sys; ts=int(sys.argv[2]); os.utime(sys.argv[1], (ts, ts))",
-		project_dir.path_join("%s.jsonl" % session_id),
+		path,
 		str(mtime),
 	], output, true)
 

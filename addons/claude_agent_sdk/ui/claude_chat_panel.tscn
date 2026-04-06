@@ -518,12 +518,54 @@ custom_minimum_size = Vector2(0, 220)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="TranscriptScroll" type="ScrollContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard" unique_id=1515415309]
+[node name="TranscriptMargin" type="MarginContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="TranscriptBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="TranscriptToolbar" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TranscriptToolbarLabel" type="Label" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+layout_mode = 2
+text = "Trace"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ThinkingToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+layout_mode = 2
+text = "Thinking"
+
+[node name="ToolsToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+layout_mode = 2
+text = "Tools"
+
+[node name="ResultsToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+layout_mode = 2
+button_pressed = true
+text = "Results"
+
+[node name="SystemToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+layout_mode = 2
+text = "System"
+
+[node name="RawToggle" type="CheckButton" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar"]
+layout_mode = 2
+text = "Raw"
+
+[node name="TranscriptScroll" type="ScrollContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody" unique_id=1515415309]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="TranscriptList" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptScroll" unique_id=766989441]
+[node name="TranscriptList" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptScroll" unique_id=766989441]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12

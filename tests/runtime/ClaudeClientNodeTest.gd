@@ -90,7 +90,13 @@ func test_node_exposes_session_passthrough_methods() -> void:
 	var project_dir := _make_project_dir(config_root, project_path)
 	var session_id := "32323232-3232-4323-8323-323232323232"
 	_write_session_file(project_dir, session_id, [
-		{"type": "user", "cwd": project_path, "message": {"content": "Node prompt"}},
+		{
+			"type": "user",
+			"uuid": "node-u-1",
+			"sessionId": session_id,
+			"cwd": project_path,
+			"message": {"role": "user", "content": "Node prompt"},
+		},
 		{"type": "summary", "summary": "Node summary"},
 	], 1712302100)
 
@@ -101,6 +107,9 @@ func test_node_exposes_session_passthrough_methods() -> void:
 	var sessions := node.list_sessions(project_path, 0, 0, false)
 	assert_int(sessions.size()).is_equal(1)
 	assert_int(node.rename_session(session_id, "Node renamed", project_path)).is_equal(OK)
+	var transcript := node.get_session_transcript(session_id, project_path)
+	assert_int(transcript.size()).is_equal(1)
+	assert_str(transcript[0].kind).is_equal("user")
 
 	var info = node.get_session_info(session_id, project_path)
 	assert_object(info).is_not_null()

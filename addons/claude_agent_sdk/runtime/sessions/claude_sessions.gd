@@ -3,6 +3,7 @@ class_name ClaudeSessions
 
 const ClaudeSessionInfoScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_info.gd")
 const ClaudeSessionMessageScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_message.gd")
+const ClaudeSessionTranscriptEntryScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_transcript_entry.gd")
 
 const LITE_READ_BUF_SIZE := 65536
 const MAX_SANITIZED_LENGTH := 200
@@ -122,6 +123,39 @@ static func get_session_messages(
 	if limit > 0 and limit < messages.size():
 		messages = messages.slice(0, limit)
 	return messages
+
+
+static func get_session_transcript(
+	session_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionTranscriptEntry]:
+	if not _is_valid_uuid(session_id):
+		return []
+
+	var resolved_directory := _resolve_directory(directory)
+	if not directory.is_empty() and resolved_directory.is_empty():
+		return []
+
+	var content := _read_session_file(session_id, resolved_directory)
+	if content.is_empty():
+		return []
+
+	var entries := _parse_transcript_entries(content)
+	var chain := _build_conversation_chain(entries)
+	var transcript: Array[ClaudeSessionTranscriptEntry] = []
+	for entry in chain:
+		transcript.append_array(_expand_session_transcript_entry(entry))
+
+	var normalized_offset := maxi(offset, 0)
+	if normalized_offset > 0:
+		if normalized_offset >= transcript.size():
+			return []
+		transcript = transcript.slice(normalized_offset)
+	if limit > 0 and limit < transcript.size():
+		transcript = transcript.slice(0, limit)
+	return transcript
 
 
 static func rename_session(session_id: String, title: String, directory: String = "") -> int:
@@ -718,6 +752,8 @@ static func _read_session_lite_result(file_path: String) -> Dictionary:
 	if size > LITE_READ_BUF_SIZE:
 		file.seek(size - LITE_READ_BUF_SIZE)
 		tail = file.get_buffer(LITE_READ_BUF_SIZE).get_string_from_utf8()
+		var first_tail_newline := tail.find("\n")
+		tail = tail.substr(first_tail_newline + 1) if first_tail_newline >= 0 else ""
 	file.close()
 	return {
 		"lite": LiteSessionFile.new(mtime, size, head, tail),
@@ -781,14 +817,17 @@ static func _parse_session_info_from_lite(session_id: String, lite: LiteSessionF
 		session_cwd = project_path
 
 	var tag = null
-	for line_variant in lite.tail.split("\n", false):
-		var line := str(line_variant).strip_edges()
+	var tail_lines := lite.tail.split("\n", false)
+	for line_index in range(tail_lines.size() - 1, -1, -1):
+		var line := str(tail_lines[line_index]).strip_edges()
 		if line.is_empty():
 			continue
-		var tag_entry = JSON.parse_string(line)
-		if tag_entry is Dictionary and str(tag_entry.get("type", "")) == "tag" and tag_entry.get("tag") is String:
-			var candidate_tag := str(tag_entry.get("tag"))
-			tag = candidate_tag if not candidate_tag.is_empty() else null
+		if not ('"type":"tag"' in line or '"type": "tag"' in line):
+			continue
+		var candidate_tag = _extract_json_string_field(line, "tag")
+		if candidate_tag != null:
+			tag = candidate_tag if not str(candidate_tag).is_empty() else null
+			break
 
 	var created_at = null
 	var first_timestamp = _extract_json_string_field(first_line, "timestamp")
@@ -1289,6 +1328,313 @@ static func _to_session_message(entry: Dictionary) -> ClaudeSessionMessage:
 		_duplicate_variant(entry.get("message")),
 		null
 	)
+
+
+static func _expand_session_transcript_entry(entry: Dictionary) -> Array[ClaudeSessionTranscriptEntry]:
+	var entry_type := str(entry.get("type", ""))
+	if entry_type == "user":
+		return _expand_user_transcript_entry(entry)
+	if entry_type == "assistant":
+		return _expand_assistant_transcript_entry(entry)
+	if entry_type == "system":
+		return [_build_non_chat_transcript_entry(entry, "System", entry.get("subtype"))]
+	if entry_type == "progress":
+		return [_build_non_chat_transcript_entry(entry, "Progress")]
+	if entry_type == "attachment":
+		return [_build_non_chat_transcript_entry(entry, "Attachment")]
+	return []
+
+
+static func _expand_user_transcript_entry(entry: Dictionary) -> Array[ClaudeSessionTranscriptEntry]:
+	var message := entry.get("message", {}) if entry.get("message", {}) is Dictionary else {}
+	var text := _session_message_text(message)
+	if text.is_empty():
+		return []
+	return [
+		ClaudeSessionTranscriptEntryScript.new(
+			"user",
+			str(entry.get("uuid", "")),
+			str(entry.get("sessionId", "")),
+			"You",
+			text,
+			_duplicate_variant(message),
+			_duplicate_variant(entry),
+			null
+		),
+	]
+
+
+static func _expand_assistant_transcript_entry(entry: Dictionary) -> Array[ClaudeSessionTranscriptEntry]:
+	var message := entry.get("message", {}) if entry.get("message", {}) is Dictionary else {}
+	var content: Variant = message.get("content")
+	if content is String:
+		var text := str(content).strip_edges()
+		if text.is_empty():
+			return []
+		return [
+			ClaudeSessionTranscriptEntryScript.new(
+				"assistant",
+				str(entry.get("uuid", "")),
+				str(entry.get("sessionId", "")),
+				"Claude",
+				text,
+				_duplicate_variant(message),
+				_duplicate_variant(entry),
+				str(entry.get("parent_tool_use_id", ""))
+			),
+		]
+	if content is not Array:
+		return []
+
+	var transcript: Array[ClaudeSessionTranscriptEntry] = []
+	var current_kind := ""
+	var current_title := ""
+	var current_parts: Array[String] = []
+	var current_payloads: Array = []
+
+	for block_variant in content:
+		if block_variant is not Dictionary:
+			continue
+		var block := block_variant as Dictionary
+		match str(block.get("type", "")):
+			"text":
+				if current_kind != "assistant":
+					_flush_assistant_transcript_segment(
+						transcript,
+						entry,
+						current_kind,
+						current_title,
+						current_parts,
+						current_payloads
+					)
+					current_kind = "assistant"
+					current_title = "Claude"
+				var text := str(block.get("text", "")).strip_edges()
+				if not text.is_empty():
+					current_parts.append(text)
+					current_payloads.append(_duplicate_variant(block))
+			"thinking":
+				if current_kind != "thinking":
+					_flush_assistant_transcript_segment(
+						transcript,
+						entry,
+						current_kind,
+						current_title,
+						current_parts,
+						current_payloads
+					)
+					current_kind = "thinking"
+					current_title = "Thinking"
+				var thinking := str(block.get("thinking", "")).strip_edges()
+				if not thinking.is_empty():
+					current_parts.append(thinking)
+					current_payloads.append(_duplicate_variant(block))
+			"tool_use":
+				_flush_assistant_transcript_segment(
+					transcript,
+					entry,
+					current_kind,
+					current_title,
+					current_parts,
+					current_payloads
+				)
+				current_kind = ""
+				current_title = ""
+				current_parts.clear()
+				current_payloads.clear()
+				transcript.append(
+					ClaudeSessionTranscriptEntryScript.new(
+						"tool_use",
+						str(entry.get("uuid", "")),
+						str(entry.get("sessionId", "")),
+						"Tool use · %s" % str(block.get("name", "")),
+						_session_transcript_body_text(block.get("input", {}) if block.get("input", {}) is Dictionary else {}),
+						_duplicate_variant(block.get("input", {}) if block.get("input", {}) is Dictionary else {}),
+						_duplicate_variant(block),
+						str(block.get("id", ""))
+					)
+				)
+			"tool_result":
+				_flush_assistant_transcript_segment(
+					transcript,
+					entry,
+					current_kind,
+					current_title,
+					current_parts,
+					current_payloads
+				)
+				current_kind = ""
+				current_title = ""
+				current_parts.clear()
+				current_payloads.clear()
+				var result_title := "Tool result"
+				if bool(block.get("is_error", false)):
+					result_title += " · error"
+				transcript.append(
+					ClaudeSessionTranscriptEntryScript.new(
+						"tool_result",
+						str(entry.get("uuid", "")),
+						str(entry.get("sessionId", "")),
+						result_title,
+						_session_transcript_body_text(block.get("content")),
+						_duplicate_variant(block.get("content")),
+						_duplicate_variant(block),
+						str(block.get("tool_use_id", ""))
+					)
+				)
+			_:
+				continue
+
+	_flush_assistant_transcript_segment(
+		transcript,
+		entry,
+		current_kind,
+		current_title,
+		current_parts,
+		current_payloads
+	)
+	return transcript
+
+
+static func _flush_assistant_transcript_segment(
+	transcript: Array[ClaudeSessionTranscriptEntry],
+	entry: Dictionary,
+	current_kind: String,
+	current_title: String,
+	current_parts: Array[String],
+	current_payloads: Array
+) -> void:
+	if current_parts.is_empty():
+		return
+	var part_snapshot := current_parts.duplicate()
+	var payload_snapshot := _duplicate_variant(current_payloads)
+	var combined_text := "\n\n".join(part_snapshot).strip_edges()
+	current_parts.clear()
+	current_payloads.clear()
+	if combined_text.is_empty():
+		return
+	transcript.append(
+		ClaudeSessionTranscriptEntryScript.new(
+			current_kind,
+			str(entry.get("uuid", "")),
+			str(entry.get("sessionId", "")),
+			current_title,
+			combined_text,
+			payload_snapshot,
+			_duplicate_variant(entry),
+			str(entry.get("parent_tool_use_id", ""))
+		)
+	)
+
+
+static func _build_non_chat_transcript_entry(
+	entry: Dictionary,
+	base_title: String,
+	subtype: Variant = null
+) -> ClaudeSessionTranscriptEntry:
+	var entry_type := str(entry.get("type", ""))
+	var title := base_title
+	var subtype_text := str(subtype).strip_edges()
+	if subtype_text.is_empty():
+		var message = entry.get("message")
+		if message is Dictionary:
+			subtype_text = str((message as Dictionary).get("subtype", "")).strip_edges()
+	if entry_type == "system" and not subtype_text.is_empty():
+		title = "%s · %s" % [base_title, subtype_text]
+	var payload := _session_transcript_payload(entry)
+	return ClaudeSessionTranscriptEntryScript.new(
+		entry_type,
+		str(entry.get("uuid", "")),
+		str(entry.get("sessionId", "")),
+		title,
+		_non_chat_transcript_text(entry_type, payload, entry),
+		_duplicate_variant(payload),
+		_duplicate_variant(entry),
+		str(entry.get("parent_tool_use_id", ""))
+	)
+
+
+static func _session_transcript_payload(entry: Dictionary) -> Variant:
+	var message := entry.get("message", null)
+	if message != null:
+		return message
+	return entry
+
+
+static func _non_chat_transcript_text(entry_type: String, payload: Variant, entry: Dictionary) -> String:
+	match entry_type:
+		"system":
+			var system_text := _extract_first_non_empty_text([
+				_extract_dictionary_string(payload, ["content", "text", "message", "summary", "status"]),
+				_extract_dictionary_string(entry, ["content", "text", "message", "summary", "status"]),
+			])
+			if not system_text.is_empty():
+				return system_text
+		"progress":
+			var progress_text := _extract_first_non_empty_text([
+				_extract_dictionary_string(payload, ["summary", "message", "status", "content", "text"]),
+				_extract_dictionary_string(entry, ["summary", "message", "status", "content", "text"]),
+			])
+			if not progress_text.is_empty():
+				return progress_text
+		"attachment":
+			var attachment_text := _extract_first_non_empty_text([
+				_extract_dictionary_string(payload, ["name", "title", "filename", "path", "description", "mimeType"]),
+				_extract_dictionary_string(entry, ["name", "title", "filename", "path", "description", "mimeType"]),
+			])
+			if not attachment_text.is_empty():
+				return attachment_text
+	return _session_transcript_body_text(payload)
+
+
+static func _extract_first_non_empty_text(values: Array[String]) -> String:
+	for value in values:
+		var normalized := value.strip_edges()
+		if not normalized.is_empty():
+			return normalized
+	return ""
+
+
+static func _extract_dictionary_string(value: Variant, keys: Array[String]) -> String:
+	if value is not Dictionary:
+		return ""
+	var dictionary := value as Dictionary
+	for key in keys:
+		if not dictionary.has(key):
+			continue
+		var candidate := dictionary.get(key)
+		if candidate is String:
+			var normalized := str(candidate).strip_edges()
+			if not normalized.is_empty():
+				return normalized
+	return ""
+
+
+static func _session_message_text(message: Dictionary) -> String:
+	var content: Variant = message.get("content")
+	if content is String:
+		return str(content).strip_edges()
+	if content is not Array:
+		return ""
+	var parts: Array[String] = []
+	for block_variant in content:
+		if block_variant is not Dictionary:
+			continue
+		var block := block_variant as Dictionary
+		if str(block.get("type", "")) != "text":
+			continue
+		var text := str(block.get("text", "")).strip_edges()
+		if not text.is_empty():
+			parts.append(text)
+	return "\n\n".join(parts)
+
+
+static func _session_transcript_body_text(value: Variant) -> String:
+	if value == null:
+		return "null"
+	if value is Dictionary or value is Array:
+		return JSON.stringify(value, "\t")
+	return str(value)
 
 
 static func _duplicate_variant(value: Variant) -> Variant:
