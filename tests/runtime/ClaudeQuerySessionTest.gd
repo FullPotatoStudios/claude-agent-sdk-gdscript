@@ -156,6 +156,39 @@ func test_initialize_includes_serialized_agents_and_preserves_hooks() -> void:
 	})
 
 
+func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"continue_conversation": true,
+			"fallback_model": "sonnet",
+			"betas": ["context-1m-2025-08-07"],
+			"permission_prompt_tool_name": "custom-permission",
+			"add_dirs": ["res://addons"],
+			"max_budget_usd": 0.5,
+			"max_thinking_tokens": 2048,
+			"thinking": {"type": "enabled", "budget_tokens": 8192},
+			"task_budget": {"total": 5000},
+		})
+	)
+
+	session.open_session()
+
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request: Dictionary = initialize_request.get("request", {}) if initialize_request.get("request", {}) is Dictionary else {}
+
+	assert_bool(request.has("continue_conversation")).is_false()
+	assert_bool(request.has("fallback_model")).is_false()
+	assert_bool(request.has("betas")).is_false()
+	assert_bool(request.has("permission_prompt_tool_name")).is_false()
+	assert_bool(request.has("add_dirs")).is_false()
+	assert_bool(request.has("max_budget_usd")).is_false()
+	assert_bool(request.has("max_thinking_tokens")).is_false()
+	assert_bool(request.has("thinking")).is_false()
+	assert_bool(request.has("task_budget")).is_false()
+
+
 func test_initialize_error_fails_pending_streams() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)

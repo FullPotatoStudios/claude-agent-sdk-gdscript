@@ -17,6 +17,7 @@ Use `ClaudeSDKClient` directly when:
 - you want to attach SDK-hosted MCP tools through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
 - you want to define custom agents through `ClaudeAgentDefinition` and `ClaudeAgentOptions.agents`
 - you want to control user/project/local Claude settings loading through `ClaudeAgentOptions.setting_sources`
+- you want transport-first advanced CLI controls like `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, or `task_budget`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
@@ -79,6 +80,9 @@ The integration layer is intentionally thin.
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
 - agent definitions are also runtime-first and are sent through the initialize payload rather than through panel-specific configuration
 - `setting_sources` is transport/runtime configuration for Claude settings discovery, not a panel concern
+- advanced CLI fields such as `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget` are transport-only in the current parity slice and do not enter initialize payloads
+- `permission_prompt_tool_name` cannot be combined with `can_use_tool`; when you use `can_use_tool`, the transport continues to auto-configure Claude's permission prompt tool as `stdio`
+- `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured
 - richer `system_prompt` modes and base built-in tool selection live in `ClaudeAgentOptions` and flow through every layer, including the panel
 - `ClaudeBuiltInToolCatalog` is the shared runtime source of truth for built-in Claude Code tool metadata used by the reference panel and available to custom panels
 

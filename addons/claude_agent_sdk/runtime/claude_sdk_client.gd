@@ -24,6 +24,8 @@ func _init(initial_options = null, transport = null) -> void:
 func connect_client() -> void:
 	if _session != null:
 		return
+	if not _validate_options():
+		return
 	_session = ClaudeQuerySessionScript.new(_transport, options, _extract_sdk_mcp_servers())
 	_session.session_initialized.connect(_on_session_initialized)
 	_session.error_occurred.connect(_on_session_error_occurred)
@@ -178,3 +180,10 @@ func _extract_sdk_mcp_servers() -> Dictionary:
 		if instance is ClaudeSdkMcpServer:
 			extracted[str(server_name_variant)] = instance
 	return extracted
+
+
+func _validate_options() -> bool:
+	if options != null and options.can_use_tool.is_valid() and not options.permission_prompt_tool_name.is_empty():
+		_emit_error("can_use_tool callback cannot be used with permission_prompt_tool_name. Please use one or the other.")
+		return false
+	return true

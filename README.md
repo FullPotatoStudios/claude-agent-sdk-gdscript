@@ -47,6 +47,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeSessionTranscriptEntry` for normalized historical transcript detail
 - `ClaudeForkSessionResult` plus explicit session forking helpers for branching saved conversations
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` control
+- transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, `max_thinking_tokens`, and `task_budget`
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -112,6 +113,7 @@ func _ready() -> void:
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Runtime-first agent definitions through `ClaudeAgentOptions.agents` and initialize-payload serialization
 - `setting_sources` support for controlling user/project/local Claude settings loading
+- transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
@@ -165,4 +167,7 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - The runtime API is scene-free, but the subprocess transport still expects an active Godot `SceneTree`.
 - SDK-hosted MCP/custom-tool registration stays code-driven through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`; the panel shows the active MCP environment but does not author tool handlers.
 - SDK-hosted MCP tool handlers should return `{ "content": [...], "is_error": true }` for tool-level failures; uncaught GDScript runtime faults still surface as normal Godot errors.
+- advanced CLI transport options stay transport-only in this slice; they do not appear in initialize payloads.
+- `permission_prompt_tool_name` cannot be combined with `can_use_tool`; the existing `can_use_tool` path still auto-configures the CLI permission prompt tool as `stdio`.
+- `thinking` now takes precedence over the deprecated `max_thinking_tokens` field when both are configured.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.

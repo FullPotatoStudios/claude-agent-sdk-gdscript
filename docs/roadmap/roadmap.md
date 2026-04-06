@@ -159,10 +159,11 @@ Outputs:
 - richer chat-configuration parity for prompt and built-in tool selection
 - runtime-first session forking helpers
 - runtime-first agent definitions and `setting_sources` parity
+- transport-first advanced CLI option parity
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10I: runtime-first agent definitions and `setting_sources`
+- Phase 10J: transport-first advanced CLI option parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -219,9 +220,14 @@ Delivered in Phase 10I:
 - initialize-payload agent serialization with upstream wire keys
 - `--setting-sources` CLI parity while keeping agents initialize-only
 
+Delivered in Phase 10J:
+- transport-first advanced CLI option parity for `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
+- local conflict validation for `permission_prompt_tool_name` versus `can_use_tool` while preserving the existing auto-`stdio` callback path
+- initialize/runtime boundary coverage proving these options stay CLI-only rather than entering initialize payloads
+
 Still deferred within Phase 10:
 - broader settings and agent-definition parity
 
 ## Current focus
 
-Work should currently prioritize the next post-10I parity slice from the upstream ledger.
+Work should currently prioritize the next post-10J parity slice from the upstream ledger.

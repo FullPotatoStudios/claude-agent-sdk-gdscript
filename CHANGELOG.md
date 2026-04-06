@@ -20,12 +20,14 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - transcript-detail convenience passthroughs on `ClaudeClientAdapter` and `ClaudeClientNode`
 - `ClaudeForkSessionResult` plus runtime-first saved-session forking through `ClaudeSessions.fork_session()`, `ClaudeClientAdapter.fork_session()`, and `ClaudeClientNode.fork_session()`
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` parity through `ClaudeAgentOptions`
+- transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 
 ### Changed
 
 - `ClaudeChatPanel` now uses a conversation-first `Chat` view with a separate `Settings` view, quick chat controls, transcript granularity toggles, de-duplicated result rendering, and richer saved/live transcript detail handling
 - session-history docs and parity tracking now reflect explicit saved-session branching support
 - initialize and transport parity now cover agent definitions via initialize payloads and `--setting-sources` passthrough without adding panel-specific agent UI
+- transport parity now covers the current advanced CLI option slice while keeping those fields out of initialize payloads and preserving the existing `can_use_tool` auto-`stdio` path
 
 ## [0.1.0] - 2026-04-04
 

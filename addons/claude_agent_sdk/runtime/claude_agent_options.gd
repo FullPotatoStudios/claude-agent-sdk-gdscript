@@ -13,12 +13,21 @@ var system_prompt: Variant = ""
 var tools: Variant = null
 var allowed_tools: Array[String] = []
 var disallowed_tools: Array[String] = []
+var continue_conversation: bool = false
 var permission_mode: String = ""
 var max_turns: int = 0
+var max_budget_usd: Variant = null
+var task_budget: Variant = null
 var resume: String = ""
 var session_id: String = ""
+var fallback_model: String = ""
+var betas: Array[String] = []
+var permission_prompt_tool_name: String = ""
+var add_dirs: Array[String] = []
 var hooks: Dictionary = {}
 var can_use_tool: Callable = Callable()
+var max_thinking_tokens: Variant = null
+var thinking: Variant = null
 var include_partial_messages: bool = false
 var output_format: Dictionary = {}
 var mcp_servers: Variant = {}
@@ -50,18 +59,36 @@ func apply(config: Dictionary):
 		allowed_tools = _to_string_array(config["allowed_tools"] as Array)
 	if config.has("disallowed_tools") and config["disallowed_tools"] is Array:
 		disallowed_tools = _to_string_array(config["disallowed_tools"] as Array)
+	if config.has("continue_conversation"):
+		continue_conversation = bool(config["continue_conversation"])
 	if config.has("permission_mode"):
 		permission_mode = str(config["permission_mode"])
 	if config.has("max_turns"):
 		max_turns = int(config["max_turns"])
+	if config.has("max_budget_usd"):
+		max_budget_usd = _normalize_float_variant(config["max_budget_usd"])
+	if config.has("task_budget"):
+		task_budget = _normalize_task_budget(config["task_budget"])
 	if config.has("resume"):
 		resume = str(config["resume"])
 	if config.has("session_id"):
 		session_id = str(config["session_id"])
+	if config.has("fallback_model"):
+		fallback_model = str(config["fallback_model"])
+	if config.has("betas") and config["betas"] is Array:
+		betas = _to_string_array(config["betas"] as Array)
+	if config.has("permission_prompt_tool_name"):
+		permission_prompt_tool_name = str(config["permission_prompt_tool_name"])
+	if config.has("add_dirs") and config["add_dirs"] is Array:
+		add_dirs = _to_string_array(config["add_dirs"] as Array)
 	if config.has("hooks") and config["hooks"] is Dictionary:
 		hooks = _normalize_hooks(config["hooks"] as Dictionary)
 	if config.has("can_use_tool") and config["can_use_tool"] is Callable:
 		can_use_tool = config["can_use_tool"]
+	if config.has("max_thinking_tokens"):
+		max_thinking_tokens = _normalize_int_variant(config["max_thinking_tokens"])
+	if config.has("thinking"):
+		thinking = _normalize_thinking(config["thinking"])
 	if config.has("include_partial_messages"):
 		include_partial_messages = bool(config["include_partial_messages"])
 	if config.has("output_format") and config["output_format"] is Dictionary:
@@ -89,12 +116,21 @@ func duplicate_options():
 		"tools": _duplicate_tools(tools),
 		"allowed_tools": allowed_tools.duplicate(),
 		"disallowed_tools": disallowed_tools.duplicate(),
+			"continue_conversation": continue_conversation,
 			"permission_mode": permission_mode,
 			"max_turns": max_turns,
+			"max_budget_usd": max_budget_usd,
+			"task_budget": _duplicate_variant(task_budget),
 			"resume": resume,
 			"session_id": session_id,
+			"fallback_model": fallback_model,
+			"betas": betas.duplicate(),
+			"permission_prompt_tool_name": permission_prompt_tool_name,
+			"add_dirs": add_dirs.duplicate(),
 			"hooks": _duplicate_hooks(hooks),
 			"can_use_tool": can_use_tool,
+			"max_thinking_tokens": max_thinking_tokens,
+			"thinking": _duplicate_variant(thinking),
 			"include_partial_messages": include_partial_messages,
 			"output_format": output_format.duplicate(true),
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
@@ -216,6 +252,62 @@ static func _duplicate_mcp_servers(value: Variant) -> Variant:
 	if value is String:
 		return str(value)
 	return {}
+
+
+static func _normalize_float_variant(value: Variant) -> Variant:
+	if value == null:
+		return null
+	return float(value)
+
+
+static func _normalize_int_variant(value: Variant) -> Variant:
+	if value == null:
+		return null
+	return int(value)
+
+
+static func _normalize_task_budget(value: Variant) -> Variant:
+	if value == null:
+		return null
+	if not (value is Dictionary):
+		return null
+	var source := value as Dictionary
+	if not source.has("total"):
+		return null
+	return {
+		"total": int(source["total"]),
+	}
+
+
+static func _normalize_thinking(value: Variant) -> Variant:
+	if value == null:
+		return null
+	if not (value is Dictionary):
+		return null
+	var source := value as Dictionary
+	var thinking_type := str(source.get("type", "")).strip_edges()
+	if thinking_type.is_empty():
+		return null
+	match thinking_type:
+		"adaptive":
+			return {"type": "adaptive"}
+		"enabled":
+			if not source.has("budget_tokens"):
+				return null
+			return {
+				"type": "enabled",
+				"budget_tokens": int(source["budget_tokens"]),
+			}
+		"disabled":
+			return {"type": "disabled"}
+		_:
+			return null
+
+
+static func _duplicate_variant(value: Variant) -> Variant:
+	if value is Dictionary or value is Array:
+		return _duplicate_nested_variant(value)
+	return value
 
 
 static func _duplicate_nested_variant(value: Variant) -> Variant:

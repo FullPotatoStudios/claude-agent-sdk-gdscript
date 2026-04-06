@@ -129,7 +129,8 @@ Phase 1 findings that constrain this matrix:
 | Stderr callback / debug output plumbing | `types.py`, `examples/stderr_callback_example.py`, `e2e-tests/test_stderr_callback.py` | Important for diagnostics and developer UX | stderr draining | `v1 later` | Internal draining is core; public callback can arrive shortly after |
 | Agent definitions in initialize payload | `types.py`, `examples/agents.py`, `e2e-tests/test_agents_and_settings.py` | Advanced control over sub-agent behavior | initialize flow, typed models | `v1 later` | Delivered post-v1 in Phase 10I through `ClaudeAgentDefinition` and `ClaudeAgentOptions.agents` |
 | Setting-source controls | `types.py`, `examples/setting_sources.py`, `e2e-tests/test_agents_and_settings.py` | Useful for advanced config control | option encoding, CLI settings model | `v1 later` | Delivered post-v1 in Phase 10I through `ClaudeAgentOptions.setting_sources` and `--setting-sources` parity |
-| Sandbox, plugin, beta, user, fallback model, max budget, task budget, advanced thinking config, add_dirs, settings passthrough, continue-conversation flag | `types.py`, examples, transport tests | Legitimate parity surface, but too broad for the first stable addon API | command building, CLI settings parity | `deferred` | Revisit after core API and v1-later features land |
+| Continue-conversation flag, fallback model, betas, permission prompt tool, add_dirs, max budget, task budget, and advanced thinking config | `types.py`, examples, transport tests | Useful advanced transport/runtime parity once the core option model is stable | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10J through additive `ClaudeAgentOptions` fields and transport-only flag emission without initialize payload changes |
+| Broader settings, sandbox, plugin, and user passthrough | `types.py`, examples, transport tests | Legitimate parity surface, but broader and easier to destabilize than the current post-v1 slices | command building, CLI settings parity | `deferred` | Revisit after the smaller post-v1 transport-first option slices land |
 
 ## Godot-only additions
 
@@ -160,4 +161,7 @@ Status note:
 - Phase 10E adds richer `system_prompt` variants, base built-in tool selection, and disconnected prompt/tool configuration controls in the shipped panel
 - Phase 10F refactors the shipped panel into a conversation-first `Chat` view with a separate `Settings` view and quick chat controls
 - Phase 10G adds normalized transcript-detail reading plus transcript filtering/de-duplication behavior in the shipped panel
+- Phase 10H adds runtime-first session forking helpers with adapter/node passthroughs
+- Phase 10I adds runtime-first agent definitions and `setting_sources` parity
+- Phase 10J adds transport-first advanced CLI option parity without widening the initialize payload surface
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

@@ -38,6 +38,8 @@ func _init(options = null) -> void:
 
 
 func build_command_args() -> PackedStringArray:
+	if not _validate_supported_options():
+		return PackedStringArray()
 	var args := PackedStringArray([
 		"--output-format", "stream-json",
 		"--verbose",
@@ -48,30 +50,47 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--allowedTools", ",".join(_options.allowed_tools)])
 	if _options.max_turns > 0:
 		args.append_array(["--max-turns", str(_options.max_turns)])
+	if _options.max_budget_usd != null:
+		args.append_array(["--max-budget-usd", str(_options.max_budget_usd)])
 	if not _options.disallowed_tools.is_empty():
 		args.append_array(["--disallowedTools", ",".join(_options.disallowed_tools)])
+	if _options.task_budget is Dictionary and (_options.task_budget as Dictionary).has("total"):
+		args.append_array(["--task-budget", str(int((_options.task_budget as Dictionary).get("total", 0)))])
 	if not _options.model.is_empty():
 		args.append_array(["--model", _options.model])
+	if not _options.fallback_model.is_empty():
+		args.append_array(["--fallback-model", _options.fallback_model])
+	if not _options.betas.is_empty():
+		args.append_array(["--betas", ",".join(_options.betas)])
+	var permission_prompt_tool_name := _resolved_permission_prompt_tool_name()
+	if not permission_prompt_tool_name.is_empty():
+		args.append_array(["--permission-prompt-tool", permission_prompt_tool_name])
 	if not _options.permission_mode.is_empty():
 		args.append_array(["--permission-mode", _options.permission_mode])
+	if _options.continue_conversation:
+		args.append("--continue")
 	if not _options.resume.is_empty():
 		args.append_array(["--resume", _options.resume])
 	if not _options.session_id.is_empty():
 		args.append_array(["--session-id", _options.session_id])
-	if not _options.effort.is_empty():
-		args.append_array(["--effort", _options.effort])
-	if _options.include_partial_messages:
-		args.append("--include-partial-messages")
-	if not _options.setting_sources.is_empty():
-		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
-	if _options.can_use_tool.is_valid():
-		args.append_array(["--permission-prompt-tool", "stdio"])
+	if not _options.add_dirs.is_empty():
+		for directory in _options.add_dirs:
+			args.append_array(["--add-dir", directory])
 	var json_schema := _build_json_schema_argument()
 	if not json_schema.is_empty():
 		args.append_array(["--json-schema", json_schema])
 	var mcp_config := _build_mcp_config_argument()
 	if not mcp_config.is_empty():
 		args.append_array(["--mcp-config", mcp_config])
+	if _options.include_partial_messages:
+		args.append("--include-partial-messages")
+	if not _options.setting_sources.is_empty():
+		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
+	var resolved_max_thinking_tokens := _resolved_max_thinking_tokens()
+	if resolved_max_thinking_tokens != null:
+		args.append_array(["--max-thinking-tokens", str(int(resolved_max_thinking_tokens))])
+	if not _options.effort.is_empty():
+		args.append_array(["--effort", _options.effort])
 	args.append_array(["--input-format", "stream-json"])
 	return args
 
@@ -372,7 +391,32 @@ func _quote_windows_assignment(value: String) -> String:
 
 
 func _validate_supported_options() -> bool:
+	if _options.can_use_tool.is_valid() and not _options.permission_prompt_tool_name.is_empty():
+		_set_last_error("can_use_tool callback cannot be used with permission_prompt_tool_name. Please use one or the other.")
+		return false
+	_set_last_error("")
 	return true
+
+
+func _resolved_permission_prompt_tool_name() -> String:
+	if _options.can_use_tool.is_valid():
+		return "stdio"
+	return _options.permission_prompt_tool_name
+
+
+func _resolved_max_thinking_tokens() -> Variant:
+	var resolved: Variant = _options.max_thinking_tokens
+	if _options.thinking is Dictionary:
+		var thinking_config := _options.thinking as Dictionary
+		match str(thinking_config.get("type", "")):
+			"adaptive":
+				if resolved == null:
+					resolved = 32000
+			"enabled":
+				resolved = int(thinking_config.get("budget_tokens", 0))
+			"disabled":
+				resolved = 0
+	return resolved
 
 
 func _build_json_schema_argument() -> String:

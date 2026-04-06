@@ -383,6 +383,32 @@ func test_client_options_force_stdio_permission_prompt_when_can_use_tool_is_conf
 	assert_bool(args.has("stdio")).is_true()
 
 
+func test_client_connect_rejects_explicit_permission_prompt_conflict_with_can_use_tool() -> void:
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
+		return ClaudePermissionResultAllowScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new({
+		"can_use_tool": permission_callback,
+		"permission_prompt_tool_name": "custom-permission",
+	}), FakeTransportScript.new())
+
+	client.connect_client()
+
+	assert_str(client.get_last_error()).contains("cannot be used with permission_prompt_tool_name")
+
+
+func test_one_shot_query_fails_when_permission_prompt_conflicts_with_can_use_tool() -> void:
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
+		return ClaudePermissionResultAllowScript.new()
+	var transport = FakeTransportScript.new()
+	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new({
+		"can_use_tool": permission_callback,
+		"permission_prompt_tool_name": "custom-permission",
+	}), transport)
+
+	assert_str(stream.get_error()).contains("cannot be used with permission_prompt_tool_name")
+	assert_that(await stream.next_message()).is_null()
+
+
 func test_client_extracts_sdk_mcp_servers_for_inbound_control_requests() -> void:
 	var transport = FakeTransportScript.new()
 	var options = ClaudeAgentOptions.new({

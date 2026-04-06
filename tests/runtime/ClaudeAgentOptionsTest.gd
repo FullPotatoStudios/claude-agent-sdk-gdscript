@@ -176,6 +176,32 @@ func test_duplicate_options_preserves_agents_and_setting_sources() -> void:
 	assert_array(duplicated.setting_sources).is_equal(["user", "project"])
 
 
+func test_duplicate_options_preserves_transport_first_advanced_cli_fields() -> void:
+	var options = ClaudeAgentOptions.new({
+		"continue_conversation": true,
+		"fallback_model": "sonnet",
+		"betas": ["context-1m-2025-08-07", "custom-beta"],
+		"permission_prompt_tool_name": "custom-permission",
+		"add_dirs": ["res://addons", "/tmp/project"],
+		"max_budget_usd": 1.25,
+		"max_thinking_tokens": 4096,
+		"thinking": {"type": "enabled", "budget_tokens": 2048},
+		"task_budget": {"total": 12345},
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_bool(duplicated.continue_conversation).is_true()
+	assert_str(duplicated.fallback_model).is_equal("sonnet")
+	assert_array(duplicated.betas).is_equal(["context-1m-2025-08-07", "custom-beta"])
+	assert_str(duplicated.permission_prompt_tool_name).is_equal("custom-permission")
+	assert_array(duplicated.add_dirs).is_equal(["res://addons", "/tmp/project"])
+	assert_float(float(duplicated.max_budget_usd)).is_equal(1.25)
+	assert_int(int(duplicated.max_thinking_tokens)).is_equal(4096)
+	assert_dict(duplicated.thinking).is_equal({"type": "enabled", "budget_tokens": 2048})
+	assert_dict(duplicated.task_budget).is_equal({"total": 12345})
+
+
 func test_apply_normalizes_agent_definitions_from_upstream_wire_keys() -> void:
 	var options = ClaudeAgentOptions.new({
 		"agents": {
@@ -197,6 +223,30 @@ func test_apply_normalizes_agent_definitions_from_upstream_wire_keys() -> void:
 	assert_str(agent.initial_prompt).is_equal("Start carefully.")
 	assert_int(int(agent.max_turns)).is_equal(3)
 	assert_str(agent.permission_mode).is_equal("plan")
+
+
+func test_apply_normalizes_transport_first_advanced_cli_fields() -> void:
+	var options = ClaudeAgentOptions.new({
+		"continue_conversation": true,
+		"fallback_model": "sonnet",
+		"betas": ["context-1m-2025-08-07"],
+		"permission_prompt_tool_name": "custom-permission",
+		"add_dirs": ["res://addons", "/tmp/project"],
+		"max_budget_usd": 0.5,
+		"max_thinking_tokens": 2048,
+		"thinking": {"type": "adaptive"},
+		"task_budget": {"total": 5000},
+	})
+
+	assert_bool(options.continue_conversation).is_true()
+	assert_str(options.fallback_model).is_equal("sonnet")
+	assert_array(options.betas).is_equal(["context-1m-2025-08-07"])
+	assert_str(options.permission_prompt_tool_name).is_equal("custom-permission")
+	assert_array(options.add_dirs).is_equal(["res://addons", "/tmp/project"])
+	assert_float(float(options.max_budget_usd)).is_equal(0.5)
+	assert_int(int(options.max_thinking_tokens)).is_equal(2048)
+	assert_dict(options.thinking).is_equal({"type": "adaptive"})
+	assert_dict(options.task_budget).is_equal({"total": 5000})
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -234,14 +284,14 @@ func test_subprocess_transport_builds_phase_4_command_flags() -> void:
 		"--max-turns", "1",
 		"--disallowedTools", "Edit",
 		"--model", "haiku",
+		"--permission-prompt-tool", "stdio",
 			"--permission-mode", "plan",
 			"--resume", "resume-id",
 			"--session-id", "session-id",
-			"--effort", "low",
-			"--include-partial-messages",
-			"--permission-prompt-tool", "stdio",
 			"--json-schema", args[args.find("--json-schema") + 1],
 			"--mcp-config", args[args.find("--mcp-config") + 1],
+			"--include-partial-messages",
+			"--effort", "low",
 			"--input-format", "stream-json",
 		])
 	assert_dict(JSON.parse_string(args[args.find("--json-schema") + 1])).is_equal({
@@ -342,6 +392,78 @@ func test_subprocess_transport_supports_setting_sources_only_when_non_empty() ->
 	}))
 	var configured_args := configured_transport.build_command_args()
 	assert_array(configured_args).contains(["--setting-sources", "user,project,local"])
+
+
+func test_subprocess_transport_supports_transport_first_advanced_cli_flags() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"continue_conversation": true,
+		"fallback_model": "sonnet",
+		"betas": ["context-1m-2025-08-07", "custom-beta"],
+		"permission_prompt_tool_name": "custom-permission",
+		"add_dirs": ["res://addons", "/tmp/project"],
+		"max_budget_usd": 1.25,
+		"task_budget": {"total": 12345},
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--continue"])
+	assert_array(args).contains(["--fallback-model", "sonnet"])
+	assert_array(args).contains(["--betas", "context-1m-2025-08-07,custom-beta"])
+	assert_array(args).contains(["--permission-prompt-tool", "custom-permission"])
+	assert_array(args).contains(["--max-budget-usd", "1.25"])
+	assert_array(args).contains(["--task-budget", "12345"])
+
+	var add_dir_indices: Array[int] = []
+	for index in range(args.size()):
+		if args[index] == "--add-dir":
+			add_dir_indices.append(index)
+	assert_int(add_dir_indices.size()).is_equal(2)
+	assert_str(args[add_dir_indices[0] + 1]).is_equal("res://addons")
+	assert_str(args[add_dir_indices[1] + 1]).is_equal("/tmp/project")
+
+
+func test_subprocess_transport_resolves_thinking_precedence() -> void:
+	var deprecated_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"max_thinking_tokens": 2048,
+	}))
+	assert_array(deprecated_transport.build_command_args()).contains(["--max-thinking-tokens", "2048"])
+
+	var adaptive_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"thinking": {"type": "adaptive"},
+	}))
+	assert_array(adaptive_transport.build_command_args()).contains(["--max-thinking-tokens", "32000"])
+
+	var adaptive_with_deprecated_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"max_thinking_tokens": 2048,
+		"thinking": {"type": "adaptive"},
+	}))
+	assert_array(adaptive_with_deprecated_transport.build_command_args()).contains(["--max-thinking-tokens", "2048"])
+
+	var enabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"max_thinking_tokens": 2048,
+		"thinking": {"type": "enabled", "budget_tokens": 8192},
+	}))
+	assert_array(enabled_transport.build_command_args()).contains(["--max-thinking-tokens", "8192"])
+
+	var disabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"max_thinking_tokens": 2048,
+		"thinking": {"type": "disabled"},
+	}))
+	assert_array(disabled_transport.build_command_args()).contains(["--max-thinking-tokens", "0"])
+
+
+func test_subprocess_transport_rejects_explicit_permission_prompt_when_can_use_tool_is_configured() -> void:
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
+		return ClaudePermissionResultAllow.new()
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"can_use_tool": permission_callback,
+		"permission_prompt_tool_name": "custom-permission",
+	}))
+
+	var args := transport.build_command_args()
+
+	assert_int(args.size()).is_equal(0)
+	assert_str(transport.get_last_error()).contains("cannot be used with permission_prompt_tool_name")
 
 
 func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:
