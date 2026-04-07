@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10N transport-first file checkpointing and rewind parity
+- Active roadmap slice: Phase 10P process-user launch parity
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -84,12 +84,13 @@ The first public implementation target is the scene-free core conversation loop,
   - transport-first `fork_session` option parity through `ClaudeAgentOptions.fork_session` and `--fork-session`
   - transport-first file checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` and `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true`
   - connected-session `rewind_files(user_message_id)` parity through `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+  - command-style `stop_task(task_id)` parity through `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+  - typed task system message parity through `ClaudeTaskStartedMessage`, `ClaudeTaskProgressMessage`, and `ClaudeTaskNotificationMessage`
+  - transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
-- Still deferred:
-  - process-user switching parity through `ClaudeAgentOptions.user`
-  - task-control parity such as `stop_task` plus specialized task system messages
+  - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
 
 ## Update process
 

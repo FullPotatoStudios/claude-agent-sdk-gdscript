@@ -27,6 +27,11 @@ func _complete_session_rewind(session: ClaudeQuerySession, user_message_id: Stri
 	_async_completions.append(label)
 
 
+func _complete_session_stop_task(session: ClaudeQuerySession, task_id: String, label: String) -> void:
+	await session.stop_task(task_id)
+	_async_completions.append(label)
+
+
 func test_initialize_caches_server_info_and_sends_control_request() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -181,13 +186,14 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 			"max_thinking_tokens": 2048,
 			"thinking": {"type": "enabled", "budget_tokens": 8192},
 			"task_budget": {"total": 5000},
-			"settings": "{\"verbose\": true}",
-			"sandbox": {"enabled": true},
-			"extra_args": {"debug-to-stderr": null},
-			"enable_file_checkpointing": true,
-			"plugins": [{"type": "local", "path": "res://addons/example-plugin"}],
-			"fork_session": true,
-			"stderr": func(_line: String) -> void:
+				"settings": "{\"verbose\": true}",
+				"sandbox": {"enabled": true},
+				"extra_args": {"debug-to-stderr": null},
+				"enable_file_checkpointing": true,
+				"user": "claude",
+				"plugins": [{"type": "local", "path": "res://addons/example-plugin"}],
+				"fork_session": true,
+				"stderr": func(_line: String) -> void:
 				pass,
 		})
 	)
@@ -210,6 +216,7 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("sandbox")).is_false()
 	assert_bool(request.has("extra_args")).is_false()
 	assert_bool(request.has("enable_file_checkpointing")).is_false()
+	assert_bool(request.has("user")).is_false()
 	assert_bool(request.has("plugins")).is_false()
 	assert_bool(request.has("fork_session")).is_false()
 	assert_bool(request.has("stderr")).is_false()
@@ -653,6 +660,26 @@ func test_context_usage_rewind_and_mcp_controls_send_expected_control_requests()
 	})
 	await get_tree().process_frame
 	assert_array(_async_completions).contains(["session-rewind"])
+
+	Callable(self, "_complete_session_stop_task").call_deferred(session, "task-abc123", "session-stop-task")
+	await get_tree().process_frame
+	var stop_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	var stop_request_id := str(stop_request.get("request_id", ""))
+	var stop_pending: Dictionary = session._pending_control_responses.get(stop_request_id, {})
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("stop_task")
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("task_id", ""))).is_equal("task-abc123")
+	assert_bool(bool(stop_pending.get("await_response", false))).is_true()
+	assert_bool(bool(stop_pending.get("completed", true))).is_false()
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": stop_request_id,
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+	assert_array(_async_completions).contains(["session-stop-task"])
 
 	session._send_control_request({
 		"subtype": "mcp_reconnect",

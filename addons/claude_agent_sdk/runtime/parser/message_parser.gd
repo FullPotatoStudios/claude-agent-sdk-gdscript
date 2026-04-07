@@ -10,7 +10,7 @@ static func parse_message(data: Dictionary) -> Variant:
 		"assistant":
 			return _parse_assistant_message(data)
 		"system":
-			return ClaudeSystemMessage.new(str(data.get("subtype", "")), data)
+			return _parse_system_message(data)
 		"result":
 			return ClaudeResultMessage.new(
 				str(data.get("subtype", "")),
@@ -40,6 +40,63 @@ static func parse_message(data: Dictionary) -> Variant:
 			)
 		_:
 			return null
+
+
+static func _parse_system_message(data: Dictionary) -> Variant:
+	var subtype := str(data.get("subtype", ""))
+	match subtype:
+		"task_started":
+			if not _require_system_fields(data, ["task_id", "description", "uuid", "session_id"]):
+				return null
+			return ClaudeTaskStartedMessage.new(
+				data,
+				str(data.get("task_id", "")),
+				str(data.get("description", "")),
+				str(data.get("uuid", "")),
+				str(data.get("session_id", "")),
+				str(data.get("tool_use_id", "")),
+				str(data.get("task_type", ""))
+			)
+		"task_progress":
+			if not _require_system_fields(data, ["task_id", "description", "uuid", "session_id", "usage"], ["usage"]):
+				return null
+			return ClaudeTaskProgressMessage.new(
+				data,
+				str(data.get("task_id", "")),
+				str(data.get("description", "")),
+				data.get("usage", {}) if data.get("usage", {}) is Dictionary else {},
+				str(data.get("uuid", "")),
+				str(data.get("session_id", "")),
+				str(data.get("tool_use_id", "")),
+				str(data.get("last_tool_name", ""))
+			)
+		"task_notification":
+			if not _require_system_fields(data, ["task_id", "status", "output_file", "summary", "uuid", "session_id"]):
+				return null
+			return ClaudeTaskNotificationMessage.new(
+				data,
+				str(data.get("task_id", "")),
+				str(data.get("status", "")),
+				str(data.get("output_file", "")),
+				str(data.get("summary", "")),
+				str(data.get("uuid", "")),
+				str(data.get("session_id", "")),
+				str(data.get("tool_use_id", "")),
+				data.get("usage", {}) if data.get("usage", {}) is Dictionary else {}
+			)
+		_:
+			return ClaudeSystemMessage.new(subtype, data)
+
+
+static func _require_system_fields(data: Dictionary, required_fields: Array[String], dictionary_fields: Array[String] = []) -> bool:
+	for field_name in required_fields:
+		if not data.has(field_name):
+			push_error("Missing required field in system message: %s" % field_name)
+			return false
+		if dictionary_fields.has(field_name) and data[field_name] is not Dictionary:
+			push_error("Invalid required dictionary field in system message: %s" % field_name)
+			return false
+	return true
 
 
 static func _parse_user_message(data: Dictionary) -> ClaudeUserMessage:

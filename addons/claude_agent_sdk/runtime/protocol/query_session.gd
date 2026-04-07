@@ -122,6 +122,13 @@ func rewind_files(user_message_id: String) -> void:
 	})
 
 
+func stop_task(task_id: String) -> void:
+	await _send_control_request_and_wait({
+		"subtype": "stop_task",
+		"task_id": task_id,
+	})
+
+
 func reconnect_mcp_server(server_name: String) -> void:
 	await _send_control_request_and_wait({
 		"subtype": "mcp_reconnect",

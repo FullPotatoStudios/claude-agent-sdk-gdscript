@@ -461,6 +461,11 @@ func _complete_adapter_rewind(adapter: ClaudeClientAdapter, user_message_id: Str
 	_async_completions.append(label)
 
 
+func _complete_adapter_stop_task(adapter: ClaudeClientAdapter, task_id: String, label: String) -> void:
+	await adapter.stop_task(task_id)
+	_async_completions.append(label)
+
+
 func test_adapter_rewind_files_passthroughs_to_runtime_client() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
@@ -493,6 +498,42 @@ func test_adapter_rewind_files_passthroughs_to_runtime_client() -> void:
 	await _await_frames(1)
 
 	assert_array(_async_completions).contains(["adapter-rewind"])
+	assert_str(adapter.get_last_error()).is_empty()
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_stop_task_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_adapter_stop_task").call_deferred(adapter, "task-abc123", "adapter-stop-task")
+	await _await_frames(1)
+	var stop_request := _read_last_write(transport)
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("stop_task")
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("task_id", ""))).is_equal("task-abc123")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(stop_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["adapter-stop-task"])
 	assert_str(adapter.get_last_error()).is_empty()
 	await _cleanup_adapter(adapter)
 

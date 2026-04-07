@@ -42,7 +42,7 @@ Phase 1 findings that constrain this matrix:
 | `get_context_usage()` | `client.py` | Valuable for advanced UIs and diagnostics | control protocol, typed response models | `v1 later` | Worth adding after core conversation flow |
 | `get_mcp_status()` / reconnect / toggle | `client.py`, `e2e-tests/test_sdk_mcp_tools.py` | Important once MCP parity matters | control protocol, MCP config, typed responses | `v1 later` | Not on the critical path for core chat |
 | `rewind_files()` | `client.py` | Depends on checkpointing and replayed user messages | file checkpointing, message UUIDs, control protocol | `deferred` | High complexity, not needed for first public release |
-| `stop_task()` | `client.py` | Useful only once task notifications and task control are first-class | task messages, control protocol | `deferred` | Post-core behavior |
+| `stop_task()` | `client.py` | Useful only once task notifications and task control are first-class | task messages, control protocol | `deferred` | Delivered post-v1 in Phase 10O through command-style `stop_task(task_id)` parity on the runtime, adapter, and node surfaces |
 | Python async context manager | `client.py` `__aenter__` / `__aexit__` | Convenience only | connect/disconnect | `not applicable` | Use explicit lifecycle methods in GDScript |
 
 ## Transport and process management
@@ -71,7 +71,7 @@ Phase 1 findings that constrain this matrix:
 | `ThinkingBlock` parsing | `types.py`, parser, `e2e-tests/test_include_partial_messages.py` | Keeps parser compatible with richer model responses | parser, typed models | `v1 core` | Low-cost to support once content-block parsing exists |
 | `UserMessage` / `AssistantMessage` / `SystemMessage` / `ResultMessage` | `types.py`, parser, tests | Minimum message model for v1 | parser, typed models | `v1 core` | Explicit v1 target set |
 | Forward-compatible unknown message handling | parser | Prevents older SDK versions from crashing on new CLI events | parser | `v1 core` | Skip unknown message types |
-| Specialized task system messages | parser, `types.py` | Useful once task-oriented features exist | system message parsing | `v1 later` | v1 can fall back to generic `SystemMessage` if needed |
+| Specialized task system messages | parser, `types.py` | Useful once task-oriented features exist | system message parsing | `v1 later` | Delivered post-v1 in Phase 10O through typed task message subclasses that preserve generic `ClaudeSystemMessage` compatibility |
 | `StreamEvent` partial-message model | parser, `e2e-tests/test_include_partial_messages.py` | Needed for token-by-token / delta UIs | parser, partial-message option | `v1 later` | Valuable, but not required for first full chat loop |
 | `RateLimitEvent` model | parser | Useful for UX warnings and dashboards | parser | `v1 later` | Nice parity after core loop is stable |
 
@@ -87,7 +87,7 @@ Phase 1 findings that constrain this matrix:
 | Context-usage control | `_internal/query.py`, `client.py` | Useful for advanced diagnostics | initialize flow, typed response | `v1 later` | Post-core |
 | MCP status/reconnect/toggle controls | `_internal/query.py`, `client.py` | Needed once MCP support expands | initialize flow, MCP config | `v1 later` | Post-core |
 | Rewind-files control | control protocol types, `client.py` | Depends on checkpointing and replay | initialize flow, file checkpointing | `deferred` | Not for first release |
-| Stop-task control | control protocol types, `client.py` | Depends on task lifecycle support | initialize flow, task messages | `deferred` | Not for first release |
+| Stop-task control | control protocol types, `client.py` | Depends on task lifecycle support | initialize flow, task messages | `deferred` | Delivered post-v1 in Phase 10O through awaited control-request parity using `subtype: "stop_task"` and `task_id` |
 
 ## Hooks and tool-permission callbacks
 
@@ -132,7 +132,7 @@ Phase 1 findings that constrain this matrix:
 | Continue-conversation flag, fallback model, betas, permission prompt tool, add_dirs, max budget, task budget, and advanced thinking config | `types.py`, examples, transport tests | Useful advanced transport/runtime parity once the core option model is stable | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10J through additive `ClaudeAgentOptions` fields and transport-only flag emission without initialize payload changes |
 | Settings and sandbox passthrough/merge behavior | `types.py`, `subprocess_cli.py`, transport tests | Important advanced transport parity for teams that already rely on Claude settings files or bash sandboxing | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10K through `ClaudeAgentOptions.settings`, `ClaudeAgentOptions.sandbox`, and upstream-style `--settings` merge behavior |
 | Plugin-dir and `fork_session` option parity | `types.py`, examples, transport tests | Useful bounded transport parity without widening initialize/runtime protocol scope | command building | `v1 later` | Delivered post-v1 in Phase 10M through `ClaudeAgentOptions.plugins`, `ClaudeAgentOptions.fork_session`, repeated `--plugin-dir`, and `--fork-session` parity |
-| Remaining broader `user` parity | `types.py`, transport tests | Legitimate parity surface, but more invasive in the shell-backed Godot transport than the recent bounded post-v1 slices | process-launch parity | `deferred` | Revisit after the checkpoint/rewind and task-control slices land |
+| Process-user launch parity | `types.py`, transport tests | Legitimate parity surface for teams that need to run Claude Code as another local user | process-launch parity | `v1 later` | Delivered post-v1 in Phase 10P through `ClaudeAgentOptions.user` on POSIX shell-backed transports; Windows transports currently reject the option |
 
 ## Godot-only additions
 
@@ -170,4 +170,6 @@ Status note:
 - Phase 10L adds transport-first `extra_args` and `stderr` diagnostics parity without widening the initialize payload surface
 - Phase 10M adds transport-first local-plugin and `fork_session` option parity without widening the initialize payload surface
 - Phase 10N adds transport-first file checkpointing plus connected-session `rewind_files()` parity without widening the initialize payload surface
+- Phase 10O adds task-control `stop_task()` parity plus typed task system message parsing without widening the transport or initialize payload surfaces
+- Phase 10P adds transport-first `ClaudeAgentOptions.user` parity through a POSIX `sudo -n -u` launch wrapper while keeping `user` out of initialize payloads
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

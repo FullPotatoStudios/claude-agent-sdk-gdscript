@@ -135,6 +135,11 @@ func _complete_node_rewind(node: ClaudeClientNode, user_message_id: String, labe
 	_async_completions.append(label)
 
 
+func _complete_node_stop_task(node: ClaudeClientNode, task_id: String, label: String) -> void:
+	await node.stop_task(task_id)
+	_async_completions.append(label)
+
+
 func test_node_rewind_files_passthroughs_to_runtime_client() -> void:
 	var transport = FakeTransportScript.new()
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
@@ -169,6 +174,47 @@ func test_node_rewind_files_passthroughs_to_runtime_client() -> void:
 	await _await_frames(1)
 
 	assert_array(_async_completions).contains(["node-rewind"])
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
+func test_node_stop_task_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_node_stop_task").call_deferred(node, "task-abc123", "node-stop-task")
+	await _await_frames(1)
+	var stop_request := _read_last_write(transport)
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("stop_task")
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("task_id", ""))).is_equal("task-abc123")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(stop_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["node-stop-task"])
 	node.disconnect_client()
 	await _await_frames(2)
 	get_tree().root.remove_child(node)

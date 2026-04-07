@@ -276,6 +276,16 @@ func test_duplicate_options_preserves_enable_file_checkpointing() -> void:
 	assert_bool(duplicated.enable_file_checkpointing).is_true()
 
 
+func test_duplicate_options_preserves_user() -> void:
+	var options = ClaudeAgentOptions.new({
+		"user": "claude",
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_str(duplicated.user).is_equal("claude")
+
+
 func test_duplicate_options_preserves_extra_args_and_stderr_callback() -> void:
 	var stderr_lines: Array[String] = []
 	var stderr_callback := func(line: String) -> void:
@@ -433,6 +443,14 @@ func test_apply_preserves_enable_file_checkpointing() -> void:
 	})
 
 	assert_bool(options.enable_file_checkpointing).is_true()
+
+
+func test_apply_preserves_user() -> void:
+	var options = ClaudeAgentOptions.new({
+		"user": "claude",
+	})
+
+	assert_str(options.user).is_equal("claude")
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -931,6 +949,36 @@ func test_subprocess_transport_adds_checkpointing_env_override_without_new_cli_f
 	assert_str(str(enabled_overrides.get("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", ""))).is_equal("true")
 	assert_bool(enabled_args.has("--enable-file-checkpointing")).is_false()
 	assert_bool(str(enabled_args).contains("checkpoint")).is_false()
+
+
+func test_subprocess_transport_supports_user_process_launch_without_new_cli_flags() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"user": "claude",
+		"cwd": "/tmp/project",
+		"env": {"CUSTOM_FLAG": "1"},
+	}))
+
+	if OS.get_name() == "Windows":
+		assert_bool(transport._validate_supported_options()).is_false()
+		assert_str(transport.get_last_error()).contains("supported only on POSIX")
+		return
+
+	var args := transport.build_command_args()
+	var process_spec := transport.build_process_spec()
+	var process_args := process_spec.get("args", PackedStringArray()) as PackedStringArray
+	var shell_script := str(process_args[6])
+
+	assert_bool(args.has("--user")).is_false()
+	assert_str(str(process_spec.get("path", ""))).contains("sudo")
+	assert_str(process_args[0]).is_equal("-n")
+	assert_str(process_args[1]).is_equal("-u")
+	assert_str(process_args[2]).is_equal("claude")
+	assert_str(process_args[3]).is_equal("--")
+	assert_str(process_args[4]).is_equal("/bin/sh")
+	assert_str(process_args[5]).is_equal("-lc")
+	assert_bool(shell_script.contains("CLAUDE_CODE_ENTRYPOINT")).is_true()
+	assert_bool(shell_script.contains("CUSTOM_FLAG")).is_true()
+	assert_bool(shell_script.contains("/tmp/project")).is_true()
 
 
 func test_subprocess_transport_allows_explicit_claudecode_override() -> void:

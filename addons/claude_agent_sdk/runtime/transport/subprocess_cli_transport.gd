@@ -277,9 +277,18 @@ func _build_process_spec_for_args(logical_args: PackedStringArray) -> Dictionary
 			"logical_path": _options.cli_path,
 			"logical_args": logical_args,
 		}
+	var shell_script := _build_posix_shell_script(logical_args)
+	var requested_user := _requested_user()
+	if not requested_user.is_empty():
+		return {
+			"path": "sudo",
+			"args": PackedStringArray(["-n", "-u", requested_user, "--", "/bin/sh", "-lc", shell_script]),
+			"logical_path": _options.cli_path,
+			"logical_args": logical_args,
+		}
 	return {
 		"path": "/bin/sh",
-		"args": PackedStringArray(["-lc", _build_posix_shell_script(logical_args)]),
+		"args": PackedStringArray(["-lc", shell_script]),
 		"logical_path": _options.cli_path,
 		"logical_args": logical_args,
 	}
@@ -410,6 +419,9 @@ func _validate_supported_options() -> bool:
 	if _options.can_use_tool.is_valid() and not _options.permission_prompt_tool_name.is_empty():
 		_set_last_error("can_use_tool callback cannot be used with permission_prompt_tool_name. Please use one or the other.")
 		return false
+	if OS.get_name() == "Windows" and not _requested_user().is_empty():
+		_set_last_error("ClaudeAgentOptions.user is currently supported only on POSIX shell-backed transports.")
+		return false
 	for plugin_config_variant in _options.plugins:
 		if plugin_config_variant is not Dictionary:
 			_set_last_error("plugins entries must be dictionaries with type and path keys.")
@@ -429,6 +441,10 @@ func _resolved_permission_prompt_tool_name() -> String:
 	if _options.can_use_tool.is_valid():
 		return "stdio"
 	return _options.permission_prompt_tool_name
+
+
+func _requested_user() -> String:
+	return _options.user.strip_edges()
 
 
 func _resolved_max_thinking_tokens() -> Variant:

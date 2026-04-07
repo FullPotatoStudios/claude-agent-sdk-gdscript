@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10N: transport-first file checkpointing and rewind parity
+- Phase 10P: process-user launch parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -249,10 +249,16 @@ Delivered in Phase 10N:
 - connected-session `rewind_files(user_message_id)` parity on `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - initialize/runtime boundary coverage proving checkpointing stays transport-only rather than entering initialize payloads
 
-Still deferred within Phase 10:
-- process-user switching parity through `ClaudeAgentOptions.user`
-- task-control parity such as `stop_task` plus specialized task system messages
+Delivered in Phase 10O:
+- command-style `stop_task(task_id)` parity on `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+- parser-level typed `task_started`, `task_progress`, and `task_notification` message parity while preserving generic `ClaudeSystemMessage` compatibility
+- runtime/parser coverage for task-control requests and backward-compatible task system message parsing
+
+Delivered in Phase 10P:
+- transport-first `ClaudeAgentOptions.user` parity for POSIX shell-backed process launch
+- shared transport/auth-probe launch coverage proving `user` stays transport-only rather than entering initialize payloads
+- documented Windows caveat for the shell-backed runtime, where `ClaudeAgentOptions.user` remains unsupported
 
 ## Current focus
 
-Work should currently prioritize the next post-10N parity slice from the upstream ledger.
+Work should currently prioritize the next upstream sync review from the ledger to identify any new additive post-`v0.1.54` parity work beyond the completed Phase 10 backlog.

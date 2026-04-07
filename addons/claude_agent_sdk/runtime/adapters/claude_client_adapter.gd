@@ -161,6 +161,10 @@ func rewind_files(user_message_id: String) -> void:
 	await _client.rewind_files(user_message_id)
 
 
+func stop_task(task_id: String) -> void:
+	await _client.stop_task(task_id)
+
+
 func reconnect_mcp_server(server_name: String) -> void:
 	await _client.reconnect_mcp_server(server_name)
 

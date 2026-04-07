@@ -52,6 +52,8 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
 - transport-first plugin-dir and `fork_session` option parity through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
 - transport-first file-checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` plus runtime `rewind_files()` controls on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+- task-control parity through runtime `stop_task()` controls plus typed `task_started`, `task_progress`, and `task_notification` system messages
+- transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -122,6 +124,8 @@ func _ready() -> void:
 - transport-first diagnostics support through `ClaudeAgentOptions.extra_args` and per-line stderr callback delivery
 - transport-first local-plugin and `fork_session` option support through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
 - transport-first file checkpointing through `ClaudeAgentOptions.enable_file_checkpointing` and connected-session `rewind_files(user_message_id)` controls
+- task-control support through connected-session `stop_task(task_id)` controls and typed task system messages
+- transport-first process-user launch support through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
@@ -130,10 +134,9 @@ func _ready() -> void:
 
 ## Current Gaps
 
-The current release still defers some broader upstream parity areas, including:
+The pinned upstream baseline is functionally covered, with a small transport caveat still worth noting:
 
-- process-user switching parity through `ClaudeAgentOptions.user`
-- task-control parity such as `stop_task` and specialized task system messages
+- `ClaudeAgentOptions.user` is implemented through a POSIX shell-wrapper launch path; Windows shell-backed transports currently reject it
 
 Use these as the canonical sources of truth for compatibility and parity status:
 
@@ -184,7 +187,9 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - `extra_args` and `stderr` are also transport-only in the current slice; they do not enter initialize payloads.
 - `plugins` and `fork_session` are also transport-only in the current slice; they do not enter initialize payloads.
 - `enable_file_checkpointing` is also transport-only in the current slice; it does not enter initialize payloads.
+- `user` is also transport-only in the current slice; it does not enter initialize payloads.
 - practical rewind workflows usually also need `extra_args = {"replay-user-messages": null}` so live `UserMessage.uuid` values are available to rewind to.
 - `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`.
+- `ClaudeAgentOptions.user` currently targets POSIX shell-backed transports by wrapping the launch with `sudo -n -u`; Windows transports reject it.
 - the deprecated Python `debug_stderr` shim is intentionally not mirrored in GDScript; use `ClaudeAgentOptions.stderr` and optional `extra_args = {"debug-to-stderr": null}` instead.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.

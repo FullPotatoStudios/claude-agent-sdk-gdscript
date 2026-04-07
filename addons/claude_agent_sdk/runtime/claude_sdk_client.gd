@@ -133,6 +133,14 @@ func rewind_files(user_message_id: String) -> void:
 	_last_error = _session.get_last_error()
 
 
+func stop_task(task_id: String) -> void:
+	if _session == null:
+		_emit_error("Call connect_client() before stop_task()")
+		return
+	await _session.stop_task(task_id)
+	_last_error = _session.get_last_error()
+
+
 func reconnect_mcp_server(server_name: String) -> void:
 	if _session == null:
 		_emit_error("Call connect_client() before reconnect_mcp_server()")

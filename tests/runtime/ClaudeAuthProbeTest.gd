@@ -121,6 +121,31 @@ func test_subprocess_auth_probe_reports_json_parse_failure() -> void:
 	assert_str(str(result.get("error_code", ""))).is_equal("json_parse_failed")
 
 
+func test_subprocess_auth_probe_uses_user_process_launch_when_configured() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"user": "claude",
+	}))
+
+	if OS.get_name() == "Windows":
+		assert_bool(transport._validate_supported_options()).is_false()
+		assert_str(transport.get_last_error()).contains("supported only on POSIX")
+		return
+
+	var process_spec := transport._build_process_spec_for_args(PackedStringArray(["auth", "status"]))
+	var process_args := process_spec.get("args", PackedStringArray()) as PackedStringArray
+	var shell_script := str(process_args[6])
+
+	assert_str(str(process_spec.get("path", ""))).contains("sudo")
+	assert_str(process_args[0]).is_equal("-n")
+	assert_str(process_args[1]).is_equal("-u")
+	assert_str(process_args[2]).is_equal("claude")
+	assert_str(process_args[3]).is_equal("--")
+	assert_str(process_args[4]).is_equal("/bin/sh")
+	assert_str(process_args[5]).is_equal("-lc")
+	assert_bool(shell_script.contains("auth")).is_true()
+	assert_bool(shell_script.contains("status")).is_true()
+
+
 func _write_auth_probe_script(script_name: String, command: String) -> String:
 	var path := "/tmp/%s_%d.sh" % [script_name, Time.get_unix_time_from_system()]
 	var file := FileAccess.open(path, FileAccess.WRITE)
