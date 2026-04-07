@@ -162,10 +162,11 @@ Outputs:
 - transport-first advanced CLI option parity
 - transport-first `settings` and `sandbox` parity
 - transport-first diagnostics and escape-hatch parity
+- transport-first local plugin-dir and `fork_session` option parity
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10L: transport-first diagnostics and escape-hatch parity
+- Phase 10M: transport-first plugin-dir and `fork_session` parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -237,9 +238,14 @@ Delivered in Phase 10L:
 - upstream-style extra-flag passthrough ordering and best-effort per-line stderr diagnostics callback delivery
 - initialize/runtime boundary coverage proving `extra_args` and `stderr` stay CLI-only rather than entering initialize payloads
 
+Delivered in Phase 10M:
+- transport-first `ClaudeAgentOptions.plugins` with local-plugin `--plugin-dir` emission
+- transport-first `ClaudeAgentOptions.fork_session` with upstream-style `--fork-session` flag parity
+- initialize/runtime boundary coverage proving `plugins` and `fork_session` stay CLI-only rather than entering initialize payloads
+
 Still deferred within Phase 10:
-- broader transport/runtime parity beyond the current settings, sandbox, diagnostics, and agent-definition surface
+- broader transport/runtime parity beyond the current settings, sandbox, diagnostics, plugin, and agent-definition surface
 
 ## Current focus
 
-Work should currently prioritize the next post-10L parity slice from the upstream ledger.
+Work should currently prioritize the next post-10M parity slice from the upstream ledger.

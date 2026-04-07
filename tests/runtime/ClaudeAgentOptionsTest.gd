@@ -248,6 +248,24 @@ func test_duplicate_options_preserves_settings_and_sandbox_fields() -> void:
 	})
 
 
+func test_duplicate_options_preserves_plugins_and_fork_session() -> void:
+	var options = ClaudeAgentOptions.new({
+		"plugins": [
+			{"type": "local", "path": "res://addons/debug_plugin"},
+			{"type": "local", "path": "/tmp/custom-plugin"},
+		],
+		"fork_session": true,
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_array(duplicated.plugins).is_equal([
+		{"type": "local", "path": "res://addons/debug_plugin"},
+		{"type": "local", "path": "/tmp/custom-plugin"},
+	])
+	assert_bool(duplicated.fork_session).is_true()
+
+
 func test_duplicate_options_preserves_extra_args_and_stderr_callback() -> void:
 	var stderr_lines: Array[String] = []
 	var stderr_callback := func(line: String) -> void:
@@ -381,6 +399,22 @@ func test_apply_preserves_extra_args_and_stderr_callback() -> void:
 	assert_bool(options.stderr == stderr_callback).is_true()
 	options.stderr.call("line")
 	assert_array(stderr_lines).is_equal(["line"])
+
+
+func test_apply_normalizes_plugins_and_fork_session() -> void:
+	var options = ClaudeAgentOptions.new({
+		"plugins": [
+			{"type": "local", "path": "user://dev-plugin"},
+			{"type": &"local", "path": StringName("/tmp/typed-plugin")},
+		],
+		"fork_session": true,
+	})
+
+	assert_array(options.plugins).is_equal([
+		{"type": "local", "path": "user://dev-plugin"},
+		{"type": "local", "path": "/tmp/typed-plugin"},
+	])
+	assert_bool(options.fork_session).is_true()
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -605,6 +639,65 @@ func test_subprocess_transport_supports_extra_args_and_stderr_diagnostics_rules(
 
 	var quiet_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
 	assert_bool(quiet_transport._should_consume_stderr()).is_false()
+
+
+func test_subprocess_transport_supports_plugins_and_fork_session_ordering() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"include_partial_messages": true,
+		"fork_session": true,
+		"setting_sources": ["project"],
+		"plugins": [
+			{"type": "local", "path": "res://addons/dev-plugin"},
+			{"type": "local", "path": "/tmp/second-plugin"},
+		],
+		"extra_args": {"debug-to-stderr": null},
+		"thinking": {"type": "enabled", "budget_tokens": 8192},
+		"effort": "high",
+	}))
+	var args := transport.build_command_args()
+	var include_partial_index := args.find("--include-partial-messages")
+	var fork_index := args.find("--fork-session")
+	var setting_sources_index := args.find("--setting-sources")
+	var first_plugin_index := args.find("--plugin-dir")
+	var debug_index := args.find("--debug-to-stderr")
+	var thinking_index := args.find("--max-thinking-tokens")
+	var effort_index := args.find("--effort")
+
+	assert_int(include_partial_index).is_not_equal(-1)
+	assert_int(fork_index).is_not_equal(-1)
+	assert_int(setting_sources_index).is_not_equal(-1)
+	assert_int(first_plugin_index).is_not_equal(-1)
+	assert_int(debug_index).is_not_equal(-1)
+	assert_int(thinking_index).is_not_equal(-1)
+	assert_int(effort_index).is_not_equal(-1)
+	assert_int(fork_index).is_greater(include_partial_index)
+	assert_int(setting_sources_index).is_greater(fork_index)
+	assert_int(first_plugin_index).is_greater(setting_sources_index)
+	assert_int(debug_index).is_greater(first_plugin_index)
+	assert_int(thinking_index).is_greater(debug_index)
+	assert_int(effort_index).is_greater(thinking_index)
+	assert_str(args[first_plugin_index + 1]).is_equal(ProjectSettings.globalize_path("res://addons/dev-plugin"))
+
+	var plugin_indices: Array[int] = []
+	for index in range(args.size()):
+		if args[index] == "--plugin-dir":
+			plugin_indices.append(index)
+	assert_int(plugin_indices.size()).is_equal(2)
+	assert_str(args[plugin_indices[0] + 1]).is_equal(ProjectSettings.globalize_path("res://addons/dev-plugin"))
+	assert_str(args[plugin_indices[1] + 1]).is_equal("/tmp/second-plugin")
+
+
+func test_subprocess_transport_rejects_unsupported_plugin_configs() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"plugins": [
+			{"type": "remote", "path": "/tmp/not-supported"},
+		],
+	}))
+
+	var args := transport.build_command_args()
+
+	assert_int(args.size()).is_equal(0)
+	assert_str(transport.get_last_error()).contains("Only local plugin configs are supported")
 
 
 func test_subprocess_transport_supports_settings_passthrough_and_sandbox_merging() -> void:

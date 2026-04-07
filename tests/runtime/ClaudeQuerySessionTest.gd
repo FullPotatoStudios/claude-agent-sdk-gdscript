@@ -173,6 +173,8 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 			"settings": "{\"verbose\": true}",
 			"sandbox": {"enabled": true},
 			"extra_args": {"debug-to-stderr": null},
+			"plugins": [{"type": "local", "path": "res://addons/example-plugin"}],
+			"fork_session": true,
 			"stderr": func(_line: String) -> void:
 				pass,
 		})
@@ -195,6 +197,8 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("settings")).is_false()
 	assert_bool(request.has("sandbox")).is_false()
 	assert_bool(request.has("extra_args")).is_false()
+	assert_bool(request.has("plugins")).is_false()
+	assert_bool(request.has("fork_session")).is_false()
 	assert_bool(request.has("stderr")).is_false()
 
 

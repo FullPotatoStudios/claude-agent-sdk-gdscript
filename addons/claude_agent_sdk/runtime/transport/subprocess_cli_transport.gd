@@ -87,8 +87,11 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--mcp-config", mcp_config])
 	if _options.include_partial_messages:
 		args.append("--include-partial-messages")
+	if _options.fork_session:
+		args.append("--fork-session")
 	if not _options.setting_sources.is_empty():
 		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
+	_append_plugin_args(args)
 	_append_extra_args(args)
 	var resolved_max_thinking_tokens := _resolved_max_thinking_tokens()
 	if resolved_max_thinking_tokens != null:
@@ -405,6 +408,17 @@ func _validate_supported_options() -> bool:
 	if _options.can_use_tool.is_valid() and not _options.permission_prompt_tool_name.is_empty():
 		_set_last_error("can_use_tool callback cannot be used with permission_prompt_tool_name. Please use one or the other.")
 		return false
+	for plugin_config_variant in _options.plugins:
+		if plugin_config_variant is not Dictionary:
+			_set_last_error("plugins entries must be dictionaries with type and path keys.")
+			return false
+		var plugin_config := plugin_config_variant as Dictionary
+		if str(plugin_config.get("type", "")).strip_edges() != "local":
+			_set_last_error("Only local plugin configs are supported in this slice.")
+			return false
+		if str(plugin_config.get("path", "")).strip_edges().is_empty():
+			_set_last_error("Plugin configs must include a non-empty path.")
+			return false
 	_set_last_error("")
 	return true
 
@@ -551,6 +565,17 @@ func _build_mcp_config_argument() -> String:
 	if _options.mcp_servers is String and not str(_options.mcp_servers).is_empty():
 		return str(_options.mcp_servers)
 	return ""
+
+
+func _append_plugin_args(args: PackedStringArray) -> void:
+	if _options.plugins.is_empty():
+		return
+	for plugin_config_variant in _options.plugins:
+		var plugin_config := plugin_config_variant as Dictionary
+		var plugin_path := _resolve_project_path(str(plugin_config.get("path", "")).strip_edges())
+		if plugin_path.is_empty():
+			continue
+		args.append_array(["--plugin-dir", plugin_path])
 
 
 func _append_extra_args(args: PackedStringArray) -> void:

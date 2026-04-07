@@ -26,12 +26,14 @@ var permission_prompt_tool_name: String = ""
 var settings: String = ""
 var extra_args: Dictionary = {}
 var add_dirs: Array[String] = []
+var plugins: Array = []
 var hooks: Dictionary = {}
 var can_use_tool: Callable = Callable()
 var stderr: Callable = Callable()
 var max_thinking_tokens: Variant = null
 var thinking: Variant = null
 var include_partial_messages: bool = false
+var fork_session: bool = false
 var output_format: Dictionary = {}
 var mcp_servers: Variant = {}
 var agents: Dictionary = {}
@@ -89,6 +91,8 @@ func apply(config: Dictionary):
 		extra_args = _duplicate_nested_variant(config["extra_args"])
 	if config.has("add_dirs") and config["add_dirs"] is Array:
 		add_dirs = _to_string_array(config["add_dirs"] as Array)
+	if config.has("plugins") and config["plugins"] is Array:
+		plugins = _normalize_plugins(config["plugins"] as Array)
 	if config.has("hooks") and config["hooks"] is Dictionary:
 		hooks = _normalize_hooks(config["hooks"] as Dictionary)
 	if config.has("can_use_tool") and config["can_use_tool"] is Callable:
@@ -101,6 +105,8 @@ func apply(config: Dictionary):
 		thinking = _normalize_thinking(config["thinking"])
 	if config.has("include_partial_messages"):
 		include_partial_messages = bool(config["include_partial_messages"])
+	if config.has("fork_session"):
+		fork_session = bool(config["fork_session"])
 	if config.has("output_format") and config["output_format"] is Dictionary:
 		output_format = (config["output_format"] as Dictionary).duplicate(true)
 	if config.has("mcp_servers"):
@@ -141,12 +147,14 @@ func duplicate_options():
 			"settings": settings,
 			"extra_args": _duplicate_nested_variant(extra_args),
 			"add_dirs": add_dirs.duplicate(),
+			"plugins": _duplicate_plugins(plugins),
 			"hooks": _duplicate_hooks(hooks),
 			"can_use_tool": can_use_tool,
 			"stderr": stderr,
 			"max_thinking_tokens": max_thinking_tokens,
 			"thinking": _duplicate_variant(thinking),
 			"include_partial_messages": include_partial_messages,
+			"fork_session": fork_session,
 			"output_format": output_format.duplicate(true),
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
 			"agents": _duplicate_agents(agents),
@@ -185,6 +193,25 @@ static func _normalize_hooks(value: Dictionary) -> Dictionary:
 
 static func _duplicate_hooks(value: Dictionary) -> Dictionary:
 	return _normalize_hooks(value)
+
+
+static func _normalize_plugins(value: Array) -> Array:
+	var normalized: Array = []
+	for plugin_value in value:
+		if plugin_value is not Dictionary:
+			continue
+		var source := plugin_value as Dictionary
+		var duplicated: Dictionary = source.duplicate(true)
+		if duplicated.has("type"):
+			duplicated["type"] = str(duplicated["type"])
+		if duplicated.has("path"):
+			duplicated["path"] = str(duplicated["path"])
+		normalized.append(duplicated)
+	return normalized
+
+
+static func _duplicate_plugins(value: Array) -> Array:
+	return _normalize_plugins(value)
 
 
 static func _normalize_agents(value: Dictionary) -> Dictionary:

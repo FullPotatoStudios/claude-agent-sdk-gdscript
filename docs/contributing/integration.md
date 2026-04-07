@@ -19,6 +19,7 @@ Use `ClaudeSDKClient` directly when:
 - you want to control user/project/local Claude settings loading through `ClaudeAgentOptions.setting_sources`
 - you want transport-first advanced CLI controls like `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, or `task_budget`
 - you want to pass through Claude settings or configure bash sandboxing through `ClaudeAgentOptions.settings` and `ClaudeAgentOptions.sandbox`
+- you want transport-first local plugin loading or CLI-side forked-session startup through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
@@ -84,6 +85,8 @@ The integration layer is intentionally thin.
 - advanced CLI fields such as `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget` are transport-only in the current parity slice and do not enter initialize payloads
 - `settings` and `sandbox` are also transport-only in the current parity slice; `sandbox` is implemented by constructing the CLI `--settings` value rather than by adding a separate runtime protocol field
 - `extra_args` and `stderr` are also transport-only in the current parity slice; `stderr` is a best-effort diagnostics callback and does not become a protocol/error channel
+- `plugins` and `fork_session` are also transport-only in the current parity slice; they do not enter initialize payloads
+- `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`, emitted as repeated `--plugin-dir` flags
 - `permission_prompt_tool_name` cannot be combined with `can_use_tool`; when you use `can_use_tool`, the transport continues to auto-configure Claude's permission prompt tool as `stdio`
 - `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path
