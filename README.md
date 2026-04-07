@@ -57,7 +57,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
-- `ClaudeChatPanel` as a reusable reference chat UI with a conversation-first `Chat` view, secondary `Settings` view, saved-session browsing, idle-time live switching, resume, basic session management, transcript granularity filters, and disconnected chat-configuration controls
+- `ClaudeChatPanel` as a reusable reference chat UI with a conversation-first `Chat` view, secondary `Settings` view, saved-session browsing, idle-time live switching, resume, basic session management, task-aware transcript controls, and disconnected chat-configuration controls
 - A root-project demo under `demo/` for validation and onboarding
 
 Only `addons/claude_agent_sdk/` is the distributable addon payload. The `demo/`, `tests/`, and `tools/` directories stay outside the packaged artifact.
@@ -130,12 +130,15 @@ func _ready() -> void:
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
 - Godot-native adapter and node layers with session-history and transcript-detail convenience passthroughs
-- A reusable chat panel plus demo validation scene, now including a conversation-first main view, quick model/effort/permission controls, a secondary settings view for prompt/tool configuration, session browsing, transcript restoration, transcript granularity filters for thinking/tools/results/system/raw, idle-time live session switching, saved-session resume, and basic rename/tag/delete actions
+- A reusable chat panel plus demo validation scene, now including a conversation-first main view, quick model/effort/permission controls, a secondary settings view for prompt/tool configuration, session browsing, transcript restoration, transcript granularity filters for thinking/tasks/tools/results/system/raw, idle-time live session switching, saved-session resume, basic rename/tag/delete actions, and live task stop controls
 
 ## Current Gaps
 
-The pinned upstream baseline is functionally covered, with a small transport caveat still worth noting:
+Most of the pinned upstream baseline is covered, but a few parity gaps and one transport caveat still remain:
 
+- one-shot and interactive public prompt APIs are still `String`-only; upstream also supports streamed prompt input
+- `rate_limit_event` messages are not yet parsed into a typed runtime message
+- hook and tool-permission typing is lighter than the current Python SDK surface
 - `ClaudeAgentOptions.user` is implemented through a POSIX shell-wrapper launch path; Windows shell-backed transports currently reject it
 
 Use these as the canonical sources of truth for compatibility and parity status:

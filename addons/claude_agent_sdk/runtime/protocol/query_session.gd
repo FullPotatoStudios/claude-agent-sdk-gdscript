@@ -322,6 +322,8 @@ func _handle_control_response(data: Dictionary) -> void:
 		session_initialized.emit(_server_info.duplicate(true))
 		_flush_pending_prompt()
 
+	_set_last_error("")
+
 	if await_response:
 		pending_request["completed"] = true
 		pending_request["response"] = response_payload

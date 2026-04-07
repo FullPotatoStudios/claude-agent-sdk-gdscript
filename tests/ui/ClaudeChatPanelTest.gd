@@ -59,6 +59,7 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 	assert_bool(_button(panel, "SettingsViewButton").button_pressed).is_false()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
 	assert_bool(_button(panel, "ThinkingToggle").button_pressed).is_false()
+	assert_bool(_button(panel, "TasksToggle").button_pressed).is_false()
 	assert_bool(_button(panel, "ToolsToggle").button_pressed).is_false()
 	assert_bool(_button(panel, "ResultsToggle").button_pressed).is_true()
 	assert_bool(_button(panel, "SystemToggle").button_pressed).is_false()
@@ -607,6 +608,171 @@ func test_panel_transcript_toggles_reveal_live_thinking_tools_and_raw_trace() ->
 	await _cleanup_panel(panel)
 
 
+func test_panel_task_cards_stay_hidden_until_tasks_toggle_is_enabled_and_system_cards_stay_separate() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_started",
+		"task_id": "task-hidden-1",
+		"description": "Draft a release summary",
+		"uuid": "task-hidden-uuid",
+		"session_id": "default",
+		"task_type": "background",
+	})
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "hook_started",
+		"hook_event": "SessionStart",
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "task_card")).is_equal(0)
+	assert_int(_count_entries(panel, "system_card")).is_equal(0)
+
+	_button(panel, "SystemToggle").button_pressed = true
+	_button(panel, "SystemToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "system_card")).is_equal(1)
+	assert_int(_count_entries(panel, "task_card")).is_equal(0)
+
+	_button(panel, "TasksToggle").button_pressed = true
+	_button(panel, "TasksToggle").toggled.emit(true)
+	await _await_frames(2)
+	assert_int(_count_entries(panel, "task_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "task_card")).contains("Draft a release summary")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_multiple_task_ids_render_separate_cards_and_reuse_existing_task_entries() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_started",
+		"task_id": "task-alpha",
+		"description": "Summarize README",
+		"uuid": "task-alpha-1",
+		"session_id": "default",
+	})
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_started",
+		"task_id": "task-beta",
+		"description": "Review docs",
+		"uuid": "task-beta-1",
+		"session_id": "default",
+		"task_type": "background",
+	})
+	await _await_frames(2)
+
+	_button(panel, "TasksToggle").button_pressed = true
+	_button(panel, "TasksToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "task_card")).is_equal(2)
+	assert_array(_entry_body_texts(panel, "task_card")).contains("Summarize README")
+	assert_array(_entry_body_texts(panel, "task_card")).contains("Review docs")
+
+	var task_ids_before := _entry_instance_ids(panel, "task_card")
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_progress",
+		"task_id": "task-alpha",
+		"description": "Summarizing README and changelog",
+		"usage": {"input_tokens": 12, "output_tokens": 3},
+		"last_tool_name": "Read",
+		"uuid": "task-alpha-2",
+		"session_id": "default",
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "task_card")).is_equal(2)
+	assert_array(_entry_instance_ids(panel, "task_card")).is_equal(task_ids_before)
+	assert_array(_entry_body_texts(panel, "task_card")).contains("Summarizing README and changelog")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_task_card_stop_action_sends_stop_task_and_terminal_notification_keeps_single_card() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_started",
+		"task_id": "task-stop-1",
+		"description": "Assemble release notes",
+		"uuid": "task-stop-start",
+		"session_id": "default",
+		"task_type": "background",
+	})
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_progress",
+		"task_id": "task-stop-1",
+		"description": "Checking changelog entries",
+		"usage": {"input_tokens": 21, "output_tokens": 4},
+		"last_tool_name": "Read",
+		"uuid": "task-stop-progress",
+		"session_id": "default",
+	})
+	await _await_frames(2)
+
+	_button(panel, "TasksToggle").button_pressed = true
+	_button(panel, "TasksToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "task_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "task_card")).contains("Checking changelog entries")
+
+	var task_entry := _last_entry(panel, "task_card")
+	var stop_button := task_entry.find_child("TaskStopButton", true, false) as Button
+	assert_object(stop_button).is_not_null()
+	assert_bool(stop_button.visible).is_true()
+	assert_bool(stop_button.disabled).is_false()
+
+	stop_button.pressed.emit()
+	await _await_frames(1)
+
+	var stop_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("stop_task")
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("task_id", ""))).is_equal("task-stop-1")
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(stop_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "system",
+		"subtype": "task_notification",
+		"task_id": "task-stop-1",
+		"status": "stopped",
+		"output_file": "/tmp/release-notes.md",
+		"summary": "Stopped after review",
+		"usage": {"input_tokens": 21, "output_tokens": 4},
+		"uuid": "task-stop-notification",
+		"session_id": "default",
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "task_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "task_card")).contains("Stopped after review")
+	var updated_task_entry := _last_entry(panel, "task_card")
+	var updated_stop_button := updated_task_entry.find_child("TaskStopButton", true, false) as Button
+	assert_object(updated_stop_button).is_not_null()
+	assert_bool(not updated_stop_button.visible or updated_stop_button.disabled).is_true()
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_hides_user_side_tool_result_until_tools_toggle_is_enabled() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
@@ -1034,11 +1200,14 @@ func test_panel_saved_transcript_toggles_reveal_session_detail_entries() -> void
 	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_int(_count_entries(panel, "thinking_card")).is_equal(0)
+	assert_int(_count_entries(panel, "progress_card")).is_equal(0)
 	assert_int(_count_entries(panel, "tool_use_card")).is_equal(0)
 	assert_int(_count_entries(panel, "tool_result_card")).is_equal(0)
 
 	_button(panel, "ThinkingToggle").button_pressed = true
 	_button(panel, "ThinkingToggle").toggled.emit(true)
+	_button(panel, "TasksToggle").button_pressed = true
+	_button(panel, "TasksToggle").toggled.emit(true)
 	_button(panel, "ToolsToggle").button_pressed = true
 	_button(panel, "ToolsToggle").toggled.emit(true)
 	_button(panel, "RawToggle").button_pressed = true
@@ -1046,10 +1215,12 @@ func test_panel_saved_transcript_toggles_reveal_session_detail_entries() -> void
 	await _await_frames(2)
 
 	assert_int(_count_entries(panel, "thinking_card")).is_equal(1)
+	assert_int(_count_entries(panel, "progress_card")).is_equal(1)
 	assert_int(_count_entries(panel, "tool_use_card")).is_equal(1)
 	assert_int(_count_entries(panel, "tool_result_card")).is_equal(1)
 	assert_int(_count_entries(panel, "raw_card")).is_greater_equal(3)
 	assert_str(_last_card_body_text(panel, "thinking_card")).contains("Thinking about the scene")
+	assert_str(_last_card_body_text(panel, "progress_card")).contains("Background task is still running")
 
 	await _cleanup_panel(panel)
 
@@ -1384,6 +1555,15 @@ func _entry_instance_ids(panel, kind: String) -> Array[int]:
 	return ids
 
 
+func _entry_body_texts(panel, kind: String) -> Array[String]:
+	var texts: Array[String] = []
+	for entry in _collect_entries_by_kind(_transcript_list(panel), kind):
+		var body := entry.find_child("CardBody", true, false) as RichTextLabel
+		if body != null:
+			texts.append(body.text)
+	return texts
+
+
 func _collect_entries_by_kind(root: Node, kind: String) -> Array[Node]:
 	var entries: Array[Node] = []
 	_collect_entries_recursive(root, kind, entries)
@@ -1453,9 +1633,16 @@ func _create_panel_detail_session_fixture(label: String) -> String:
 			"message": {"role": "user", "content": "Saved prompt"},
 		},
 		{
+			"type": "progress",
+			"uuid": "detail-p-1",
+			"parentUuid": "detail-u-1",
+			"sessionId": session_id,
+			"message": {"summary": "Background task is still running", "status": "running"},
+		},
+		{
 			"type": "assistant",
 			"uuid": "detail-a-1",
-			"parentUuid": "detail-u-1",
+			"parentUuid": "detail-p-1",
 			"sessionId": session_id,
 			"message": {
 				"role": "assistant",

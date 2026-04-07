@@ -71,7 +71,7 @@ Methods:
 - connection is manual
 - prompt submission is disabled until connected
 - the panel renders typed runtime messages and partial stream events from the internal client node
-- the default transcript view is simplified chat first, with thinking/tools/system/raw detail hidden behind transcript toggles
+- the default transcript view is simplified chat first, with thinking/tasks/tools/system/raw detail hidden behind transcript toggles
 
 ## Current scope
 
@@ -87,7 +87,8 @@ The shipped panel currently includes:
 - basic rename, tag, clear-tag, and delete controls for saved sessions
 - connect/disconnect controls
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
-- transcript granularity toggles for `Thinking`, `Tools`, `Results`, `System`, and `Raw`
+- transcript granularity toggles for `Thinking`, `Tasks`, `Tools`, `Results`, `System`, and `Raw`
+- live task cards for typed `task_started`, `task_progress`, and `task_notification` messages, including per-task `stop_task(task_id)` controls while a task is active
 - interrupt support during active turns
 - live model and permission-mode changes while connected
 - reconnect-only effort changes, exposed in the chat view but disabled while connected
@@ -96,6 +97,7 @@ The shipped panel currently includes:
 Live transcript detail uses the same normalized transcript model as saved-session restoration:
 
 - user and assistant text stay visible as the primary chat surface
+- task cards stay grouped under the `Tasks` toggle, and saved-session `progress` entries reuse that same toggle when restored offline
 - tool-use and tool-result entries stay grouped under the `Tools` toggle, including tool blocks carried inside top-level live `user` messages
 - raw inspection stays hidden by default and is only shown through the `Raw` toggle
 - saved-session transcript loading uses the richer `ClaudeSessions.get_session_transcript()` detail model under the same filter toggles
@@ -104,7 +106,7 @@ The panel intentionally does not yet include:
 
 - multiple simultaneous in-flight sessions inside one panel instance
 - session forking
-- task-specific UI beyond the generic typed messages
+- richer task dashboards beyond the current per-task transcript cards and stop control
 - SDK-hosted MCP/custom-tool authoring UX
 - editor-plugin workflows
 

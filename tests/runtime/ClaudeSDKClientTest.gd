@@ -486,6 +486,59 @@ func test_client_stop_task_updates_last_error_from_control_response() -> void:
 	client.disconnect_client()
 
 
+func test_client_stop_task_success_clears_previous_control_error() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	client.set_model("sonnet")
+	var model_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(model_request.get("request_id", "")),
+			"error": "model denied",
+		},
+	})
+	await get_tree().process_frame
+
+	assert_array(errors).contains(["model denied"])
+	assert_str(client.get_last_error()).contains("model denied")
+
+	Callable(self, "_complete_client_stop_task").call_deferred(client, "task-abc123", "client-stop-task-success")
+	await get_tree().process_frame
+	var stop_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("stop_task")
+	assert_str(str((stop_request.get("request", {}) as Dictionary).get("task_id", ""))).is_equal("task-abc123")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(stop_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_array(_async_completions).contains(["client-stop-task-success"])
+	assert_int(errors.size()).is_equal(1)
+	assert_str(client.get_last_error()).is_empty()
+	client.disconnect_client()
+
+
 func test_client_options_force_stdio_permission_prompt_when_can_use_tool_is_configured() -> void:
 	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
 		return ClaudePermissionResultAllowScript.new()

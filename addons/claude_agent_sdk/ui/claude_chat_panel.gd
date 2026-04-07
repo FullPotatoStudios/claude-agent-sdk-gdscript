@@ -63,6 +63,7 @@ var _built_in_tool_group_buttons: Dictionary = {}
 var _current_view := PANEL_VIEW_CHAT
 var _transcript_entries: Array[Dictionary] = []
 var _transcript_entry_views := {}
+var _task_entry_ids := {}
 var _tool_use_names := {}
 var _next_transcript_entry_id := 1
 var _current_assistant_entry_id := -1
@@ -112,6 +113,7 @@ var _current_thinking_entry_id := -1
 @onready var _confirm_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/ConfirmDeleteButton
 @onready var _cancel_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/CancelDeleteButton
 @onready var _thinking_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ThinkingToggle
+@onready var _tasks_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/TasksToggle
 @onready var _tools_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ToolsToggle
 @onready var _results_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ResultsToggle
 @onready var _system_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/SystemToggle
@@ -238,6 +240,7 @@ func refresh_auth_status() -> void:
 
 func clear_transcript() -> void:
 	_transcript_entries.clear()
+	_task_entry_ids.clear()
 	_tool_use_names.clear()
 	_clear_transcript_views()
 	_begin_new_live_turn()
@@ -264,6 +267,8 @@ func _wire_ui() -> void:
 		_send_button.pressed.connect(_on_send_pressed)
 	if not _thinking_toggle.toggled.is_connected(_on_transcript_filter_toggled):
 		_thinking_toggle.toggled.connect(_on_transcript_filter_toggled)
+	if not _tasks_toggle.toggled.is_connected(_on_transcript_filter_toggled):
+		_tasks_toggle.toggled.connect(_on_transcript_filter_toggled)
 	if not _tools_toggle.toggled.is_connected(_on_transcript_filter_toggled):
 		_tools_toggle.toggled.connect(_on_transcript_filter_toggled)
 	if not _results_toggle.toggled.is_connected(_on_transcript_filter_toggled):
@@ -914,6 +919,15 @@ func _on_client_busy_changed(_is_busy: bool) -> void:
 
 func _on_client_message_received(message: Variant) -> void:
 	message_received.emit(message)
+	if message is ClaudeTaskStartedMessage:
+		_handle_task_started_message(message)
+		return
+	if message is ClaudeTaskProgressMessage:
+		_handle_task_progress_message(message)
+		return
+	if message is ClaudeTaskNotificationMessage:
+		_handle_task_notification_message(message)
+		return
 	if message is ClaudeSystemMessage:
 		if message.subtype != "init":
 			_append_transcript_entry("system", {
@@ -1050,6 +1064,52 @@ func _handle_result_message(message: ClaudeResultMessage) -> void:
 	_refresh_composer_state()
 
 
+func _handle_task_started_message(message: ClaudeTaskStartedMessage) -> void:
+	_upsert_task_entry(message.task_id, {
+		"text": message.description,
+		"task_status": "running",
+		"task_type": message.task_type,
+		"task_active": true,
+		"stop_pending": false,
+		"output_file": "",
+		"last_tool_name": "",
+		"task_usage": {},
+		"tool_use_id": message.tool_use_id,
+		"raw_data": message.raw_data,
+	})
+
+
+func _handle_task_progress_message(message: ClaudeTaskProgressMessage) -> void:
+	var existing := _get_task_entry_by_task_id(message.task_id)
+	var description := message.description if not message.description.strip_edges().is_empty() else str(existing.get("text", ""))
+	_upsert_task_entry(message.task_id, {
+		"text": description,
+		"task_status": "running",
+		"task_active": true,
+		"stop_pending": bool(existing.get("stop_pending", false)),
+		"last_tool_name": message.last_tool_name,
+		"task_usage": message.usage,
+		"tool_use_id": message.tool_use_id if not message.tool_use_id.is_empty() else str(existing.get("tool_use_id", "")),
+		"raw_data": message.raw_data,
+	})
+
+
+func _handle_task_notification_message(message: ClaudeTaskNotificationMessage) -> void:
+	var existing := _get_task_entry_by_task_id(message.task_id)
+	var summary := message.summary if not message.summary.strip_edges().is_empty() else str(existing.get("text", ""))
+	var status := message.status.strip_edges().to_lower()
+	_upsert_task_entry(message.task_id, {
+		"text": summary,
+		"task_status": status,
+		"task_active": not _is_terminal_task_status(status),
+		"stop_pending": false,
+		"output_file": message.output_file,
+		"task_usage": message.usage,
+		"tool_use_id": message.tool_use_id if not message.tool_use_id.is_empty() else str(existing.get("tool_use_id", "")),
+		"raw_data": message.raw_data,
+	})
+
+
 func _render_assistant_detail_block(block: Variant, raw_data: Variant = null) -> void:
 	if block is ClaudeThinkingBlock:
 		_append_or_merge_thinking_entry(str(block.thinking), block.raw_data if block.raw_data != null else raw_data)
@@ -1120,6 +1180,114 @@ func _append_saved_transcript_entry(entry: ClaudeSessionTranscriptEntry) -> void
 				"uuid": entry.uuid,
 				"session_id": entry.session_id,
 			})
+
+
+func _get_task_entry_by_task_id(task_id: String) -> Dictionary:
+	var entry_id := int(_task_entry_ids.get(task_id, -1))
+	if entry_id < 0:
+		return {}
+	return _get_transcript_entry(entry_id)
+
+
+func _upsert_task_entry(task_id: String, updates: Dictionary) -> void:
+	if task_id.strip_edges().is_empty():
+		return
+	var entry := _get_task_entry_by_task_id(task_id).duplicate(true)
+	if entry.is_empty():
+		entry = {
+			"title": "Task",
+			"text": "",
+			"task_id": task_id,
+			"task_status": "running",
+			"task_type": "",
+			"task_active": true,
+			"stop_pending": false,
+			"output_file": "",
+			"last_tool_name": "",
+			"task_usage": {},
+			"tool_use_id": "",
+			"raw_data": null,
+		}
+	for key in updates.keys():
+		entry[key] = updates[key]
+	entry["title"] = _task_entry_title(str(entry.get("task_status", "")))
+	entry["metadata_text"] = _task_metadata_text(entry)
+	var entry_id := int(entry.get("id", -1))
+	if entry_id < 0:
+		entry_id = _append_transcript_entry("task", entry)
+	_task_entry_ids[task_id] = entry_id
+	if int(entry.get("id", -1)) >= 0:
+		_set_transcript_entry(entry_id, entry)
+
+
+func _task_entry_title(status: String) -> String:
+	var normalized := status.strip_edges().to_lower()
+	if normalized.is_empty():
+		return "Task"
+	return "Task · %s" % normalized.capitalize()
+
+
+func _task_metadata_text(entry: Dictionary) -> String:
+	var parts: Array[String] = []
+	var task_id := str(entry.get("task_id", "")).strip_edges()
+	if not task_id.is_empty():
+		parts.append("ID: %s" % task_id)
+	var status := str(entry.get("task_status", "")).strip_edges()
+	if not status.is_empty():
+		parts.append("Status: %s" % status)
+	var task_type := str(entry.get("task_type", "")).strip_edges()
+	if not task_type.is_empty():
+		parts.append("Type: %s" % task_type)
+	var last_tool_name := str(entry.get("last_tool_name", "")).strip_edges()
+	if not last_tool_name.is_empty():
+		parts.append("Last tool: %s" % last_tool_name)
+	var output_file := str(entry.get("output_file", "")).strip_edges()
+	if not output_file.is_empty():
+		parts.append("Output: %s" % output_file)
+	var usage_text := _task_usage_summary(entry.get("task_usage", {}))
+	if not usage_text.is_empty():
+		parts.append("Usage: %s" % usage_text)
+	return " · ".join(parts)
+
+
+func _task_usage_summary(usage: Variant) -> String:
+	if usage is not Dictionary or (usage as Dictionary).is_empty():
+		return ""
+	var usage_dict := usage as Dictionary
+	var preferred_order := [
+		["input_tokens", "in"],
+		["output_tokens", "out"],
+		["cache_creation_input_tokens", "cache write"],
+		["cache_read_input_tokens", "cache read"],
+		["total", "total"],
+	]
+	var parts: Array[String] = []
+	for item in preferred_order:
+		var key := str(item[0])
+		if usage_dict.has(key):
+			parts.append("%s=%s" % [str(item[1]), str(usage_dict.get(key))])
+	var remaining_keys: Array[String] = []
+	for key_variant in usage_dict.keys():
+		var key := str(key_variant)
+		var is_preferred := false
+		for item in preferred_order:
+			if key == str(item[0]):
+				is_preferred = true
+				break
+		if is_preferred:
+			continue
+		var value := usage_dict.get(key_variant)
+		if value is String or value is int or value is float or value is bool:
+			remaining_keys.append(key)
+	remaining_keys.sort()
+	for key in remaining_keys:
+		parts.append("%s=%s" % [key, str(usage_dict.get(key))])
+	return ", ".join(parts)
+
+
+func _is_terminal_task_status(status: String) -> bool:
+	var normalized := status.strip_edges().to_lower()
+	return normalized == "completed" or normalized == "failed" or normalized == "stopped"
 
 
 func _begin_new_live_turn() -> void:
@@ -1308,6 +1476,8 @@ func _create_transcript_primary_view(entry: Dictionary) -> Control:
 			return _create_message_bubble("user", str(entry.get("text", "")), str(entry.get("title", "You")), bool(entry.get("align_right", true)))
 		"assistant":
 			return _create_message_bubble("assistant", str(entry.get("text", "")), str(entry.get("title", "Claude")), bool(entry.get("align_right", false)))
+		"task":
+			return _create_task_card(entry)
 		"thinking":
 			return _create_detail_card("thinking", str(entry.get("title", "Thinking")), str(entry.get("text", "")), false)
 		"tool_prompt":
@@ -1336,6 +1506,8 @@ func _update_transcript_primary_view(primary: Control, entry: Dictionary) -> voi
 				str(entry.get("title", "You" if kind == "user" else "Claude")),
 				str(entry.get("text", ""))
 			)
+		"task":
+			_update_task_card(primary, entry)
 		"thinking", "tool_prompt", "tool_use", "tool_result", "system", "progress", "attachment":
 			_update_detail_card(primary, str(entry.get("title", "")), str(entry.get("text", "")), false)
 		"result":
@@ -1346,9 +1518,11 @@ func _is_transcript_entry_primary_visible(entry: Dictionary) -> bool:
 	match str(entry.get("kind", "")):
 		"thinking":
 			return _thinking_toggle.button_pressed
+		"task", "progress":
+			return _tasks_toggle.button_pressed
 		"tool_prompt", "tool_use", "tool_result":
 			return _tools_toggle.button_pressed
-		"system", "progress", "attachment":
+		"system", "attachment":
 			return _system_toggle.button_pressed
 		"result":
 			return _results_toggle.button_pressed and bool(entry.get("show_result", true))
@@ -1522,6 +1696,87 @@ func _update_detail_card(card: Control, title: String, body_text: String, collap
 	content.text = body_text
 	content.visible = not should_collapse
 	toggle.text = _card_title(title, should_collapse)
+
+
+func _create_task_card(entry: Dictionary) -> Control:
+	var row := VBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.set_meta("entry_kind", "task_card")
+
+	var card := _build_card_container(COLOR_PANEL_ALT, 18, 14)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(card)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 8)
+	card.add_child(body)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	body.add_child(header)
+
+	var title := Label.new()
+	title.name = "TaskTitleLabel"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+
+	var stop_button := Button.new()
+	stop_button.name = "TaskStopButton"
+	stop_button.text = "Stop task"
+	stop_button.pressed.connect(_on_task_stop_pressed.bind(str(entry.get("task_id", ""))))
+	header.add_child(stop_button)
+
+	var meta := Label.new()
+	meta.name = "TaskMetaLabel"
+	meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	meta.add_theme_color_override("font_color", COLOR_MUTED)
+	meta.add_theme_font_size_override("font_size", 12)
+	body.add_child(meta)
+
+	var content := RichTextLabel.new()
+	content.name = "CardBody"
+	content.bbcode_enabled = false
+	content.fit_content = true
+	content.scroll_active = false
+	content.selection_enabled = true
+	content.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_theme_color_override("default_color", COLOR_TEXT)
+	content.add_theme_font_size_override("normal_font_size", 14)
+	body.add_child(content)
+
+	_update_task_card(row, entry)
+	return row
+
+
+func _update_task_card(card: Control, entry: Dictionary) -> void:
+	var title := card.find_child("TaskTitleLabel", true, false) as Label
+	var meta := card.find_child("TaskMetaLabel", true, false) as Label
+	var content := card.find_child("CardBody", true, false) as RichTextLabel
+	var stop_button := card.find_child("TaskStopButton", true, false) as Button
+	if title == null or meta == null or content == null or stop_button == null:
+		return
+	var status := str(entry.get("task_status", "")).to_lower()
+	title.text = str(entry.get("title", "Task"))
+	title.add_theme_color_override("font_color", _task_status_color(status))
+	meta.text = str(entry.get("metadata_text", ""))
+	content.text = str(entry.get("text", ""))
+	var is_active := bool(entry.get("task_active", false))
+	var stop_pending := bool(entry.get("stop_pending", false))
+	stop_button.visible = is_active or stop_pending
+	stop_button.disabled = (not is_active) or stop_pending or _client_node == null or not _session_live
+	stop_button.text = "Stopping..." if stop_pending else "Stop task"
+
+
+func _task_status_color(status: String) -> Color:
+	match status:
+		"completed":
+			return COLOR_SUCCESS
+		"failed":
+			return COLOR_ERROR
+		"stopped":
+			return COLOR_WARNING
+		_:
+			return COLOR_ACCENT
 
 
 func _create_raw_entry_view(entry: Dictionary) -> Control:
@@ -1950,6 +2205,23 @@ func _on_settings_view_pressed() -> void:
 func _on_interrupt_pressed() -> void:
 	if _client_node != null:
 		_client_node.interrupt()
+
+
+func _on_task_stop_pressed(task_id: String) -> void:
+	if _client_node == null:
+		return
+	var entry := _get_task_entry_by_task_id(task_id)
+	if entry.is_empty() or not bool(entry.get("task_active", false)):
+		return
+	entry["stop_pending"] = true
+	_set_transcript_entry(int(entry.get("id", -1)), entry)
+	await _client_node.stop_task(task_id)
+	if not _client_node.get_last_error().is_empty():
+		var updated_entry := _get_task_entry_by_task_id(task_id)
+		if not updated_entry.is_empty():
+			updated_entry["stop_pending"] = false
+			_set_transcript_entry(int(updated_entry.get("id", -1)), updated_entry)
+		_emit_error(_client_node.get_last_error())
 
 
 func _on_send_pressed() -> void:
