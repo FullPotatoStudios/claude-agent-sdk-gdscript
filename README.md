@@ -51,6 +51,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
 - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
 - transport-first plugin-dir and `fork_session` option parity through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
+- transport-first file-checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` plus runtime `rewind_files()` controls on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
@@ -120,6 +121,7 @@ func _ready() -> void:
 - transport-first `settings` and `sandbox` support through `ClaudeAgentOptions`, including plain `settings` pass-through and sandbox-to-`--settings` JSON merging
 - transport-first diagnostics support through `ClaudeAgentOptions.extra_args` and per-line stderr callback delivery
 - transport-first local-plugin and `fork_session` option support through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
+- transport-first file checkpointing through `ClaudeAgentOptions.enable_file_checkpointing` and connected-session `rewind_files(user_message_id)` controls
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
@@ -130,7 +132,8 @@ func _ready() -> void:
 
 The current release still defers some broader upstream parity areas, including:
 
-- remaining broader settings and transport parity beyond the current prompt/tool/runtime surface
+- process-user switching parity through `ClaudeAgentOptions.user`
+- task-control parity such as `stop_task` and specialized task system messages
 
 Use these as the canonical sources of truth for compatibility and parity status:
 
@@ -180,6 +183,8 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - `sandbox` is transport-only in the current slice and is implemented by building a `--settings` value; it does not add new initialize payload fields.
 - `extra_args` and `stderr` are also transport-only in the current slice; they do not enter initialize payloads.
 - `plugins` and `fork_session` are also transport-only in the current slice; they do not enter initialize payloads.
+- `enable_file_checkpointing` is also transport-only in the current slice; it does not enter initialize payloads.
+- practical rewind workflows usually also need `extra_args = {"replay-user-messages": null}` so live `UserMessage.uuid` values are available to rewind to.
 - `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`.
 - the deprecated Python `debug_stderr` shim is intentionally not mirrored in GDScript; use `ClaudeAgentOptions.stderr` and optional `extra_args = {"debug-to-stderr": null}` instead.
 - The shipped panel is a reference UI, not a replacement for the lower runtime and adapter layers.

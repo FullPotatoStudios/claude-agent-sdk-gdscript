@@ -266,6 +266,16 @@ func test_duplicate_options_preserves_plugins_and_fork_session() -> void:
 	assert_bool(duplicated.fork_session).is_true()
 
 
+func test_duplicate_options_preserves_enable_file_checkpointing() -> void:
+	var options = ClaudeAgentOptions.new({
+		"enable_file_checkpointing": true,
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_bool(duplicated.enable_file_checkpointing).is_true()
+
+
 func test_duplicate_options_preserves_extra_args_and_stderr_callback() -> void:
 	var stderr_lines: Array[String] = []
 	var stderr_callback := func(line: String) -> void:
@@ -415,6 +425,14 @@ func test_apply_normalizes_plugins_and_fork_session() -> void:
 		{"type": "local", "path": "/tmp/typed-plugin"},
 	])
 	assert_bool(options.fork_session).is_true()
+
+
+func test_apply_preserves_enable_file_checkpointing() -> void:
+	var options = ClaudeAgentOptions.new({
+		"enable_file_checkpointing": true,
+	})
+
+	assert_bool(options.enable_file_checkpointing).is_true()
 
 
 func test_subprocess_transport_builds_phase_4_command_flags() -> void:
@@ -894,6 +912,25 @@ func test_subprocess_transport_builds_default_environment_overrides() -> void:
 		"PWD": "/tmp/project",
 		"CUSTOM_FLAG": "1",
 	})
+
+
+func test_subprocess_transport_adds_checkpointing_env_override_without_new_cli_flags() -> void:
+	var disabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
+	assert_bool(disabled_transport.build_environment_overrides().has("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING")).is_false()
+
+	var enabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"enable_file_checkpointing": true,
+		"env": {
+			"CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING": "false",
+		},
+	}))
+	var enabled_overrides := enabled_transport.build_environment_overrides()
+	var enabled_args := enabled_transport.build_command_args()
+
+	assert_dict(enabled_overrides).contains_keys(["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"])
+	assert_str(str(enabled_overrides.get("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", ""))).is_equal("true")
+	assert_bool(enabled_args.has("--enable-file-checkpointing")).is_false()
+	assert_bool(str(enabled_args).contains("checkpoint")).is_false()
 
 
 func test_subprocess_transport_allows_explicit_claudecode_override() -> void:

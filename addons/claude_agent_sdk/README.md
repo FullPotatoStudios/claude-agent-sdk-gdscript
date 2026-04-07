@@ -29,6 +29,7 @@ The current addon does not require `plugin.cfg`, autoloads, or editor-plugin ena
 - transport-first `settings` and `sandbox` support is available through `ClaudeAgentOptions`, with sandbox merged into the CLI `--settings` value when configured
 - transport-first diagnostics support is also available through `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
 - transport-first local-plugin and `fork_session` option parity is available through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
+- transport-first file checkpointing and connected-session rewind are available through `ClaudeAgentOptions.enable_file_checkpointing` and `rewind_files(user_message_id)`
 - `ClaudeBuiltInToolCatalog` exposes the shipped built-in Claude Code tool metadata for custom panel/tool-picker UIs
 - SDK-hosted MCP/custom-tool registration stays code-driven through `ClaudeMcp` and `ClaudeAgentOptions.mcp_servers`
 
@@ -45,6 +46,7 @@ This payload includes:
 - transport-first `settings` and `sandbox` fields on `ClaudeAgentOptions`
 - transport-first diagnostics fields on `ClaudeAgentOptions`
 - transport-first local-plugin and `fork_session` fields on `ClaudeAgentOptions`
+- transport-first `enable_file_checkpointing` on `ClaudeAgentOptions` plus `rewind_files()` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer`
 - `ClaudeBuiltInToolCatalog`
 - `ClaudeClientAdapter`
@@ -59,5 +61,6 @@ Development-only content such as `demo/`, `tests/`, `tools/`, and `addons/gdUnit
 
 - See the root repository `README.md` for the public project overview.
 - See the repository docs, especially `docs/contributing/session-history.md`, for session-history and basic mutation usage.
+- For file checkpointing and rewind usage, note that practical rewind flows typically also need `extra_args = {"replay-user-messages": null}` so streamed user messages include rewindable UUIDs.
 - See `docs/contributing/integration.md` and `docs/contributing/ui-panel.md` for prompt/tool configuration and panel behavior details.
 - See the repository docs for install, integration, release, and parity details.

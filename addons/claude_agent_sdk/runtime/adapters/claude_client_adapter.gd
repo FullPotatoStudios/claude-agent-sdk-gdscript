@@ -157,6 +157,10 @@ func get_mcp_status() -> Dictionary:
 	return await _client.get_mcp_status()
 
 
+func rewind_files(user_message_id: String) -> void:
+	await _client.rewind_files(user_message_id)
+
+
 func reconnect_mcp_server(server_name: String) -> void:
 	await _client.reconnect_mcp_server(server_name)
 

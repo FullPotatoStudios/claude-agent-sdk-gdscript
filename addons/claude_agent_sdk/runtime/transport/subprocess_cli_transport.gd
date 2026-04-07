@@ -173,6 +173,8 @@ func build_environment_overrides() -> Dictionary:
 		overrides["PWD"] = _options.cwd
 	for key_variant in _options.env.keys():
 		overrides[str(key_variant)] = str(_options.env[key_variant])
+	if _options.enable_file_checkpointing:
+		overrides["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] = "true"
 	return overrides
 
 

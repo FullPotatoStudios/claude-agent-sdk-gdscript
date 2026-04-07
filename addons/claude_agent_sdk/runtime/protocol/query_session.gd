@@ -115,6 +115,13 @@ func get_mcp_status() -> Dictionary:
 	return await _send_control_request_and_wait({"subtype": "mcp_status"})
 
 
+func rewind_files(user_message_id: String) -> void:
+	await _send_control_request_and_wait({
+		"subtype": "rewind_files",
+		"user_message_id": user_message_id,
+	})
+
+
 func reconnect_mcp_server(server_name: String) -> void:
 	await _send_control_request_and_wait({
 		"subtype": "mcp_reconnect",
@@ -198,9 +205,9 @@ func _send_control_request_and_wait(request: Dictionary) -> Dictionary:
 				return {}
 			return pending.get("response", {}) if pending.get("response", {}) is Dictionary else {}
 
-			var completed_request_id: String = await control_request_completed
-			if completed_request_id == request_id:
-				continue
+		var completed_request_id: String = await control_request_completed
+		if completed_request_id == request_id:
+			continue
 	return {}
 
 

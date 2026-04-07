@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10M transport-first plugin-dir and `fork_session` parity
+- Active roadmap slice: Phase 10N transport-first file checkpointing and rewind parity
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -82,11 +82,14 @@ The first public implementation target is the scene-free core conversation loop,
   - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and best-effort `ClaudeAgentOptions.stderr` callback delivery
   - transport-first plugin-dir parity through `ClaudeAgentOptions.plugins` with local `--plugin-dir` emission
   - transport-first `fork_session` option parity through `ClaudeAgentOptions.fork_session` and `--fork-session`
+  - transport-first file checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` and `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true`
+  - connected-session `rewind_files(user_message_id)` parity through `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
 - Still deferred:
-  - broader transport/runtime parity slices beyond the current settings, sandbox, diagnostics, plugin, and agent-definition surface
+  - process-user switching parity through `ClaudeAgentOptions.user`
+  - task-control parity such as `stop_task` plus specialized task system messages
 
 ## Update process
 

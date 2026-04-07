@@ -125,6 +125,14 @@ func get_mcp_status() -> Dictionary:
 	return result
 
 
+func rewind_files(user_message_id: String) -> void:
+	if _session == null:
+		_emit_error("Call connect_client() before rewind_files()")
+		return
+	await _session.rewind_files(user_message_id)
+	_last_error = _session.get_last_error()
+
+
 func reconnect_mcp_server(server_name: String) -> void:
 	if _session == null:
 		_emit_error("Call connect_client() before reconnect_mcp_server()")

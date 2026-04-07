@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10M: transport-first plugin-dir and `fork_session` parity
+- Phase 10N: transport-first file checkpointing and rewind parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -243,9 +243,16 @@ Delivered in Phase 10M:
 - transport-first `ClaudeAgentOptions.fork_session` with upstream-style `--fork-session` flag parity
 - initialize/runtime boundary coverage proving `plugins` and `fork_session` stay CLI-only rather than entering initialize payloads
 
+Delivered in Phase 10N:
+- transport-first `ClaudeAgentOptions.enable_file_checkpointing`
+- transport-side `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true` emission when checkpointing is enabled
+- connected-session `rewind_files(user_message_id)` parity on `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+- initialize/runtime boundary coverage proving checkpointing stays transport-only rather than entering initialize payloads
+
 Still deferred within Phase 10:
-- broader transport/runtime parity beyond the current settings, sandbox, diagnostics, plugin, and agent-definition surface
+- process-user switching parity through `ClaudeAgentOptions.user`
+- task-control parity such as `stop_task` plus specialized task system messages
 
 ## Current focus
 
-Work should currently prioritize the next post-10M parity slice from the upstream ledger.
+Work should currently prioritize the next post-10N parity slice from the upstream ledger.

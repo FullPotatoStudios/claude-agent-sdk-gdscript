@@ -9,12 +9,14 @@ const ClaudeAssistantMessageScript := preload("res://addons/claude_agent_sdk/run
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 
 var _created_roots: Array[String] = []
+var _async_completions: Array[String] = []
 
 
 func after_test() -> void:
 	for root_path in _created_roots:
 		_delete_tree(root_path)
 	_created_roots.clear()
+	_async_completions.clear()
 	OS.set_environment("CLAUDE_CONFIG_DIR", "")
 
 
@@ -452,6 +454,47 @@ func test_adapter_session_mutation_failure_updates_last_error_and_emits_signal()
 	assert_str(errors[0]).contains("Invalid session_id")
 	assert_that(adapter.fork_session("not-a-uuid")).is_null()
 	assert_str(adapter.get_last_error()).contains("Invalid session_id")
+
+
+func _complete_adapter_rewind(adapter: ClaudeClientAdapter, user_message_id: String, label: String) -> void:
+	await adapter.rewind_files(user_message_id)
+	_async_completions.append(label)
+
+
+func test_adapter_rewind_files_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_adapter_rewind").call_deferred(adapter, "adapter-user-1", "adapter-rewind")
+	await _await_frames(1)
+	var rewind_request := _read_last_write(transport)
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("rewind_files")
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("user_message_id", ""))).is_equal("adapter-user-1")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(rewind_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["adapter-rewind"])
+	assert_str(adapter.get_last_error()).is_empty()
+	await _cleanup_adapter(adapter)
 
 
 func _await_frames(count: int) -> void:

@@ -7,12 +7,14 @@ const ClaudeSessionsScript := preload("res://addons/claude_agent_sdk/runtime/ses
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 
 var _created_roots: Array[String] = []
+var _async_completions: Array[String] = []
 
 
 func after_test() -> void:
 	for root_path in _created_roots:
 		_delete_tree(root_path)
 	_created_roots.clear()
+	_async_completions.clear()
 	OS.set_environment("CLAUDE_CONFIG_DIR", "")
 
 
@@ -123,6 +125,52 @@ func test_node_exposes_session_passthrough_methods() -> void:
 	if info != null:
 		assert_str(info.summary).is_equal("Node renamed")
 
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
+func _complete_node_rewind(node: ClaudeClientNode, user_message_id: String, label: String) -> void:
+	await node.rewind_files(user_message_id)
+	_async_completions.append(label)
+
+
+func test_node_rewind_files_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_node_rewind").call_deferred(node, "node-user-1", "node-rewind")
+	await _await_frames(1)
+	var rewind_request := _read_last_write(transport)
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("rewind_files")
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("user_message_id", ""))).is_equal("node-user-1")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(rewind_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["node-rewind"])
+	node.disconnect_client()
+	await _await_frames(2)
 	get_tree().root.remove_child(node)
 	node.queue_free()
 	await _await_frames(2)

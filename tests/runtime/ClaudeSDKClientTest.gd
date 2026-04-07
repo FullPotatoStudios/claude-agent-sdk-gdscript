@@ -7,9 +7,20 @@ const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
 
+var _async_completions: Array[String] = []
+
+
+func after_test() -> void:
+	_async_completions.clear()
+
 
 func _client_hook_callback(input_data: Dictionary, _tool_use_id: String, _context) -> Dictionary:
 	return {"continue": true, "echo": input_data}
+
+
+func _complete_client_rewind(client: ClaudeSDKClient, user_message_id: String, label: String) -> void:
+	await client.rewind_files(user_message_id)
+	_async_completions.append(label)
 
 
 func test_client_receive_messages_runs_until_disconnect() -> void:
@@ -368,8 +379,57 @@ func test_client_exposes_context_usage_and_mcp_control_methods() -> void:
 
 	assert_bool(Callable(client, "get_context_usage").is_valid()).is_true()
 	assert_bool(Callable(client, "get_mcp_status").is_valid()).is_true()
+	assert_bool(Callable(client, "rewind_files").is_valid()).is_true()
 	assert_bool(Callable(client, "reconnect_mcp_server").is_valid()).is_true()
 	assert_bool(Callable(client, "toggle_mcp_server").is_valid()).is_true()
+
+
+func test_client_rewind_files_requires_active_connection() -> void:
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+
+	await client.rewind_files("user-123")
+
+	assert_array(errors).contains(["Call connect_client() before rewind_files()"])
+	assert_str(client.get_last_error()).contains("Call connect_client() before rewind_files()")
+
+
+func test_client_rewind_files_updates_last_error_from_control_response() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	Callable(self, "_complete_client_rewind").call_deferred(client, "user-123", "client-rewind")
+	await get_tree().process_frame
+	var rewind_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("rewind_files")
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("user_message_id", ""))).is_equal("user-123")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(rewind_request.get("request_id", "")),
+			"error": "rewind denied",
+		},
+	})
+	await get_tree().process_frame
+
+	assert_array(_async_completions).contains(["client-rewind"])
+	assert_array(errors).contains(["rewind denied"])
+	assert_str(client.get_last_error()).contains("rewind denied")
+	client.disconnect_client()
 
 
 func test_client_options_force_stdio_permission_prompt_when_can_use_tool_is_configured() -> void:

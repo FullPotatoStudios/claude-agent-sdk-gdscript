@@ -33,6 +33,7 @@ var stderr: Callable = Callable()
 var max_thinking_tokens: Variant = null
 var thinking: Variant = null
 var include_partial_messages: bool = false
+var enable_file_checkpointing: bool = false
 var fork_session: bool = false
 var output_format: Dictionary = {}
 var mcp_servers: Variant = {}
@@ -105,6 +106,8 @@ func apply(config: Dictionary):
 		thinking = _normalize_thinking(config["thinking"])
 	if config.has("include_partial_messages"):
 		include_partial_messages = bool(config["include_partial_messages"])
+	if config.has("enable_file_checkpointing"):
+		enable_file_checkpointing = bool(config["enable_file_checkpointing"])
 	if config.has("fork_session"):
 		fork_session = bool(config["fork_session"])
 	if config.has("output_format") and config["output_format"] is Dictionary:
@@ -154,6 +157,7 @@ func duplicate_options():
 			"max_thinking_tokens": max_thinking_tokens,
 			"thinking": _duplicate_variant(thinking),
 			"include_partial_messages": include_partial_messages,
+			"enable_file_checkpointing": enable_file_checkpointing,
 			"fork_session": fork_session,
 			"output_format": output_format.duplicate(true),
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),

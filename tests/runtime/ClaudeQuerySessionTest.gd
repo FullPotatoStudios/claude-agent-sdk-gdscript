@@ -6,6 +6,12 @@ const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
 
+var _async_completions: Array[String] = []
+
+
+func after_test() -> void:
+	_async_completions.clear()
+
 
 func _async_hook_callback(input_data: Dictionary, tool_use_id: String, _context) -> Dictionary:
 	await get_tree().process_frame
@@ -14,6 +20,11 @@ func _async_hook_callback(input_data: Dictionary, tool_use_id: String, _context)
 		"echo": input_data,
 		"toolUseId": tool_use_id,
 	}
+
+
+func _complete_session_rewind(session: ClaudeQuerySession, user_message_id: String, label: String) -> void:
+	await session.rewind_files(user_message_id)
+	_async_completions.append(label)
 
 
 func test_initialize_caches_server_info_and_sends_control_request() -> void:
@@ -173,6 +184,7 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 			"settings": "{\"verbose\": true}",
 			"sandbox": {"enabled": true},
 			"extra_args": {"debug-to-stderr": null},
+			"enable_file_checkpointing": true,
 			"plugins": [{"type": "local", "path": "res://addons/example-plugin"}],
 			"fork_session": true,
 			"stderr": func(_line: String) -> void:
@@ -197,6 +209,7 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("settings")).is_false()
 	assert_bool(request.has("sandbox")).is_false()
 	assert_bool(request.has("extra_args")).is_false()
+	assert_bool(request.has("enable_file_checkpointing")).is_false()
 	assert_bool(request.has("plugins")).is_false()
 	assert_bool(request.has("fork_session")).is_false()
 	assert_bool(request.has("stderr")).is_false()
@@ -599,7 +612,7 @@ func test_control_cancel_request_suppresses_late_response() -> void:
 	assert_int(transport.writes.size()).is_equal(writes_before)
 
 
-func test_context_usage_and_mcp_controls_send_expected_control_requests() -> void:
+func test_context_usage_rewind_and_mcp_controls_send_expected_control_requests() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
 	session.open_session()
@@ -620,6 +633,26 @@ func test_context_usage_and_mcp_controls_send_expected_control_requests() -> voi
 	session._send_control_request({"subtype": "mcp_status"}, true)
 	var status_request: Dictionary = JSON.parse_string(transport.writes[-1])
 	assert_str(str((status_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("mcp_status")
+
+	Callable(self, "_complete_session_rewind").call_deferred(session, "user-123", "session-rewind")
+	await get_tree().process_frame
+	var rewind_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	var rewind_request_id := str(rewind_request.get("request_id", ""))
+	var rewind_pending: Dictionary = session._pending_control_responses.get(rewind_request_id, {})
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("rewind_files")
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("user_message_id", ""))).is_equal("user-123")
+	assert_bool(bool(rewind_pending.get("await_response", false))).is_true()
+	assert_bool(bool(rewind_pending.get("completed", true))).is_false()
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": rewind_request_id,
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+	assert_array(_async_completions).contains(["session-rewind"])
 
 	session._send_control_request({
 		"subtype": "mcp_reconnect",

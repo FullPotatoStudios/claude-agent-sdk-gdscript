@@ -132,7 +132,7 @@ Phase 1 findings that constrain this matrix:
 | Continue-conversation flag, fallback model, betas, permission prompt tool, add_dirs, max budget, task budget, and advanced thinking config | `types.py`, examples, transport tests | Useful advanced transport/runtime parity once the core option model is stable | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10J through additive `ClaudeAgentOptions` fields and transport-only flag emission without initialize payload changes |
 | Settings and sandbox passthrough/merge behavior | `types.py`, `subprocess_cli.py`, transport tests | Important advanced transport parity for teams that already rely on Claude settings files or bash sandboxing | command building, CLI settings parity | `v1 later` | Delivered post-v1 in Phase 10K through `ClaudeAgentOptions.settings`, `ClaudeAgentOptions.sandbox`, and upstream-style `--settings` merge behavior |
 | Plugin-dir and `fork_session` option parity | `types.py`, examples, transport tests | Useful bounded transport parity without widening initialize/runtime protocol scope | command building | `v1 later` | Delivered post-v1 in Phase 10M through `ClaudeAgentOptions.plugins`, `ClaudeAgentOptions.fork_session`, repeated `--plugin-dir`, and `--fork-session` parity |
-| Remaining broader `user` / checkpoint / rewind parity | `types.py`, client/runtime tests | Legitimate parity surface, but broader and easier to destabilize than the smaller post-v1 slices | command building, process-launch parity, control requests | `deferred` | Revisit after the bounded transport/runtime slices land |
+| Remaining broader `user` parity | `types.py`, transport tests | Legitimate parity surface, but more invasive in the shell-backed Godot transport than the recent bounded post-v1 slices | process-launch parity | `deferred` | Revisit after the checkpoint/rewind and task-control slices land |
 
 ## Godot-only additions
 
@@ -169,4 +169,5 @@ Status note:
 - Phase 10K adds transport-first `settings` and `sandbox` parity without widening the initialize payload surface
 - Phase 10L adds transport-first `extra_args` and `stderr` diagnostics parity without widening the initialize payload surface
 - Phase 10M adds transport-first local-plugin and `fork_session` option parity without widening the initialize payload surface
+- Phase 10N adds transport-first file checkpointing plus connected-session `rewind_files()` parity without widening the initialize payload surface
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules
