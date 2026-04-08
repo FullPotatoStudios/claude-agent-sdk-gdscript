@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10X: hook-input compatibility review
+- no new bounded slice selected; next parity planning should start from a fresh upstream diff review
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -299,6 +299,11 @@ Delivered in Phase 10W:
 - `ClaudeChatPanel` now treats the disconnected composer as a connect-and-send entrypoint, including saved-session resume targets, so the reference UI showcases prompt-on-connect behavior directly
 - roadmap, parity, and panel docs updated to treat reconnect parity as delivered reference-panel behavior rather than a remaining lifecycle gap
 
+Delivered in Phase 10X:
+- `ClaudeHookInput` plus event-specific hook input classes for additive typed hook callback input wrappers
+- additive `ClaudeHookContext.typed_input` / `hook_input` exposure while preserving the existing raw dictionary callback signature
+- `ClaudeQuerySession` typed hook-input coercion with tool-lifecycle `tool_use_id` backfill from the outer control request without mutating the raw input payload
+
 ## Current focus
 
-Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, starting with whether hook callback inputs should gain additive typed wrappers without breaking the existing dictionary-first callback contract.
+The last bounded post-v1 runtime parity gap from the current docs is now delivered. The next parity planning pass should start with a fresh upstream diff review, then decide whether any new bounded runtime slice is worth taking on beyond the remaining Windows `user` caveat and intentionally deferred broader parity work.

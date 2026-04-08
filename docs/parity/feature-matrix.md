@@ -94,7 +94,7 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Hook matcher and callback configuration | `types.py`, `_internal/query.py`, `examples/hooks.py`, `e2e-tests/test_hooks.py` | Powerful extension point for advanced apps | initialize flow, callback routing | `v1 later` | Valuable parity, but not needed for core chat |
-| Hook-specific input/output models | `types.py`, hook e2e tests | Needed for safe, typed callback integration | hooks | `v1 later` | Phase 10V adds typed hook-output helpers and runtime coercion for callback results; hook inputs intentionally remain dictionary-first in GDScript for compatibility |
+| Hook-specific input/output models | `types.py`, hook e2e tests | Needed for safe, typed callback integration | hooks | `v1 later` | Phase 10V adds typed hook-output helpers and runtime coercion for callback results; Phase 10X adds additive typed hook-input wrappers on `ClaudeHookContext` while keeping callbacks dictionary-first for compatibility |
 | Tool-permission callback (`can_use_tool`) | `types.py`, `_internal/query.py`, `examples/tool_permission_callback.py`, `e2e-tests/test_tool_permissions.py` | Important for custom approval UX | initialize flow, permission result models | `v1 later` | Phase 5 delivered the callback path; Phase 10V widens it with additive typed permission-update helpers and typed suggestion exposure |
 | Permission update suggestion/result models | `types.py`, hook and permission tests | Needed to mirror upstream callback semantics | permission callbacks | `v1 later` | Delivered post-v1 in Phase 10V through `ClaudePermissionUpdate`, `ClaudePermissionRuleValue`, and runtime coercion on permission callback results |
 
@@ -173,5 +173,6 @@ Status note:
 - Phase 10O adds task-control `stop_task()` parity plus typed task system message parsing without widening the transport or initialize payload surfaces
 - Phase 10P adds transport-first `ClaudeAgentOptions.user` parity through a POSIX `sudo -n -u` launch wrapper while keeping `user` out of initialize payloads
 - Phase 10V adds typed hook-output helpers plus typed permission-update helpers while keeping hook callback inputs dictionary-first for backward compatibility
+- Phase 10X adds additive typed hook-input wrappers through `ClaudeHookInput` plus event-specific classes on `ClaudeHookContext.typed_input` / `hook_input`
 - Phase 10W closes the remaining `connect()` lifecycle gap by making repeated local `connect_client()` calls reopen cleanly instead of no-oping, and the reference chat panel now showcases disconnected connect-and-send behavior directly
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

@@ -9,6 +9,7 @@ const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudeHookContextScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_context.gd")
+const ClaudeHookInputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input.gd")
 const ClaudeHookOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_output.gd")
 const ClaudeHookSpecificOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_specific_output.gd")
 const ClaudeToolPermissionContextScript := preload("res://addons/claude_agent_sdk/runtime/claude_tool_permission_context.gd")
@@ -619,9 +620,12 @@ func _handle_hook_callback_request(request_data: Dictionary) -> Dictionary:
 		push_error("No hook callback found for ID: %s" % callback_id)
 		return _raise_control_request_error("No hook callback found for ID: %s" % callback_id)
 
-	var input_data: Dictionary = request_data.get("input", {}) if request_data.get("input", {}) is Dictionary else {}
 	var tool_use_id: Variant = request_data.get("tool_use_id", null)
-	var hook_context = ClaudeHookContextScript.new()
+	var input_data: Dictionary = (
+		request_data.get("input", {}) if request_data.get("input", {}) is Dictionary else {}
+	).duplicate(true)
+	var typed_input = ClaudeHookInputScript.coerce_input(input_data, tool_use_id)
+	var hook_context = ClaudeHookContextScript.new(null, input_data, typed_input)
 	var result: Variant = await callback.callv([input_data, tool_use_id, hook_context])
 	if result == null:
 		return {}

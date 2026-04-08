@@ -5,6 +5,17 @@ const FakeTransportScript := preload("res://tests/support/fake_transport.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudePermissionRuleValueScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_rule_value.gd")
 const ClaudePermissionUpdateScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_update.gd")
+const ClaudeHookInputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input.gd")
+const ClaudeHookInputPreToolUseScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_pre_tool_use.gd")
+const ClaudeHookInputPostToolUseScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_post_tool_use.gd")
+const ClaudeHookInputPostToolUseFailureScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_post_tool_use_failure.gd")
+const ClaudeHookInputUserPromptSubmitScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_user_prompt_submit.gd")
+const ClaudeHookInputStopScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_stop.gd")
+const ClaudeHookInputSubagentStopScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_subagent_stop.gd")
+const ClaudeHookInputPreCompactScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_pre_compact.gd")
+const ClaudeHookInputNotificationScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_notification.gd")
+const ClaudeHookInputSubagentStartScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_subagent_start.gd")
+const ClaudeHookInputPermissionRequestScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_permission_request.gd")
 const ClaudeHookOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_output.gd")
 const ClaudeHookOutputPreToolUseScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_output_pre_tool_use.gd")
 const ClaudeHookOutputNotificationScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_output_notification.gd")
@@ -106,9 +117,227 @@ func test_permission_context_keeps_raw_suggestions_and_exposes_typed_updates() -
 
 
 func test_hook_context_exposes_signal_alias() -> void:
-	var context = ClaudeHookContextScript.new("hook-signal")
+	var typed_input = ClaudeHookInputNotificationScript.new({
+		"hook_event_name": "Notification",
+		"message": "Ping",
+		"notification_type": "info",
+	})
+	var context = ClaudeHookContextScript.new(
+		"hook-signal",
+		{"hook_event_name": "Notification", "message": "Ping"},
+		typed_input
+	)
 	assert_that(context.signal).is_equal("hook-signal")
 	assert_that(context.callback_signal).is_equal("hook-signal")
+	assert_dict(context.raw_input).is_equal({"hook_event_name": "Notification", "message": "Ping"})
+	assert_object(context.typed_input as ClaudeHookInputNotification).is_not_null()
+	assert_object(context.hook_input as ClaudeHookInputNotification).is_not_null()
+	assert_str((context.hook_input as ClaudeHookInputNotification).notification_type).is_equal("info")
+
+
+func test_hook_input_coercion_covers_upstream_hook_event_taxonomy() -> void:
+	var cases := [
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_pre_tool_use.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "PreToolUse",
+				"tool_name": "Bash",
+				"tool_input": {"command": "echo hi"},
+				"tool_use_id": "tool-pre-1",
+				"agent_id": "agent-42",
+				"agent_type": "researcher",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_post_tool_use.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "PostToolUse",
+				"tool_name": "Bash",
+				"tool_input": {"command": "echo hi"},
+				"tool_response": {"content": [{"type": "text", "text": "hi"}]},
+				"tool_use_id": "tool-post-1",
+				"agent_id": "agent-42",
+				"agent_type": "researcher",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_post_tool_use_failure.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "PostToolUseFailure",
+				"tool_name": "Bash",
+				"tool_input": {"command": "echo hi"},
+				"tool_use_id": "tool-failure-1",
+				"error": "Permission denied",
+				"is_interrupt": true,
+				"agent_id": "agent-42",
+				"agent_type": "researcher",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_user_prompt_submit.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "UserPromptSubmit",
+				"prompt": "Summarize the level.",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_stop.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "Stop",
+				"stop_hook_active": true,
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_subagent_stop.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "SubagentStop",
+				"stop_hook_active": false,
+				"agent_id": "agent-42",
+				"agent_transcript_path": "/tmp/agent-transcript",
+				"agent_type": "researcher",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_pre_compact.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "PreCompact",
+				"trigger": "manual",
+				"custom_instructions": "Keep the TODO list.",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_notification.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "Notification",
+				"message": "Task completed",
+				"title": "Success",
+				"notification_type": "info",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_subagent_start.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "SubagentStart",
+				"agent_id": "agent-42",
+				"agent_type": "researcher",
+			},
+		},
+		{
+			"expected_path": "res://addons/claude_agent_sdk/runtime/claude_hook_input_permission_request.gd",
+			"config": {
+				"session_id": "sess-1",
+				"transcript_path": "/tmp/transcript",
+				"cwd": "/repo",
+				"hook_event_name": "PermissionRequest",
+				"tool_name": "Bash",
+				"tool_input": {"command": "ls"},
+				"permission_suggestions": [{"type": "allow", "rule": "Bash(*)"}],
+				"agent_id": "agent-42",
+				"agent_type": "researcher",
+			},
+		},
+	]
+
+	for test_case in cases:
+		var config: Dictionary = (test_case.get("config", {}) as Dictionary).duplicate(true)
+		var coerced = ClaudeHookInputScript.coerce_input(config)
+		assert_object(coerced).is_not_null()
+		assert_str(str(coerced.get_script().resource_path)).is_equal(str(test_case["expected_path"]))
+		assert_dict((coerced as ClaudeHookInput).to_dict()).contains_keys(config.keys())
+		for key_variant in config.keys():
+			var key := str(key_variant)
+			assert_that((coerced as ClaudeHookInput).to_dict().get(key, null)).is_equal(config[key_variant])
+
+
+func test_query_session_hook_context_exposes_typed_hook_input_without_mutating_raw_payload() -> void:
+	var callback_state := {
+		"raw_input": {},
+		"context_raw_input": {},
+		"typed_input": null,
+		"hook_input": null,
+	}
+	var callback := func(input_data: Dictionary, _tool_use_id: Variant, context):
+		callback_state["raw_input"] = input_data.duplicate(true)
+		callback_state["context_raw_input"] = context.raw_input.duplicate(true)
+		callback_state["typed_input"] = context.typed_input
+		callback_state["hook_input"] = context.hook_input
+		return {"reason": "captured"}
+
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"hooks": {
+				"PreToolUse": [
+					ClaudeHookMatcherScript.new({
+						"matcher": "Bash",
+						"hooks": [callback],
+					}),
+				],
+			},
+		})
+	)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hook_callback_id := str((((initialize_request.get("request", {}) as Dictionary).get("hooks", {}) as Dictionary).get("PreToolUse", []) as Array)[0].get("hookCallbackIds", [])[0])
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "typed-hook-input",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"tool_use_id": "tool-pre-backfill-1",
+			"input": {
+				"hook_event_name": "PreToolUse",
+				"tool_name": "Bash",
+				"tool_input": {"command": "ls"},
+			},
+		},
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_dict(callback_state["raw_input"] as Dictionary).is_equal({
+		"hook_event_name": "PreToolUse",
+		"tool_name": "Bash",
+		"tool_input": {"command": "ls"},
+	})
+	assert_dict(callback_state["context_raw_input"] as Dictionary).is_equal(callback_state["raw_input"] as Dictionary)
+
+	var typed_input = callback_state["typed_input"] as ClaudeHookInputPreToolUse
+	assert_object(typed_input).is_not_null()
+	assert_object(callback_state["hook_input"] as ClaudeHookInputPreToolUse).is_not_null()
+	assert_str(typed_input.tool_name).is_equal("Bash")
+	assert_that(typed_input.tool_use_id).is_equal("tool-pre-backfill-1")
+	assert_that((typed_input.to_dict()).get("tool_use_id", null)).is_equal("tool-pre-backfill-1")
 
 
 func test_query_session_hook_callback_accepts_typed_hook_output() -> void:

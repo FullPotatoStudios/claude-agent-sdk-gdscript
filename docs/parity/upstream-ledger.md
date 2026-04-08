@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10X hook-input compatibility review
+- Active roadmap slice: no new bounded slice selected; next parity planning should start from a fresh upstream diff review
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -102,11 +102,14 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeHookOutput` plus event-specific hook output helper classes for typed runtime hook callback responses
   - additive hook-output coercion in `ClaudeQuerySession`, including Python-style `continue_` / `async_` alias handling for raw dictionaries
   - additive typed suggestion exposure on `ClaudeToolPermissionContext` while preserving raw `suggestions`
+  - `ClaudeHookInput` plus event-specific hook input classes for additive typed hook callback inputs
+  - additive typed hook-input exposure on `ClaudeHookContext.typed_input` / `hook_input` while keeping hook callbacks dictionary-first
+  - typed hook-input coercion in `ClaudeQuerySession`, including tool-lifecycle `tool_use_id` backfill from the outer control request without mutating the raw callback dictionary
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
-  - hook callback inputs remain dictionary-first in local GDScript for backward compatibility, even though typed hook outputs and permission updates are now supported
+  - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
 
 ## Update process
 
