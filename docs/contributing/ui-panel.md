@@ -69,6 +69,7 @@ Methods:
 
 - auth status is probed on `_ready()`
 - connection is manual
+- the public panel API stays connect-then-send; unlike the lower runtime layers, the shipped panel does not expose a separate connect-time prompt entrypoint or composer shortcut for `connect_client(prompt)`
 - prompt submission is disabled until connected
 - the panel renders typed runtime messages and partial stream events from the internal client node
 - the default transcript view is simplified chat first, with thinking/tasks/tools/system/raw detail hidden behind transcript toggles

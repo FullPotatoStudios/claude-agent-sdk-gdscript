@@ -22,15 +22,22 @@ func _init(initial_options = null, transport = null) -> void:
 	_transport = transport if transport != null else ClaudeSubprocessCLITransportScript.new(options)
 
 
-func connect_client() -> void:
+func connect_client(prompt = null) -> void:
 	if _session != null:
+		if prompt != null:
+			_emit_error("Claude session is already connected. Use query() for follow-up prompts.")
 		return
-	if not _validate_options():
+	if not _validate_connect_request(prompt):
 		return
 	_session = ClaudeQuerySessionScript.new(_transport, options, _extract_sdk_mcp_servers())
 	_session.session_initialized.connect(_on_session_initialized)
 	_session.error_occurred.connect(_on_session_error_occurred)
 	_session.open_session()
+	if _session != null and prompt != null and _session.get_last_error().is_empty():
+		if prompt is ClaudePromptStreamScript:
+			_session.send_prompt_stream(prompt, "default", false)
+		else:
+			_session.send_user_prompt(str(prompt), "default")
 	_last_error = _session.get_last_error()
 
 
@@ -209,6 +216,23 @@ func _extract_sdk_mcp_servers() -> Dictionary:
 		if instance is ClaudeSdkMcpServer:
 			extracted[str(server_name_variant)] = instance
 	return extracted
+
+
+func _validate_connect_request(prompt) -> bool:
+	if not _validate_options():
+		return false
+	if prompt == null:
+		return true
+	if not (prompt is String or prompt is ClaudePromptStreamScript):
+		_emit_error("prompt must be null, a String, or ClaudePromptStream")
+		return false
+	if options != null and options.can_use_tool.is_valid() and prompt is String:
+		_emit_error(
+			"can_use_tool callback requires streamed prompt input. " +
+			"Please provide prompt as a ClaudePromptStream instead of a String."
+		)
+		return false
+	return true
 
 
 func _validate_options() -> bool:

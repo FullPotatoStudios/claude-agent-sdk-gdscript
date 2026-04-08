@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10T streamed prompt input query-surface parity
+- Active roadmap slice: Phase 10U prompt-on-connect parity
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -94,11 +94,13 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudePromptStream` scene-free outbound prompt queue support
   - streamed prompt input parity on `ClaudeQuery.query()` and `ClaudeSDKClient.query()`
   - adapter/node passthrough widening for streamed `query()` calls while keeping `turn_started(prompt, session_id)` string-only
+  - interactive prompt-on-connect parity through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+  - string connect prompts now queue a post-initialize user payload with literal `session_id = "default"`, while connect-time `ClaudePromptStream` payloads pass through without session-id backfill
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
-  - prompt-on-connect parity is still incomplete locally; upstream `connect(prompt=...)` accepts both string and streamed inputs, while local `connect_client()` still remains connect-first/query-second
+  - repeated local `connect_client()` calls still keep the existing no-op lifecycle instead of recreating the transport/session the way upstream `connect()` currently does
 
 ## Update process
 

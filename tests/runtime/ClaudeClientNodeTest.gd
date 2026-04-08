@@ -67,6 +67,58 @@ func test_node_defaults_auto_connect_off_and_reemits_adapter_signals() -> void:
 	await _await_frames(2)
 
 
+func test_node_connect_with_prompt_reemits_adapter_turn_signals() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+	var turn_finished_messages: Array = []
+
+	node.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	node.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+	node.turn_finished.connect(func(message): turn_finished_messages.append(message))
+
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client("Node prompt")
+	assert_bool(node.is_busy()).is_true()
+	assert_array(busy_events).is_equal([true])
+	assert_array(turn_starts).is_equal([{"prompt": "Node prompt", "session_id": "default"}])
+
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "ok",
+	})
+	await _await_frames(2)
+
+	assert_bool(node.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_int(turn_finished_messages.size()).is_equal(1)
+
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
 func test_node_auto_disconnects_on_exit_when_enabled() -> void:
 	var transport = FakeTransportScript.new()
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)

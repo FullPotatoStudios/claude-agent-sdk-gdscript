@@ -54,6 +54,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - transport-first file-checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` plus runtime `rewind_files()` controls on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - task-control parity through runtime `stop_task()` controls plus typed `task_started`, `task_progress`, and `task_notification` system messages
 - typed `rate_limit_event` parity through `ClaudeRateLimitInfo`, `ClaudeRateLimitEvent`, and system-path rendering in the shipped chat panel
+- interactive prompt-on-connect parity through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
@@ -129,6 +130,7 @@ func _ready() -> void:
 - typed `rate_limit_event` parsing plus reference-panel rendering through the existing `System` transcript path
 - transport-first process-user launch support through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - streamed prompt input support through `ClaudePromptStream` on `ClaudeQuery.query()` and `ClaudeSDKClient.query()`
+- interactive prompt-on-connect support through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`, including string and `ClaudePromptStream` inputs
 - Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
@@ -139,7 +141,6 @@ func _ready() -> void:
 
 Most of the pinned upstream baseline is covered, but a few parity gaps and one transport caveat still remain:
 
-- interactive prompt-on-connect parity is still missing; upstream `connect(prompt=...)` accepts both string and streamed input
 - hook and tool-permission typing is lighter than the current Python SDK surface
 - `ClaudeAgentOptions.user` is implemented through a POSIX shell-wrapper launch path; Windows shell-backed transports currently reject it
 

@@ -235,6 +235,91 @@ func test_adapter_streamed_query_sets_busy_without_emitting_turn_started() -> vo
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_string_connect_prompt_sets_busy_and_emits_turn_started() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+	var turn_results: Array = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+	adapter.turn_finished.connect(func(message): turn_results.append(message))
+
+	adapter.connect_client("Open with prompt")
+	assert_bool(adapter.is_busy()).is_true()
+	assert_array(busy_events).is_equal([true])
+	assert_array(turn_starts).is_equal([{"prompt": "Open with prompt", "session_id": "default"}])
+	assert_int(transport.writes.size()).is_equal(1)
+
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_int(transport.writes.size()).is_equal(2)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+
+	transport.emit_stdout_message(_result_payload("done"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_int(turn_results.size()).is_equal(1)
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_streamed_connect_prompt_sets_busy_without_emitting_turn_started() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+
+	adapter.connect_client(prompt_stream)
+	assert_bool(adapter.is_busy()).is_true()
+	assert_array(busy_events).is_equal([true])
+	assert_array(turn_starts).is_empty()
+
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+	await _await_frames(2)
+
+	assert_int(transport.writes.size()).is_equal(2)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_bool(prompt_payload.has("session_id")).is_false()
+
+	transport.emit_stdout_message(_result_payload("done"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	await _cleanup_adapter(adapter)
+
+
 func test_adapter_clears_busy_when_prompt_stream_fails_before_result() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
@@ -264,6 +349,37 @@ func test_adapter_clears_busy_when_prompt_stream_fails_before_result() -> void:
 	assert_bool(adapter.is_busy()).is_false()
 	assert_array(busy_events).is_equal([true, false])
 	assert_array(errors).contains(["prompt stream canceled"])
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_clears_busy_when_initialize_fails_during_connect_prompt() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var errors: Array[String] = []
+	var turn_results: Array = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.error_occurred.connect(func(message: String): errors.append(message))
+	adapter.turn_finished.connect(func(message): turn_results.append(message))
+
+	adapter.connect_client("Prompt before init")
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(init_request.get("request_id", "")),
+			"error": "initialize failed",
+		},
+	})
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_bool(adapter.is_client_connected()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_array(errors).contains(["initialize failed"])
+	assert_array(turn_results).is_empty()
 	await _cleanup_adapter(adapter)
 
 

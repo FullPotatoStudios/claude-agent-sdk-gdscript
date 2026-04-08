@@ -30,7 +30,7 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `ClaudeSDKClient` as the interactive core | `client.py`, `tests/test_streaming_client.py`, `examples/streaming_mode.py` | Basis for chat UIs, tools, and adapters | transport, query control, parser | `v1 core` | Canonical interactive API target |
-| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Empty connect is shipped locally; prompt-on-connect parity remains follow-up work after Phase 10T |
+| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Delivered post-v1 in Phase 10U through `connect_client(prompt)` support for `null`, string, and `ClaudePromptStream` prompts; repeated local `connect_client()` calls still keep the existing no-op lifecycle rather than recreating the session like upstream |
 | `query()` on connected client | `client.py`, `examples/streaming_mode.py` | Sends follow-up messages in active sessions | connect, transport writes | `v1 core` | Session-aware string follow-ups shipped in v1; streamed follow-up parity delivered post-v1 in Phase 10T through `ClaudePromptStream` |
 | `receive_messages()` | `client.py` | Lowest-level interactive receive loop | parser, message routing | `v1 core` | Primary stream-consumption primitive |
 | `receive_response()` | `client.py` | Convenient per-turn receive loop for UI code | `receive_messages`, result detection | `v1 core` | Stop after `ResultMessage` |

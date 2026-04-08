@@ -34,8 +34,8 @@ func _exit_tree() -> void:
 		disconnect_client()
 
 
-func connect_client() -> void:
-	_adapter.connect_client()
+func connect_client(prompt = null) -> void:
+	_adapter.connect_client(prompt)
 
 
 func disconnect_client() -> void:

@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10S: typed rate-limit event parity
+- Phase 10U: prompt-on-connect parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -279,6 +279,12 @@ Delivered in Phase 10T:
 - streamed prompt input parity on `ClaudeQuery.query()` and `ClaudeSDKClient.query()`, with upstream-style `session_id` handling differences between one-shot and interactive query flows
 - adapter/node passthrough widening for streamed `query()` calls while keeping `turn_started(prompt, session_id)` string-only
 
+Delivered in Phase 10U:
+- `connect_client(prompt)` parity on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+- string connect prompts queued through the existing initialize-aware prompt path with literal `session_id = "default"`
+- connect-time `ClaudePromptStream` payload preservation without session-id backfill
+- explicit local lifecycle divergence documentation for repeated `connect_client()` calls, which still keep the existing no-op behavior instead of recreating the session
+
 ## Current focus
 
-Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially prompt-on-connect parity plus richer hook/tool-permission typing.
+Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially richer hook/tool-permission typing.

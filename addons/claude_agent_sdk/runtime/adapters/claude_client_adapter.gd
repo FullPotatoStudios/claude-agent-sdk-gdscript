@@ -29,12 +29,14 @@ func _init(initial_options = null, transport = null) -> void:
 	_client.error_occurred.connect(_on_client_error_occurred)
 
 
-func connect_client() -> void:
+func connect_client(prompt = null) -> void:
 	if _connected:
+		if prompt != null:
+			_emit_error("Claude session is already connected. Use query() for follow-up prompts.")
 		return
 
 	_last_error = ""
-	_client.connect_client()
+	_client.connect_client(prompt)
 	var stream = _client.receive_messages()
 	if not stream.get_error().is_empty():
 		_client.disconnect_client()
@@ -45,6 +47,8 @@ func connect_client() -> void:
 	_active_token += 1
 	var token := _active_token
 	Callable(self, "_run_message_drain").call_deferred(token, stream)
+	if prompt != null and _client.get_last_error().is_empty():
+		_begin_turn_watch(prompt, _client.receive_response(), "default")
 
 
 func disconnect_client() -> void:
@@ -69,13 +73,7 @@ func query(prompt, session_id: String = "default") -> void:
 	_client.query(prompt, session_id)
 	if not _client.get_last_error().is_empty():
 		return
-	_turn_watch_token += 1
-	var turn_token := _turn_watch_token
-	var response_stream = _client.receive_response()
-	_set_busy(true)
-	if prompt is String:
-		turn_started.emit(prompt, session_id)
-	Callable(self, "_watch_turn_response").call_deferred(turn_token, response_stream)
+	_begin_turn_watch(prompt, _client.receive_response(), session_id)
 
 
 func interrupt() -> void:
@@ -244,6 +242,15 @@ func _watch_turn_response(turn_token: int, response_stream) -> void:
 			return
 		if message is ClaudeResultMessage:
 			saw_result = true
+
+
+func _begin_turn_watch(prompt, response_stream, session_id: String) -> void:
+	_turn_watch_token += 1
+	var turn_token := _turn_watch_token
+	_set_busy(true)
+	if prompt is String:
+		turn_started.emit(str(prompt), session_id)
+	Callable(self, "_watch_turn_response").call_deferred(turn_token, response_stream)
 
 
 func _emit_session_closed_once(token: int) -> void:

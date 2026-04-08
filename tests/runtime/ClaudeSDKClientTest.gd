@@ -180,6 +180,153 @@ func test_client_disconnect_releases_transport_signal_listeners_before_reconnect
 	assert_int(transport.stderr_listener_count()).is_equal(1)
 	assert_int(transport.closed_listener_count()).is_equal(1)
 	assert_int(transport.error_listener_count()).is_equal(1)
+
+
+func test_client_connect_with_string_prompt_queues_default_user_message_after_initialize() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+
+	client.connect_client("Hello Claude")
+	var response_stream = client.receive_response()
+	assert_int(transport.writes.size()).is_equal(1)
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	assert_int(transport.writes.size()).is_equal(2)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("type", ""))).is_equal("user")
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_str(str((prompt_payload.get("message", {}) as Dictionary).get("content", ""))).is_equal("Hello Claude")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "default",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Hi"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	client.disconnect_client()
+
+
+func test_client_connect_with_string_prompt_keeps_default_user_payload_session_id_when_options_session_id_is_configured() -> void:
+	var transport = FakeTransportScript.new()
+	var options = ClaudeAgentOptions.new({"session_id": "resume-from-options"})
+	var client = ClaudeSDKClient.new(options, transport)
+
+	client.connect_client("Resume with prompt")
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	client.disconnect_client()
+
+
+func test_client_connect_with_prompt_stream_preserves_messages_without_backfilling_session_id() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+
+	client.connect_client(prompt_stream)
+	assert_int(transport.writes.size()).is_equal(1)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.push_message({
+		"type": "user",
+		"session_id": "explicit-session",
+		"message": {"role": "user", "content": "Second"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(3)
+	var first_prompt: Dictionary = JSON.parse_string(transport.writes[1])
+	var second_prompt: Dictionary = JSON.parse_string(transport.writes[2])
+	assert_bool(first_prompt.has("session_id")).is_false()
+	assert_str(str(second_prompt.get("session_id", ""))).is_equal("explicit-session")
+	client.disconnect_client()
+
+
+func test_client_connect_rejects_string_prompt_when_can_use_tool_is_configured_before_opening_session() -> void:
+	var transport = FakeTransportScript.new()
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context): return ClaudePermissionResultAllowScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new({
+		"can_use_tool": permission_callback,
+	}), transport)
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+
+	client.connect_client("Hi")
+
+	assert_array(errors).contains([
+		"can_use_tool callback requires streamed prompt input. Please provide prompt as a ClaudePromptStream instead of a String."
+	])
+	assert_bool(transport.connected).is_false()
+	assert_int(transport.writes.size()).is_equal(0)
+
+
+func test_client_connect_with_prompt_emits_error_when_already_connected() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var errors: Array[String] = []
+	client.error_occurred.connect(func(message: String): errors.append(message))
+
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.connect_client("Follow-up")
+
+	assert_array(errors).contains(["Claude session is already connected. Use query() for follow-up prompts."])
+	assert_int(transport.writes.size()).is_equal(1)
+	client.disconnect_client()
 	client.disconnect_client()
 
 	client.disconnect_client()
