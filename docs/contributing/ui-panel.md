@@ -15,7 +15,7 @@ Use `ClaudeChatPanel` when:
 - you want a ready-made Claude chat surface in a Godot project
 - you want auth-state, saved-session browsing, connect/disconnect controls, transcript rendering, and a composer without building UI glue first
 - you want quick model, effort, and permission controls in the main chat workflow
-- you want disconnected chat-configuration editing for system prompts, built-in tools, and tool allow/deny lists
+- you want disconnected chat-configuration editing for system prompts, built-in tools, tool allow/deny lists, and rewind support
 - you want a resizable two-pane layout with a saved-session browser on the left and chat on the right
 - you want a reference for building your own UI on top of `ClaudeClientAdapter` or `ClaudeClientNode`
 
@@ -96,7 +96,8 @@ The shipped panel currently includes:
 - interrupt support during active turns
 - live model and permission-mode changes while connected
 - reconnect-only effort changes, exposed in the chat view but disabled while connected
-- disconnected-only system prompt, built-in tool, advanced allow/deny, and MCP-summary editing in the separate `Settings` view
+- disconnected-only system prompt, built-in tool, advanced allow/deny, rewind-support, and MCP-summary editing in the separate `Settings` view
+- per-user rewind actions in the transcript when the active session has rewindable user-message UUIDs available
 
 Live transcript detail uses the same normalized transcript model as saved-session restoration:
 
@@ -106,6 +107,7 @@ Live transcript detail uses the same normalized transcript model as saved-sessio
 - raw inspection stays hidden by default and is only shown through the `Raw` toggle
 - saved-session transcript loading uses the richer `ClaudeSessions.get_session_transcript()` detail model under the same filter toggles
 - saved-session forking uses the existing runtime `fork_session()` helper, supports an optional title override, auto-selects the new fork, and restores its transcript immediately
+- the rewind toggle is panel-owned: it enables file checkpointing and adds `replay-user-messages` so user transcript entries can expose rewind actions without hand-editing `extra_args`
 
 The panel intentionally does not yet include:
 

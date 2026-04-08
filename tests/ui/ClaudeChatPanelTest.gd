@@ -182,6 +182,44 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	await _cleanup_panel(panel)
 
 
+func test_panel_rewind_support_toggle_loads_and_preserves_unrelated_extra_args() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"enable_file_checkpointing": true,
+		"extra_args": {
+			"replay-user-messages": null,
+			"debug-to-stderr": null,
+		},
+	}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	var rewind_toggle := _check_box(panel, "RewindSupportToggle")
+	assert_bool(rewind_toggle.button_pressed).is_true()
+
+	rewind_toggle.button_pressed = false
+	rewind_toggle.toggled.emit(false)
+	await _await_frames(1)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	assert_bool(configured_options.enable_file_checkpointing).is_false()
+	assert_bool(configured_options.extra_args.has("replay-user-messages")).is_false()
+	assert_bool(configured_options.extra_args.has("debug-to-stderr")).is_true()
+
+	rewind_toggle.button_pressed = true
+	rewind_toggle.toggled.emit(true)
+	await _await_frames(1)
+
+	assert_bool(configured_options.enable_file_checkpointing).is_true()
+	assert_bool(configured_options.extra_args.has("replay-user-messages")).is_true()
+	assert_bool(configured_options.extra_args.has("debug-to-stderr")).is_true()
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_built_in_tool_picker_maps_all_none_and_partial_selection() -> void:
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
@@ -220,6 +258,46 @@ func test_panel_built_in_tool_picker_maps_all_none_and_partial_selection() -> vo
 	await _cleanup_panel(panel)
 
 
+func test_panel_saved_session_rewind_action_appears_after_connect() -> void:
+	var session_id := _create_panel_session_fixture("rewind-session")
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"enable_file_checkpointing": true,
+		"extra_args": {"replay-user-messages": null},
+	}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	assert_str(_session_id_from_panel(panel)).is_empty()
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
+
+	var disconnected_button := _last_entry(panel, "user_bubble").find_child("RewindButton", true, false) as Button
+	assert_object(disconnected_button).is_not_null()
+	assert_bool(disconnected_button.is_visible_in_tree()).is_false()
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	var connected_button := _last_entry(panel, "user_bubble").find_child("RewindButton", true, false) as Button
+	assert_object(connected_button).is_not_null()
+	assert_bool(connected_button.is_visible_in_tree()).is_true()
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_defaults_to_chat_view_and_switches_to_settings_view() -> void:
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
@@ -242,6 +320,83 @@ func test_panel_defaults_to_chat_view_and_switches_to_settings_view() -> void:
 	await _await_frames(1)
 	assert_bool(_control(panel, "SplitRow").visible).is_true()
 	assert_bool(_control(panel, "SettingsScroll").visible).is_false()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_rewind_button_uses_echoed_user_uuid_and_sends_control_request() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"enable_file_checkpointing": true,
+		"extra_args": {"replay-user-messages": null},
+	}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	panel.submit_prompt("Please refactor files")
+	await _await_frames(1)
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "live-user-1",
+		"session_id": "default",
+		"message": {
+			"role": "user",
+			"content": "Please refactor files",
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 120,
+		"duration_api_ms": 80,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "Done",
+		"uuid": "result-live-1",
+	})
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	var rewind_button := _last_entry(panel, "user_bubble").find_child("RewindButton", true, false) as Button
+	assert_object(rewind_button).is_not_null()
+	assert_bool(rewind_button.is_visible_in_tree()).is_true()
+
+	rewind_button.pressed.emit()
+	await _await_frames(1)
+
+	var rewind_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("rewind_files")
+	assert_str(str((rewind_request.get("request", {}) as Dictionary).get("user_message_id", ""))).is_equal("live-user-1")
+	assert_str(rewind_button.text).is_equal("Rewinding...")
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(rewind_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	assert_str(rewind_button.text).is_equal("Rewind files here")
+	assert_int(_count_entries(panel, "system_card")).is_equal(0)
 
 	await _cleanup_panel(panel)
 
@@ -1714,6 +1869,10 @@ func _button(panel, node_name: String) -> Button:
 	return panel.find_child(node_name, true, false) as Button
 
 
+func _check_box(panel, node_name: String) -> CheckBox:
+	return panel.find_child(node_name, true, false) as CheckBox
+
+
 func _control(panel, node_name: String) -> Control:
 	return panel.find_child(node_name, true, false) as Control
 
@@ -1737,10 +1896,6 @@ func _option_button(panel, node_name: String) -> OptionButton:
 func _selected_option_text(panel, node_name: String) -> String:
 	var option := _option_button(panel, node_name)
 	return option.get_item_text(option.selected)
-
-
-func _check_box(panel, node_name: String) -> CheckBox:
-	return panel.find_child(node_name, true, false) as CheckBox
 
 
 func _built_in_tool_checkbox(panel, tool_name: String) -> CheckBox:

@@ -304,6 +304,11 @@ Delivered in Phase 10X:
 - additive `ClaudeHookContext.typed_input` / `hook_input` exposure while preserving the existing raw dictionary callback signature
 - `ClaudeQuerySession` typed hook-input coercion with tool-lifecycle `tool_use_id` backfill from the outer control request without mutating the raw input payload
 
+Delivered in Phase 10Y:
+- `ClaudeChatPanel` disconnected-only rewind-support controls that enable file checkpointing and replayed user-message UUID exposure together
+- per-user rewind actions in the reference panel for live or restored transcript entries that belong to the active session
+- panel/UI coverage and docs updated so runtime rewind parity is no longer presented as a runtime-only feature
+
 ## Current focus
 
-The last bounded post-v1 runtime parity gap from the current docs is now delivered. The next parity planning pass should start with a fresh upstream diff review, then decide whether any new bounded runtime slice is worth taking on beyond the remaining Windows `user` caveat and intentionally deferred broader parity work.
+The current bounded reference-panel rewind slice is now delivered. The next parity planning pass should start with a fresh upstream diff review, then decide whether any new bounded runtime or reference-panel slice is worth taking on beyond the remaining Windows `user` caveat and intentionally deferred broader parity work.

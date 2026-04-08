@@ -41,7 +41,7 @@ Phase 1 findings that constrain this matrix:
 | `get_server_info()` | `client.py` | Exposes initialize result to clients and adapters | initialize flow | `v1 core` | Useful for commands, output styles, capability introspection |
 | `get_context_usage()` | `client.py` | Valuable for advanced UIs and diagnostics | control protocol, typed response models | `v1 later` | Worth adding after core conversation flow |
 | `get_mcp_status()` / reconnect / toggle | `client.py`, `e2e-tests/test_sdk_mcp_tools.py` | Important once MCP parity matters | control protocol, MCP config, typed responses | `v1 later` | Not on the critical path for core chat |
-| `rewind_files()` | `client.py` | Depends on checkpointing and replayed user messages | file checkpointing, message UUIDs, control protocol | `deferred` | High complexity, not needed for first public release |
+| `rewind_files()` | `client.py` | Depends on checkpointing and replayed user messages | file checkpointing, message UUIDs, control protocol | `deferred` | Delivered post-v1 in Phase 10N on the runtime surfaces, with reference-panel rewind support added in Phase 10Y |
 | `stop_task()` | `client.py` | Useful only once task notifications and task control are first-class | task messages, control protocol | `deferred` | Delivered post-v1 in Phase 10O through command-style `stop_task(task_id)` parity on the runtime, adapter, and node surfaces |
 | Python async context manager | `client.py` `__aenter__` / `__aexit__` | Convenience only | connect/disconnect | `not applicable` | Use explicit lifecycle methods in GDScript |
 
@@ -86,7 +86,7 @@ Phase 1 findings that constrain this matrix:
 | `get_server_info` from initialize payload | `client.py` | Lets clients inspect capabilities without extra round trips | initialize flow | `v1 core` | Backed by stored initialize result |
 | Context-usage control | `_internal/query.py`, `client.py` | Useful for advanced diagnostics | initialize flow, typed response | `v1 later` | Post-core |
 | MCP status/reconnect/toggle controls | `_internal/query.py`, `client.py` | Needed once MCP support expands | initialize flow, MCP config | `v1 later` | Post-core |
-| Rewind-files control | control protocol types, `client.py` | Depends on checkpointing and replay | initialize flow, file checkpointing | `deferred` | Not for first release |
+| Rewind-files control | control protocol types, `client.py` | Depends on checkpointing and replay | initialize flow, file checkpointing | `deferred` | Delivered post-v1 in Phase 10N through awaited `rewind_files(user_message_id)` parity on the runtime surfaces |
 | Stop-task control | control protocol types, `client.py` | Depends on task lifecycle support | initialize flow, task messages | `deferred` | Delivered post-v1 in Phase 10O through awaited control-request parity using `subtype: "stop_task"` and `task_id` |
 
 ## Hooks and tool-permission callbacks

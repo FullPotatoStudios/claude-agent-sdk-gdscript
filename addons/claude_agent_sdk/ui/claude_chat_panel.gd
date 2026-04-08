@@ -68,6 +68,8 @@ var _tool_use_names := {}
 var _next_transcript_entry_id := 1
 var _current_assistant_entry_id := -1
 var _current_thinking_entry_id := -1
+var _pending_prompt_entry_id := -1
+var _rewind_pending_entry_id := -1
 
 @onready var _shell: PanelContainer = $Shell
 @onready var _status_badge: PanelContainer = $Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge
@@ -95,6 +97,7 @@ var _current_thinking_entry_id := -1
 @onready var _tool_rules_advanced_body: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody
 @onready var _allowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/AllowedToolsGroup/AllowedToolsInput
 @onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
+@onready var _rewind_support_toggle: CheckBox = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/RewindSection/RewindSupportToggle
 @onready var _mcp_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpSummaryValue
 @onready var _split_row: HSplitContainer = $Shell/Margin/Body/SplitRow
 @onready var _session_refresh_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/SessionRefreshButton
@@ -227,7 +230,7 @@ func submit_prompt(prompt: String) -> void:
 		return
 
 	_begin_new_live_turn()
-	_append_transcript_entry("user", {
+	_pending_prompt_entry_id = _append_transcript_entry("user", {
 		"title": "You",
 		"text": trimmed,
 		"align_right": true,
@@ -259,6 +262,9 @@ func clear_transcript() -> void:
 	_transcript_entries.clear()
 	_task_entry_ids.clear()
 	_tool_use_names.clear()
+	_pending_prompt_echo = ""
+	_pending_prompt_entry_id = -1
+	_rewind_pending_entry_id = -1
 	_clear_transcript_views()
 	_begin_new_live_turn()
 
@@ -314,6 +320,8 @@ func _wire_ui() -> void:
 		_allowed_tools_input.text_changed.connect(_on_allowed_tools_text_changed)
 	if not _disallowed_tools_input.text_changed.is_connected(_on_disallowed_tools_text_changed):
 		_disallowed_tools_input.text_changed.connect(_on_disallowed_tools_text_changed)
+	if not _rewind_support_toggle.toggled.is_connected(_on_rewind_support_toggled):
+		_rewind_support_toggle.toggled.connect(_on_rewind_support_toggled)
 	if not _session_refresh_button.pressed.is_connected(_on_session_refresh_pressed):
 		_session_refresh_button.pressed.connect(_on_session_refresh_pressed)
 	if not _new_chat_button.pressed.is_connected(_on_new_chat_pressed):
@@ -458,6 +466,7 @@ func _apply_initial_control_values() -> void:
 	_apply_built_in_tool_controls_from_options()
 	_allowed_tools_input.text = ",".join(_configured_options.allowed_tools)
 	_disallowed_tools_input.text = ",".join(_configured_options.disallowed_tools)
+	_rewind_support_toggle.set_pressed_no_signal(_panel_rewind_support_enabled())
 	var has_advanced_rules: bool = not _configured_options.allowed_tools.is_empty() or not _configured_options.disallowed_tools.is_empty()
 	_tool_rules_advanced_toggle.set_pressed_no_signal(has_advanced_rules)
 	_refresh_mcp_summary()
@@ -563,6 +572,7 @@ func _apply_preconnect_controls_to_options() -> void:
 	_configured_options.tools = _built_in_tools_from_controls()
 	_configured_options.allowed_tools = _parse_tool_csv(_allowed_tools_input.text)
 	_configured_options.disallowed_tools = _parse_tool_csv(_disallowed_tools_input.text)
+	_sync_rewind_support_to_options()
 
 
 func _apply_session_target_to_options() -> void:
@@ -608,6 +618,7 @@ func _refresh_configuration_controls() -> void:
 	_tool_rules_advanced_toggle.disabled = configuration_locked
 	_allowed_tools_input.editable = not configuration_locked and _tool_rules_advanced_body.visible
 	_disallowed_tools_input.editable = not configuration_locked and _tool_rules_advanced_body.visible
+	_rewind_support_toggle.disabled = configuration_locked
 	_refresh_built_in_tool_picker_state()
 
 
@@ -638,6 +649,25 @@ func _refresh_mcp_summary() -> void:
 		elif _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
 			summary = "External MCP config: %s" % str(_configured_options.mcp_servers).strip_edges()
 	_mcp_summary_value.text = summary
+
+
+func _panel_rewind_support_enabled() -> bool:
+	if _configured_options == null:
+		return false
+	return _configured_options.enable_file_checkpointing or _configured_options.extra_args.has("replay-user-messages")
+
+
+func _sync_rewind_support_to_options() -> void:
+	if _configured_options == null:
+		return
+	var enabled := _rewind_support_toggle.button_pressed
+	_configured_options.enable_file_checkpointing = enabled
+	var extra_args: Dictionary = _configured_options.extra_args.duplicate(true)
+	if enabled:
+		extra_args["replay-user-messages"] = null
+	else:
+		extra_args.erase("replay-user-messages")
+	_configured_options.extra_args = extra_args
 
 
 func _system_prompt_summary(system_prompt: Variant) -> String:
@@ -797,6 +827,7 @@ func _select_session_by_index(index: int) -> void:
 	_refresh_session_controls()
 	_update_status_from_state()
 	_refresh_composer_state()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _clear_selected_session(clear_transcript_too: bool) -> void:
@@ -814,6 +845,7 @@ func _clear_selected_session(clear_transcript_too: bool) -> void:
 	_refresh_session_controls()
 	_update_status_from_state()
 	_refresh_composer_state()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _reload_selected_session_transcript() -> void:
@@ -918,12 +950,16 @@ func _can_switch_sessions() -> bool:
 func _restore_disconnected_view() -> void:
 	_is_connecting = false
 	_session_live = false
+	_pending_prompt_echo = ""
+	_pending_prompt_entry_id = -1
+	_rewind_pending_entry_id = -1
 	_begin_new_live_turn()
 	if _has_selected_session():
 		_reload_selected_session_transcript()
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _on_client_session_ready(server_info: Dictionary) -> void:
@@ -934,12 +970,14 @@ func _on_client_session_ready(server_info: Dictionary) -> void:
 	_update_status_from_state(server_info)
 	_refresh_composer_state()
 	_refresh_session_controls()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _on_client_busy_changed(_is_busy: bool) -> void:
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _on_client_message_received(message: Variant) -> void:
@@ -989,11 +1027,15 @@ func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
 
 func _on_client_error_occurred(message: String) -> void:
 	_is_connecting = false
+	_pending_prompt_echo = ""
+	_pending_prompt_entry_id = -1
+	_rewind_pending_entry_id = -1
 	_last_error = message
 	_status_issue_message = message
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
+	_refresh_transcript_entry_views_visibility()
 	error_occurred.emit(message)
 
 
@@ -1005,6 +1047,7 @@ func _handle_user_message(message: ClaudeUserMessage) -> void:
 	var is_tool_linked := not message.parent_tool_use_id.is_empty()
 	var has_recognized_blocks := false
 	var content_text := ""
+	var session_id := str(message.raw_data.get("session_id", ""))
 	if message.content is String:
 		content_text = str(message.content).strip_edges()
 	elif message.content is Array:
@@ -1020,6 +1063,7 @@ func _handle_user_message(message: ClaudeUserMessage) -> void:
 	var suppressed_echo := false
 	if not is_tool_linked and not _pending_prompt_echo.is_empty() and content_text == _pending_prompt_echo:
 		_pending_prompt_echo = ""
+		_attach_user_message_metadata_to_echo(message.content, content_text, message.uuid, session_id, message.raw_data)
 		suppressed_echo = true
 
 	if suppressed_echo:
@@ -1027,10 +1071,13 @@ func _handle_user_message(message: ClaudeUserMessage) -> void:
 
 	if not content_text.is_empty() and not suppressed_echo and not is_tool_linked:
 		_append_transcript_entry("user", {
-			"title": "User",
+			"title": "You",
 			"text": content_text,
-			"align_right": false,
+			"align_right": true,
+			"payload": message.content,
 			"raw_data": message.raw_data,
+			"uuid": message.uuid,
+			"session_id": session_id,
 		})
 		return
 
@@ -1051,11 +1098,44 @@ func _handle_user_message(message: ClaudeUserMessage) -> void:
 
 	var fallback_text := _json_pretty(message.raw_data)
 	_append_transcript_entry("user", {
-		"title": "User",
+		"title": "You",
 		"text": fallback_text,
-		"align_right": false,
+		"align_right": true,
+		"payload": message.content,
 		"raw_data": message.raw_data,
+		"uuid": message.uuid,
+		"session_id": session_id,
 	})
+
+
+func _attach_user_message_metadata_to_echo(payload: Variant, text: String, uuid: String, session_id: String, raw_data: Variant) -> void:
+	var entry_id := _pending_prompt_entry_id
+	if entry_id < 0:
+		entry_id = _find_latest_echoed_user_entry(text)
+	if entry_id < 0:
+		return
+	var entry := _get_transcript_entry(entry_id)
+	if entry.is_empty():
+		return
+	entry["uuid"] = uuid
+	entry["session_id"] = session_id
+	entry["payload"] = payload
+	entry["raw_data"] = raw_data
+	_pending_prompt_entry_id = -1
+	_set_transcript_entry(entry_id, entry)
+
+
+func _find_latest_echoed_user_entry(text: String) -> int:
+	for index in range(_transcript_entries.size() - 1, -1, -1):
+		var entry := _transcript_entries[index]
+		if str(entry.get("kind", "")) != "user":
+			continue
+		if not str(entry.get("uuid", "")).is_empty():
+			continue
+		if str(entry.get("text", "")) != text:
+			continue
+		return int(entry.get("id", -1))
+	return -1
 
 
 func _handle_assistant_message(message: ClaudeAssistantMessage) -> void:
@@ -1536,9 +1616,9 @@ func _create_transcript_primary_view(entry: Dictionary) -> Control:
 	var kind := str(entry.get("kind", ""))
 	match kind:
 		"user":
-			return _create_message_bubble("user", str(entry.get("text", "")), str(entry.get("title", "You")), bool(entry.get("align_right", true)))
+			return _create_message_bubble("user", entry)
 		"assistant":
-			return _create_message_bubble("assistant", str(entry.get("text", "")), str(entry.get("title", "Claude")), bool(entry.get("align_right", false)))
+			return _create_message_bubble("assistant", entry)
 		"task":
 			return _create_task_card(entry)
 		"thinking":
@@ -1564,11 +1644,7 @@ func _update_transcript_primary_view(primary: Control, entry: Dictionary) -> voi
 	var kind := str(entry.get("kind", ""))
 	match kind:
 		"user", "assistant":
-			_update_message_bubble(
-				primary,
-				str(entry.get("title", "You" if kind == "user" else "Claude")),
-				str(entry.get("text", ""))
-			)
+			_update_message_bubble(primary, kind, entry)
 		"task":
 			_update_task_card(primary, entry)
 		"thinking", "tool_prompt", "tool_use", "tool_result", "system", "progress", "attachment":
@@ -1596,6 +1672,33 @@ func _is_transcript_entry_primary_visible(entry: Dictionary) -> bool:
 func _should_show_raw_entry(entry: Dictionary) -> bool:
 	var kind := str(entry.get("kind", ""))
 	return kind != "user" and kind != "assistant" and entry.get("raw_data") != null
+
+
+func _should_show_rewind_action(entry: Dictionary) -> bool:
+	if str(entry.get("kind", "")) != "user":
+		return false
+	if not _rewind_support_ready():
+		return false
+	if str(entry.get("uuid", "")).strip_edges().is_empty():
+		return false
+	return _entry_matches_active_session(entry)
+
+
+func _rewind_support_ready() -> bool:
+	return (
+		_session_live and
+		not _is_connecting and
+		_configured_options != null and
+		_configured_options.enable_file_checkpointing and
+		_configured_options.extra_args.has("replay-user-messages")
+	)
+
+
+func _entry_matches_active_session(entry: Dictionary) -> bool:
+	var entry_session_id := str(entry.get("session_id", "")).strip_edges()
+	if entry_session_id.is_empty():
+		return true
+	return entry_session_id == _connected_session_id
 
 
 func _tool_prompt_title(tool_use_id: String) -> String:
@@ -1648,7 +1751,10 @@ func _clear_transcript_views() -> void:
 	_clear_transcript_list_children()
 
 
-func _create_message_bubble(role: String, text: String, label_text: String, align_right: bool) -> Control:
+func _create_message_bubble(role: String, entry: Dictionary) -> Control:
+	var text := str(entry.get("text", ""))
+	var label_text := str(entry.get("title", "You" if role == "user" else "Claude"))
+	var align_right := bool(entry.get("align_right", role == "user"))
 	var row := HBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_theme_constant_override("separation", 12)
@@ -1685,6 +1791,19 @@ func _create_message_bubble(role: String, text: String, label_text: String, alig
 	bubble_text.add_theme_font_size_override("normal_font_size", 15)
 	bubble_body.add_child(bubble_text)
 
+	if role == "user":
+		var actions := HBoxContainer.new()
+		actions.name = "BubbleActions"
+		actions.alignment = BoxContainer.ALIGNMENT_END
+		bubble_body.add_child(actions)
+
+		var rewind_button := Button.new()
+		rewind_button.name = "RewindButton"
+		rewind_button.text = "Rewind files here"
+		rewind_button.focus_mode = Control.FOCUS_NONE
+		rewind_button.pressed.connect(_on_rewind_button_pressed.bind(int(entry.get("id", -1))))
+		actions.add_child(rewind_button)
+
 	if align_right:
 		row.add_child(spacer)
 		row.add_child(bubble)
@@ -1695,13 +1814,27 @@ func _create_message_bubble(role: String, text: String, label_text: String, alig
 	return row
 
 
-func _update_message_bubble(row: Control, label_text: String, body_text: String) -> void:
+func _update_message_bubble(row: Control, role: String, entry: Dictionary) -> void:
+	var label_text := str(entry.get("title", "You" if role == "user" else "Claude"))
+	var body_text := str(entry.get("text", ""))
 	var bubble_label := row.find_child("BubbleLabel", true, false) as Label
 	if bubble_label != null:
 		bubble_label.text = label_text
 	var bubble_body := row.find_child("BubbleBody", true, false) as RichTextLabel
 	if bubble_body != null:
 		bubble_body.text = body_text
+	if role != "user":
+		return
+	var rewind_button := row.find_child("RewindButton", true, false) as Button
+	var actions := row.find_child("BubbleActions", true, false) as HBoxContainer
+	if rewind_button == null or actions == null:
+		return
+	var can_rewind := _should_show_rewind_action(entry)
+	var is_pending := int(entry.get("id", -1)) == _rewind_pending_entry_id
+	actions.visible = can_rewind
+	rewind_button.visible = can_rewind
+	rewind_button.disabled = not can_rewind or _client_node == null or _client_node.is_busy() or _rewind_pending_entry_id >= 0
+	rewind_button.text = "Rewinding..." if is_pending else "Rewind files here"
 
 
 func _create_detail_card(kind: String, title: String, body_text: String, collapsed: bool) -> Control:
@@ -2309,6 +2442,11 @@ func _on_transcript_filter_toggled(_pressed: bool) -> void:
 	_refresh_transcript_entry_views_visibility()
 
 
+func _on_rewind_support_toggled(_pressed: bool) -> void:
+	_sync_configuration_from_controls()
+	_refresh_transcript_entry_views_visibility()
+
+
 func _on_model_option_selected(index: int) -> void:
 	var selected_model := _chat_model_option.get_item_text(index)
 	_configured_options.model = selected_model
@@ -2358,6 +2496,24 @@ func _on_tool_group_enable_all_pressed(group_id: String) -> void:
 func _on_tool_group_disable_all_pressed(group_id: String) -> void:
 	_set_group_tool_state(group_id, false)
 	_sync_configuration_from_controls()
+
+
+func _on_rewind_button_pressed(entry_id: int) -> void:
+	if _client_node == null or _rewind_pending_entry_id >= 0:
+		return
+	var entry := _get_transcript_entry(entry_id)
+	if entry.is_empty() or not _should_show_rewind_action(entry):
+		return
+	var user_message_id := str(entry.get("uuid", "")).strip_edges()
+	if user_message_id.is_empty():
+		return
+	_rewind_pending_entry_id = entry_id
+	_refresh_transcript_entry_views_visibility()
+	await _client_node.rewind_files(user_message_id)
+	_rewind_pending_entry_id = -1
+	_refresh_transcript_entry_views_visibility()
+	if not _client_node.get_last_error().is_empty():
+		_emit_error(_client_node.get_last_error())
 
 
 func _on_tool_rules_advanced_toggled(_pressed: bool) -> void:

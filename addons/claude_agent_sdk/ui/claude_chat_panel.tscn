@@ -321,6 +321,25 @@ label_settings = SubResource("LabelSettings_bjn48")
 layout_mode = 2
 placeholder_text = "Edit,Bash"
 
+[node name="RewindSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=2147000006]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="RewindSectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/RewindSection" unique_id=2147000007]
+layout_mode = 2
+text = "File rewind"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="RewindSupportToggle" type="CheckBox" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/RewindSection" unique_id=2147000008]
+layout_mode = 2
+text = "Enable file checkpoints and rewind controls"
+
+[node name="RewindSupportHintLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/RewindSection" unique_id=2147000009]
+layout_mode = 2
+text = "Disconnected only. The reference panel enables file checkpointing and replay-user-messages together so user-message UUID checkpoints stay rewindable."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
 [node name="McpSummarySection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=1067656512]
 layout_mode = 2
 theme_override_constants/separation = 12
