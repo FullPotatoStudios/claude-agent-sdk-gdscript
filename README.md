@@ -50,6 +50,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
 - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
+- transport-owned buffered stdout parsing parity through `ClaudeAgentOptions.max_buffer_size`, including split/minified JSON recovery and stray non-JSON stdout skip behavior
 - transport-first plugin-dir and `fork_session` option parity through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
 - transport-first file-checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` plus runtime `rewind_files()` controls on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - task-control parity through runtime `stop_task()` controls plus typed `task_started`, `task_progress`, and `task_notification` system messages
@@ -129,6 +130,7 @@ func _ready() -> void:
 - transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` support through `ClaudeAgentOptions`, including plain `settings` pass-through and sandbox-to-`--settings` JSON merging
 - transport-first diagnostics support through `ClaudeAgentOptions.extra_args` and per-line stderr callback delivery
+- transport-owned buffered stdout parsing support through `ClaudeAgentOptions.max_buffer_size`, including split/minified JSON recovery and non-JSON stdout skip behavior
 - transport-first local-plugin and `fork_session` option support through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
 - transport-first file checkpointing through `ClaudeAgentOptions.enable_file_checkpointing` and connected-session `rewind_files(user_message_id)` controls
 - task-control support through connected-session `stop_task(task_id)` controls and typed task system messages
@@ -196,6 +198,7 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path.
 - `sandbox` is transport-only in the current slice and is implemented by building a `--settings` value; it does not add new initialize payload fields.
 - `extra_args` and `stderr` are also transport-only in the current slice; they do not enter initialize payloads.
+- `max_buffer_size` is also transport-only in the current slice; it controls local stdout buffering and does not enter initialize payloads or CLI argument serialization.
 - `plugins` and `fork_session` are also transport-only in the current slice; they do not enter initialize payloads.
 - `enable_file_checkpointing` is also transport-only in the current slice; it does not enter initialize payloads.
 - `user` is also transport-only in the current slice; it does not enter initialize payloads.

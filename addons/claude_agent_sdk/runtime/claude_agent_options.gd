@@ -26,6 +26,7 @@ var permission_prompt_tool_name: String = ""
 var settings: String = ""
 var extra_args: Dictionary = {}
 var add_dirs: Array[String] = []
+var max_buffer_size: Variant = null
 var plugins: Array = []
 var hooks: Dictionary = {}
 var can_use_tool: Callable = Callable()
@@ -93,6 +94,8 @@ func apply(config: Dictionary):
 		extra_args = _duplicate_nested_variant(config["extra_args"])
 	if config.has("add_dirs") and config["add_dirs"] is Array:
 		add_dirs = _to_string_array(config["add_dirs"] as Array)
+	if config.has("max_buffer_size"):
+		max_buffer_size = _normalize_int_variant(config["max_buffer_size"])
 	if config.has("plugins") and config["plugins"] is Array:
 		plugins = _normalize_plugins(config["plugins"] as Array)
 	if config.has("hooks") and config["hooks"] is Dictionary:
@@ -153,6 +156,7 @@ func duplicate_options():
 			"settings": settings,
 			"extra_args": _duplicate_nested_variant(extra_args),
 			"add_dirs": add_dirs.duplicate(),
+			"max_buffer_size": max_buffer_size,
 			"plugins": _duplicate_plugins(plugins),
 			"hooks": _duplicate_hooks(hooks),
 			"can_use_tool": can_use_tool,

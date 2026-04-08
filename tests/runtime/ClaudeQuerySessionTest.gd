@@ -190,6 +190,7 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 				"settings": "{\"verbose\": true}",
 				"sandbox": {"enabled": true},
 				"extra_args": {"debug-to-stderr": null},
+				"max_buffer_size": 4096,
 				"enable_file_checkpointing": true,
 				"user": "claude",
 				"plugins": [{"type": "local", "path": "res://addons/example-plugin"}],
@@ -216,6 +217,7 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("settings")).is_false()
 	assert_bool(request.has("sandbox")).is_false()
 	assert_bool(request.has("extra_args")).is_false()
+	assert_bool(request.has("max_buffer_size")).is_false()
 	assert_bool(request.has("enable_file_checkpointing")).is_false()
 	assert_bool(request.has("user")).is_false()
 	assert_bool(request.has("plugins")).is_false()

@@ -60,6 +60,7 @@ Phase 1 findings that constrain this matrix:
 | String-prompt stdin lifetime rules | `tests/test_query.py` | Prevents deadlocks around late control requests | initialize flow, result tracking | `v1 core` | Important for hooks/MCP compatibility even before those features ship |
 | CLI discovery fallback search | `_internal/transport/subprocess_cli.py` | Nice UX, but not essential if `claude` on `PATH` plus explicit path works | subprocess transport | `v1 later` | Start with `claude` on `PATH` plus override path |
 | Broader CLI flag passthrough via `extra_args` | `ClaudeAgentOptions.extra_args` | Helps edge cases without widening the stable API too early | subprocess transport | `v1 later` | Delivered post-v1 in Phase 10L as transport-first ordered passthrough with flag/value support |
+| Buffered stdout parsing and `max_buffer_size` control | `_internal/transport/subprocess_cli.py`, `types.py`, `tests/test_subprocess_buffering.py` | Prevents split/minified CLI stdout and stray debug lines from corrupting session reads | subprocess transport, stdout draining | `v1 later` | Delivered post-v1 in Phase 10AD through transport-owned speculative JSON buffering plus transport-only `ClaudeAgentOptions.max_buffer_size` |
 | Bundled CLI inside the SDK package | `_bundled/`, subprocess transport | Upstream convenience for Python packaging | packaging pipeline | `not applicable` | Conflicts with current addon strategy of using a user-installed CLI |
 
 ## Message parsing and typed event models
@@ -172,6 +173,7 @@ Status note:
 - Phase 10N adds transport-first file checkpointing plus connected-session `rewind_files()` parity without widening the initialize payload surface
 - Phase 10O adds task-control `stop_task()` parity plus typed task system message parsing without widening the transport or initialize payload surfaces
 - Phase 10P adds transport-first `ClaudeAgentOptions.user` parity through a POSIX `sudo -n -u` launch wrapper while keeping `user` out of initialize payloads
+- Phase 10AD adds transport-owned buffered stdout parsing parity plus transport-only `ClaudeAgentOptions.max_buffer_size`
 - Phase 10V adds typed hook-output helpers plus typed permission-update helpers while keeping hook callback inputs dictionary-first for backward compatibility
 - Phase 10X adds additive typed hook-input wrappers through `ClaudeHookInput` plus event-specific classes on `ClaudeHookContext.typed_input` / `hook_input`
 - Phase 10W closes the remaining `connect()` lifecycle gap by making repeated local `connect_client()` calls reopen cleanly instead of no-oping, and the reference chat panel now showcases disconnected connect-and-send behavior directly

@@ -4,6 +4,7 @@ class_name ClaudeSubprocessCLITransport
 const POLL_INTERVAL_SEC := 0.02
 const POLL_INTERVAL_MSEC := 20
 const SDK_ENTRYPOINT := "sdk-gd"
+const DEFAULT_MAX_BUFFER_SIZE := 1024 * 1024
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeSDKVersionScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_version.gd")
 
@@ -30,6 +31,7 @@ var _stderr_thread: Thread = null
 var _pending_stdout_lines: Array[String] = []
 var _pending_stderr_lines: Array[String] = []
 var _pending_errors: Array[String] = []
+var _stdout_json_buffer := ""
 var _last_error := ""
 
 
@@ -311,6 +313,7 @@ func open_transport() -> bool:
 	_pending_stdout_lines.clear()
 	_pending_stderr_lines.clear()
 	_pending_errors.clear()
+	_stdout_json_buffer = ""
 
 	var spec := build_process_spec()
 	_process = OS.execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()), false)
@@ -691,12 +694,12 @@ func _run_dispatch_loop(tree: SceneTree) -> void:
 
 
 func _drain_pending_events() -> void:
-	var stdout_lines: Array[String] = []
+	var stdout_chunks: Array[String] = []
 	var stderr_lines: Array[String] = []
 	var errors: Array[String] = []
 
 	_queue_mutex.lock()
-	stdout_lines = _pending_stdout_lines.duplicate()
+	stdout_chunks = _pending_stdout_lines.duplicate()
 	stderr_lines = _pending_stderr_lines.duplicate()
 	errors = _pending_errors.duplicate()
 	_pending_stdout_lines.clear()
@@ -704,8 +707,14 @@ func _drain_pending_events() -> void:
 	_pending_errors.clear()
 	_queue_mutex.unlock()
 
-	for line in stdout_lines:
-		stdout_line.emit(line)
+	for chunk in stdout_chunks:
+		var stdout_parse_result := _consume_stdout_chunk(chunk)
+		var parsed_messages: Array[String] = stdout_parse_result.get("messages", []) if stdout_parse_result.get("messages", []) is Array else []
+		for line in parsed_messages:
+			stdout_line.emit(line)
+		var stdout_error := str(stdout_parse_result.get("error", ""))
+		if not stdout_error.is_empty():
+			errors.append(stdout_error)
 	for line in stderr_lines:
 		stderr_line.emit(line)
 		if _options.stderr.is_valid() and not line.is_empty():
@@ -732,6 +741,45 @@ func _emit_closed_once() -> void:
 		return
 	_close_emitted = true
 	transport_closed.emit()
+
+
+func _consume_stdout_chunk(chunk: String) -> Dictionary:
+	var messages: Array[String] = []
+	var result := {
+		"messages": messages,
+		"error": "",
+	}
+	var trimmed_chunk := chunk.strip_edges()
+	if trimmed_chunk.is_empty():
+		return result
+
+	for json_line in trimmed_chunk.split("\n", false):
+		var trimmed_line := json_line.strip_edges()
+		if trimmed_line.is_empty():
+			continue
+		if _stdout_json_buffer.is_empty() and not trimmed_line.begins_with("{"):
+			continue
+
+		_stdout_json_buffer += trimmed_line
+		var max_buffer_size := _resolved_max_buffer_size()
+		if _stdout_json_buffer.length() > max_buffer_size:
+			var overflow_message := "JSON message exceeded maximum buffer size of %d bytes" % max_buffer_size
+			_stdout_json_buffer = ""
+			result["error"] = overflow_message
+			return result
+
+		var parser := JSON.new()
+		if parser.parse(_stdout_json_buffer) == OK and parser.data is Dictionary:
+			messages.append(_stdout_json_buffer)
+			_stdout_json_buffer = ""
+
+	return result
+
+
+func _resolved_max_buffer_size() -> int:
+	if _options == null or _options.max_buffer_size == null:
+		return DEFAULT_MAX_BUFFER_SIZE
+	return int(_options.max_buffer_size)
 
 
 func _set_last_error(message: String) -> void:

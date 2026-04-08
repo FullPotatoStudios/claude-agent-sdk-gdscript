@@ -59,6 +59,17 @@ func test_duplicate_options_preserves_phase_4_fields() -> void:
 	assert_int((duplicated.hooks["PreToolUse"] as Array).size()).is_equal(1)
 
 
+func test_max_buffer_size_stays_transport_only_and_survives_duplicate() -> void:
+	var options = ClaudeAgentOptions.new({
+		"max_buffer_size": 512,
+	})
+	var duplicated = options.duplicate_options()
+	var transport = ClaudeSubprocessCLITransport.new(options)
+
+	assert_int(int(duplicated.max_buffer_size)).is_equal(512)
+	assert_bool(transport.build_command_args().has("--max-buffer-size")).is_false()
+
+
 func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() -> void:
 	var preset_options = ClaudeAgentOptions.new({
 		"system_prompt": {"type": "preset", "preset": "claude_code", "append": "Stay in character."},

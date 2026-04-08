@@ -116,6 +116,9 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` now treats selected saved-session preview state separately from the authoritative live runtime session id
   - connected-idle saved-session selection and `New chat` now use disconnect-and-handoff behavior instead of in-place live-session switching
   - `ClaudeChatPanel` stderr capture now chains any existing `ClaudeAgentOptions.stderr` callback while surfacing the latest CLI diagnostic line in connect failures
+  - transport-owned buffered stdout parsing parity for split, concatenated, blank-line-separated, and large minified CLI JSON payloads
+  - skip behavior for stray non-JSON stdout lines when no partial JSON buffer is active
+  - transport-only `ClaudeAgentOptions.max_buffer_size` parity with a local default in `ClaudeSubprocessCLITransport`
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
