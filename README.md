@@ -55,6 +55,8 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - task-control parity through runtime `stop_task()` controls plus typed `task_started`, `task_progress`, and `task_notification` system messages
 - typed `rate_limit_event` parity through `ClaudeRateLimitInfo`, `ClaudeRateLimitEvent`, and system-path rendering in the shipped chat panel
 - interactive prompt-on-connect parity through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+- typed hook-output helpers through `ClaudeHookOutput` plus event-specific hook output classes, with additive runtime coercion for legacy dictionary callbacks
+- typed permission-update helpers through `ClaudePermissionUpdate` and `ClaudePermissionRuleValue`, with additive typed suggestion exposure on `ClaudeToolPermissionContext`
 - transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
@@ -118,6 +120,7 @@ func _ready() -> void:
 - Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, session forking, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
+- Typed hook-output helpers plus typed permission-update/result helpers for runtime callback integrations
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Runtime-first agent definitions through `ClaudeAgentOptions.agents` and initialize-payload serialization
 - `setting_sources` support for controlling user/project/local Claude settings loading
@@ -141,7 +144,7 @@ func _ready() -> void:
 
 Most of the pinned upstream baseline is covered, but a few parity gaps and one transport caveat still remain:
 
-- hook and tool-permission typing is lighter than the current Python SDK surface
+- hook callback inputs remain dictionary-first in GDScript for backward compatibility, even though typed hook outputs and permission updates are now supported
 - `ClaudeAgentOptions.user` is implemented through a POSIX shell-wrapper launch path; Windows shell-backed transports currently reject it
 
 Use these as the canonical sources of truth for compatibility and parity status:

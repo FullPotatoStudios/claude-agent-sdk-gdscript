@@ -21,6 +21,7 @@ Use `ClaudeSDKClient` directly when:
 - you want to pass through Claude settings or configure bash sandboxing through `ClaudeAgentOptions.settings` and `ClaudeAgentOptions.sandbox`
 - you want transport-first local plugin loading or CLI-side forked-session startup through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
+- you want typed runtime helpers for hook callback outputs or permission updates while keeping the existing dictionary callback flow compatible
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
 normal result dictionary with `is_error = true`. Unlike the upstream Python
@@ -90,6 +91,8 @@ The integration layer is intentionally thin.
 - `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`, emitted as repeated `--plugin-dir` flags
 - `permission_prompt_tool_name` cannot be combined with `can_use_tool`; when you use `can_use_tool`, the transport continues to auto-configure Claude's permission prompt tool as `stdio`
 - `ClaudeQuery.query()` and `ClaudeSDKClient.query()` now accept either a `String` or `ClaudePromptStream`; when `can_use_tool` is configured, upstream-style streamed prompt input is required
+- hook callbacks still receive raw `Dictionary` input payloads for backward compatibility, but they can now return `ClaudeHookOutput` / event-specific hook output helpers instead of only raw dictionaries
+- `ClaudeToolPermissionContext` preserves raw `suggestions` and now also exposes additive typed suggestion coercion through `typed_suggestions`
 - `ClaudeSDKClient.connect_client()`, `ClaudeClientAdapter.connect_client()`, and `ClaudeClientNode.connect_client()` now accept `null`, a `String`, or `ClaudePromptStream` for prompt-on-connect parity; string connect prompts still send a literal `session_id = "default"` user payload, matching upstream connect behavior
 - local `ClaudePromptStream` behavior is intentionally strict: an empty stream or `fail(...)` ends the active turn locally instead of leaving the query busy forever
 - `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured

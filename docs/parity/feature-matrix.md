@@ -94,9 +94,9 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Hook matcher and callback configuration | `types.py`, `_internal/query.py`, `examples/hooks.py`, `e2e-tests/test_hooks.py` | Powerful extension point for advanced apps | initialize flow, callback routing | `v1 later` | Valuable parity, but not needed for core chat |
-| Hook-specific input/output models | `types.py`, hook e2e tests | Needed for safe, typed callback integration | hooks | `v1 later` | Implement with hooks as one slice |
-| Tool-permission callback (`can_use_tool`) | `types.py`, `_internal/query.py`, `examples/tool_permission_callback.py`, `e2e-tests/test_tool_permissions.py` | Important for custom approval UX | initialize flow, permission result models | `v1 later` | High-value after core conversation support |
-| Permission update suggestion/result models | `types.py`, hook and permission tests | Needed to mirror upstream callback semantics | permission callbacks | `v1 later` | Bundle with hook/permission work |
+| Hook-specific input/output models | `types.py`, hook e2e tests | Needed for safe, typed callback integration | hooks | `v1 later` | Phase 10V adds typed hook-output helpers and runtime coercion for callback results; hook inputs intentionally remain dictionary-first in GDScript for compatibility |
+| Tool-permission callback (`can_use_tool`) | `types.py`, `_internal/query.py`, `examples/tool_permission_callback.py`, `e2e-tests/test_tool_permissions.py` | Important for custom approval UX | initialize flow, permission result models | `v1 later` | Phase 5 delivered the callback path; Phase 10V widens it with additive typed permission-update helpers and typed suggestion exposure |
+| Permission update suggestion/result models | `types.py`, hook and permission tests | Needed to mirror upstream callback semantics | permission callbacks | `v1 later` | Delivered post-v1 in Phase 10V through `ClaudePermissionUpdate`, `ClaudePermissionRuleValue`, and runtime coercion on permission callback results |
 
 ## Sessions and session mutations
 
@@ -172,4 +172,5 @@ Status note:
 - Phase 10N adds transport-first file checkpointing plus connected-session `rewind_files()` parity without widening the initialize payload surface
 - Phase 10O adds task-control `stop_task()` parity plus typed task system message parsing without widening the transport or initialize payload surfaces
 - Phase 10P adds transport-first `ClaudeAgentOptions.user` parity through a POSIX `sudo -n -u` launch wrapper while keeping `user` out of initialize payloads
+- Phase 10V adds typed hook-output helpers plus typed permission-update helpers while keeping hook callback inputs dictionary-first for backward compatibility
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

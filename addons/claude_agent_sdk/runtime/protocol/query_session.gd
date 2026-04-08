@@ -9,6 +9,8 @@ const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudeHookContextScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_context.gd")
+const ClaudeHookOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_output.gd")
+const ClaudeHookSpecificOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_specific_output.gd")
 const ClaudeToolPermissionContextScript := preload("res://addons/claude_agent_sdk/runtime/claude_tool_permission_context.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
@@ -618,14 +620,12 @@ func _handle_hook_callback_request(request_data: Dictionary) -> Dictionary:
 		return _raise_control_request_error("No hook callback found for ID: %s" % callback_id)
 
 	var input_data: Dictionary = request_data.get("input", {}) if request_data.get("input", {}) is Dictionary else {}
-	var tool_use_id := str(request_data.get("tool_use_id", ""))
+	var tool_use_id: Variant = request_data.get("tool_use_id", null)
 	var hook_context = ClaudeHookContextScript.new()
 	var result: Variant = await callback.callv([input_data, tool_use_id, hook_context])
 	if result == null:
 		return {}
-	if result is Dictionary:
-		return (result as Dictionary).duplicate(true)
-	return _raise_control_request_error("Hook callback must return a Dictionary")
+	return _normalize_hook_callback_result(result)
 
 
 func _handle_permission_control_request(request_data: Dictionary) -> Dictionary:
@@ -638,19 +638,13 @@ func _handle_permission_control_request(request_data: Dictionary) -> Dictionary:
 	var context = ClaudeToolPermissionContextScript.new(
 		null,
 		suggestions,
-		str(request_data.get("tool_use_id", "")),
-		str(request_data.get("agent_id", "")),
+		request_data.get("tool_use_id", null),
+		request_data.get("agent_id", null),
 	)
 	var result: Variant = await _options.can_use_tool.callv([tool_name, input_data, context])
 	if result is ClaudePermissionResultAllow:
 		var allow_result = result as ClaudePermissionResultAllow
-		var response_payload := {
-			"behavior": "allow",
-			"updatedInput": allow_result.updated_input if allow_result.updated_input != null else input_data,
-		}
-		if allow_result.updated_permissions != null:
-			response_payload["updatedPermissions"] = allow_result.updated_permissions
-		return response_payload
+		return allow_result.to_dict(input_data)
 	if result is ClaudePermissionResultDeny:
 		var deny_result = result as ClaudePermissionResultDeny
 		var response_payload := {
@@ -661,6 +655,84 @@ func _handle_permission_control_request(request_data: Dictionary) -> Dictionary:
 			response_payload["interrupt"] = true
 		return response_payload
 	return _raise_control_request_error("Tool permission callback must return ClaudePermissionResultAllow or ClaudePermissionResultDeny")
+
+
+func _normalize_hook_callback_result(result: Variant) -> Dictionary:
+	if result is ClaudeHookOutput:
+		return (result as ClaudeHookOutput).to_dict()
+	if result is ClaudeHookSpecificOutput:
+		return {
+			"hookSpecificOutput": (result as ClaudeHookSpecificOutput).to_dict(),
+		}
+	if result is Dictionary:
+		return _normalize_hook_output_dictionary(result as Dictionary)
+	return _raise_control_request_error("Hook callback must return a Dictionary or ClaudeHookOutput")
+
+
+func _normalize_hook_output_dictionary(value: Dictionary) -> Dictionary:
+	var normalized: Dictionary = {}
+	for key_variant in value.keys():
+		var key := str(key_variant)
+		var normalized_key := _normalize_hook_output_key(key)
+		var item: Variant = value[key_variant]
+		if normalized_key == "hookSpecificOutput":
+			normalized[normalized_key] = _normalize_hook_specific_output_variant(item)
+		else:
+			normalized[normalized_key] = item
+	return normalized
+
+
+func _normalize_hook_specific_output_variant(value: Variant) -> Variant:
+	if value == null:
+		return null
+	if value is ClaudeHookSpecificOutput:
+		return (value as ClaudeHookSpecificOutput).to_dict()
+	if value is Dictionary:
+		var source := value as Dictionary
+		var normalized: Dictionary = {}
+		for key_variant in source.keys():
+			var key := str(key_variant)
+			normalized[_normalize_hook_specific_output_key(key)] = source[key_variant]
+		return normalized
+	return value
+
+
+func _normalize_hook_output_key(key: String) -> String:
+	match key:
+		"continue_":
+			return "continue"
+		"async_":
+			return "async"
+		"suppress_output":
+			return "suppressOutput"
+		"stop_reason":
+			return "stopReason"
+		"system_message":
+			return "systemMessage"
+		"hook_specific_output":
+			return "hookSpecificOutput"
+		"async_timeout":
+			return "asyncTimeout"
+		_:
+			return key
+
+
+func _normalize_hook_specific_output_key(key: String) -> String:
+	match key:
+		"hook_event_name":
+			return "hookEventName"
+		"permission_decision":
+			return "permissionDecision"
+		"permission_decision_reason":
+			return "permissionDecisionReason"
+		"updated_input":
+			return "updatedInput"
+		"additional_context":
+			return "additionalContext"
+		"updated_mcp_tool_output":
+			return "updatedMCPToolOutput"
+		_:
+			return key
 
 
 func _handle_mcp_message_request(request_data: Dictionary) -> Dictionary:

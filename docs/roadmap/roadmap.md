@@ -285,6 +285,13 @@ Delivered in Phase 10U:
 - connect-time `ClaudePromptStream` payload preservation without session-id backfill
 - explicit local lifecycle divergence documentation for repeated `connect_client()` calls, which still keep the existing no-op behavior instead of recreating the session
 
+Delivered in Phase 10V:
+- `ClaudePermissionRuleValue` and `ClaudePermissionUpdate` for typed runtime permission-update construction and serialization
+- `ClaudeHookOutput` plus event-specific hook output helper classes for typed runtime hook callback responses
+- additive hook-output coercion in `ClaudeQuerySession`, including Python-style `continue_` / `async_` alias handling for raw dictionaries
+- additive typed suggestion exposure on `ClaudeToolPermissionContext` while preserving the existing raw `suggestions` array
+- explicit local compatibility note that hook callback inputs remain dictionary-first in GDScript
+
 ## Current focus
 
-Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially richer hook/tool-permission typing.
+Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially dictionary-first hook-input typing tradeoffs and the repeated `connect_client()` lifecycle divergence from upstream.
