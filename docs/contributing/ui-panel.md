@@ -16,6 +16,7 @@ Use `ClaudeChatPanel` when:
 - you want auth-state, saved-session browsing, connect/disconnect controls, transcript rendering, and a composer without building UI glue first
 - you want quick model, effort, and permission controls in the main chat workflow
 - you want disconnected chat-configuration editing for system prompts, built-in tools, tool allow/deny lists, and rewind support
+- you want connected-session context-usage inspection and MCP server health controls in the same reference panel
 - you want a resizable two-pane layout with a saved-session browser on the left and chat on the right
 - you want a reference for building your own UI on top of `ClaudeClientAdapter` or `ClaudeClientNode`
 
@@ -74,6 +75,7 @@ Methods:
 - prompt submission is only disabled while connecting, while a live turn is busy, or while auth is unavailable
 - the panel renders typed runtime messages and partial stream events from the internal client node
 - the default transcript view is simplified chat first, with thinking/tasks/tools/system/raw detail hidden behind transcript toggles
+- the `Settings` view keeps disconnected-only option editing separate from connected-only live diagnostics for context usage and MCP server status
 
 ## Current scope
 
@@ -96,6 +98,8 @@ The shipped panel currently includes:
 - interrupt support during active turns
 - live model and permission-mode changes while connected
 - reconnect-only effort changes, exposed in the chat view but disabled while connected
+- connected-only live context-usage inspection with manual refresh plus automatic refresh after connect and turn results
+- connected-only MCP server status cards with reconnect and enable/disable controls in the separate `Settings` view
 - disconnected-only system prompt, built-in tool, advanced allow/deny, rewind-support, and MCP-summary editing in the separate `Settings` view
 - per-user rewind actions in the transcript when the active session has rewindable user-message UUIDs available
 

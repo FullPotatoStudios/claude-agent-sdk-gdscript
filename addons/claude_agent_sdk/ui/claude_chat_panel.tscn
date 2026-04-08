@@ -169,6 +169,101 @@ layout_mode = 2
 text = "Chat configuration"
 label_settings = SubResource("LabelSettings_bjn48")
 
+[node name="LiveSessionSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=2147000010]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="LiveSessionSectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection" unique_id=2147000011]
+layout_mode = 2
+text = "Live session diagnostics"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="LiveSessionHintLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection" unique_id=2147000012]
+layout_mode = 2
+text = "Available while connected. Use these controls to inspect live context usage and manage MCP server health without leaving the reference panel."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="LiveContextCard" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection" unique_id=2147000013]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LiveContextMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard" unique_id=2147000014]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="LiveContextBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin" unique_id=2147000015]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveContextHeader" type="HBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody" unique_id=2147000016]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveContextLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody/LiveContextHeader" unique_id=2147000017]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Context usage"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="RefreshContextUsageButton" type="Button" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody/LiveContextHeader" unique_id=2147000018]
+layout_mode = 2
+text = "Refresh"
+
+[node name="LiveContextSummaryValue" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody" unique_id=2147000019]
+layout_mode = 2
+text = "Connect to inspect live context usage."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="LiveContextDetailValue" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody" unique_id=2147000020]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="LiveMcpCard" type="PanelContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection" unique_id=2147000021]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LiveMcpMargin" type="MarginContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard" unique_id=2147000022]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="LiveMcpBody" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin" unique_id=2147000023]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveMcpHeader" type="HBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody" unique_id=2147000024]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveMcpLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody/LiveMcpHeader" unique_id=2147000025]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "MCP server status"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="RefreshMcpStatusButton" type="Button" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody/LiveMcpHeader" unique_id=2147000026]
+layout_mode = 2
+text = "Refresh"
+
+[node name="LiveMcpSummaryValue" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody" unique_id=2147000027]
+layout_mode = 2
+text = "Connect to inspect live MCP server status."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="LiveMcpServerList" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody" unique_id=2147000028]
+layout_mode = 2
+theme_override_constants/separation = 8
+
 [node name="SystemPromptSection" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow" unique_id=1240184721]
 layout_mode = 2
 theme_override_constants/separation = 12

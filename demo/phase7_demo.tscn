@@ -67,7 +67,7 @@ text = "Session-aware Claude chat panel"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.658824, 0.709804, 0.811765, 1)
 theme_override_font_sizes/font_size = 15
-text = "This scene validates the shipped addon UI directly. The panel below now combines saved-session browsing and resume with disconnected prompt/tool configuration, plus a code-driven MCP/custom-tool environment, while still using ClaudeClientNode internally."
+text = "This scene validates the shipped addon UI directly. The panel below now combines saved-session browsing and resume with disconnected prompt/tool configuration, connected-session context and MCP diagnostics, plus a code-driven MCP/custom-tool environment, while still using ClaudeClientNode internally."
 autowrap_mode = 3
 
 [node name="PanelWrap" type="MarginContainer" parent="Layout/Shell/Body" unique_id=1958223651]

@@ -309,6 +309,11 @@ Delivered in Phase 10Y:
 - per-user rewind actions in the reference panel for live or restored transcript entries that belong to the active session
 - panel/UI coverage and docs updated so runtime rewind parity is no longer presented as a runtime-only feature
 
+Delivered in Phase 10Z:
+- `ClaudeChatPanel` connected-session diagnostics for `get_context_usage()` with automatic post-connect / post-result refresh plus manual refresh controls
+- `ClaudeChatPanel` live MCP status cards with `get_mcp_status()`, `reconnect_mcp_server()`, and `toggle_mcp_server()` controls in the shipped reference panel
+- demo, tests, and parity/docs updated so existing runtime context/MCP controls are now showcased directly in the reference UI
+
 ## Current focus
 
-The current bounded reference-panel rewind slice is now delivered. The next parity planning pass should start with a fresh upstream diff review, then decide whether any new bounded runtime or reference-panel slice is worth taking on beyond the remaining Windows `user` caveat and intentionally deferred broader parity work.
+The current bounded reference-panel diagnostics slice is now delivered. The next parity planning pass should start with a fresh upstream diff review, then decide whether any new bounded runtime or reference-panel slice is worth taking on beyond the remaining Windows `user` caveat and intentionally deferred broader parity work.

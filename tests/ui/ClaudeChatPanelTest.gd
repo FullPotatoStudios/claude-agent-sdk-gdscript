@@ -182,6 +182,158 @@ func test_panel_disconnected_chat_configuration_controls_update_options_and_lock
 	await _cleanup_panel(panel)
 
 
+func test_panel_live_session_diagnostics_fetch_and_render_context_and_mcp_status() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request := _last_control_request_by_subtype(transport, "initialize")
+	_emit_success_control_response(transport, init_request, {"commands": [{"name": "/help"}]})
+	await _await_frames(2)
+
+	var context_request := _last_control_request_by_subtype(transport, "get_context_usage")
+	assert_dict(context_request).is_not_empty()
+	_emit_success_control_response(transport, context_request, {
+		"categories": [
+			{"name": "System prompt", "tokens": 3200, "color": "#abc"},
+			{"name": "Messages", "tokens": 61400, "color": "#def"},
+		],
+		"totalTokens": 98200,
+		"maxTokens": 155000,
+		"rawMaxTokens": 200000,
+		"percentage": 49.1,
+		"model": "claude-sonnet-4-5",
+		"isAutoCompactEnabled": true,
+		"memoryFiles": [{"path": "CLAUDE.md", "type": "project", "tokens": 512}],
+		"mcpTools": [{"name": "search", "serverName": "ref", "tokens": 164, "isLoaded": true}],
+		"agents": [{"agentType": "coder", "source": "sdk", "tokens": 299}],
+		"gridRows": [],
+	})
+	await _await_frames(2)
+
+	var mcp_status_request := _last_control_request_by_subtype(transport, "mcp_status")
+	assert_dict(mcp_status_request).is_not_empty()
+	_emit_success_control_response(transport, mcp_status_request, {
+		"mcpServers": [
+			{
+				"name": "my-http-server",
+				"status": "connected",
+				"serverInfo": {"name": "my-http-server", "version": "1.0.0"},
+				"config": {"type": "http", "url": "https://example.com/mcp"},
+				"scope": "project",
+				"tools": [{"name": "greet"}, {"name": "reset"}],
+			},
+			{
+				"name": "failed-server",
+				"status": "failed",
+				"error": "Connection refused",
+			},
+			{
+				"name": "proxy-server",
+				"status": "needs-auth",
+				"config": {"type": "claudeai-proxy", "id": "proxy-123"},
+			},
+		],
+	})
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	assert_bool(_control(panel, "LiveSessionSection").visible).is_true()
+	assert_str(_label(panel, "LiveContextSummaryValue").text).contains("49.1")
+	assert_str(_label(panel, "LiveContextSummaryValue").text).contains("98200")
+	assert_str(_label(panel, "LiveContextDetailValue").text).contains("System prompt 3200")
+	assert_str(_label(panel, "LiveMcpSummaryValue").text).contains("3 servers")
+	assert_object(panel.find_child("McpServerRow_my_http_server", true, false)).is_not_null()
+	assert_str(_label(panel, "McpServerDetail_failed_server").text).contains("Connection refused")
+	assert_bool(_button(panel, "McpReconnectButton_failed_server").visible).is_true()
+	assert_str(_button(panel, "McpToggleButton_my_http_server").text).is_equal("Disable")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_mcp_server_actions_send_control_requests_and_refresh_rendered_status() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request := _last_control_request_by_subtype(transport, "initialize")
+	_emit_success_control_response(transport, init_request, {"commands": [{"name": "/help"}]})
+	await _await_frames(2)
+
+	var context_request := _last_control_request_by_subtype(transport, "get_context_usage")
+	_emit_success_control_response(transport, context_request, {
+		"categories": [],
+		"totalTokens": 100,
+		"maxTokens": 1000,
+		"rawMaxTokens": 1000,
+		"percentage": 10.0,
+		"model": "haiku",
+		"isAutoCompactEnabled": true,
+		"memoryFiles": [],
+		"mcpTools": [],
+		"agents": [],
+		"gridRows": [],
+	})
+	await _await_frames(2)
+
+	var initial_mcp_request := _last_control_request_by_subtype(transport, "mcp_status")
+	_emit_success_control_response(transport, initial_mcp_request, {
+		"mcpServers": [
+			{"name": "failed-server", "status": "failed", "error": "Connection refused"},
+			{"name": "connected-server", "status": "connected", "tools": [{"name": "read"}]},
+		],
+	})
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	_button(panel, "McpReconnectButton_failed_server").pressed.emit()
+	await _await_frames(1)
+	var reconnect_request := _last_control_request_by_subtype(transport, "mcp_reconnect")
+	assert_str(str((reconnect_request.get("request", {}) as Dictionary).get("serverName", ""))).is_equal("failed-server")
+	_emit_success_control_response(transport, reconnect_request, {})
+	await _await_frames(1)
+
+	var refresh_after_reconnect := _last_control_request_by_subtype(transport, "mcp_status")
+	assert_str(str(refresh_after_reconnect.get("request_id", ""))).is_not_equal(str(initial_mcp_request.get("request_id", "")))
+	_emit_success_control_response(transport, refresh_after_reconnect, {
+		"mcpServers": [
+			{"name": "failed-server", "status": "connected", "tools": [{"name": "repair"}]},
+			{"name": "connected-server", "status": "connected", "tools": [{"name": "read"}]},
+		],
+	})
+	await _await_frames(2)
+	assert_bool(_button(panel, "McpReconnectButton_failed_server").visible).is_false()
+
+	_button(panel, "McpToggleButton_connected_server").pressed.emit()
+	await _await_frames(1)
+	var toggle_request := _last_control_request_by_subtype(transport, "mcp_toggle")
+	assert_str(str((toggle_request.get("request", {}) as Dictionary).get("serverName", ""))).is_equal("connected-server")
+	assert_bool(bool((toggle_request.get("request", {}) as Dictionary).get("enabled", true))).is_false()
+	_emit_success_control_response(transport, toggle_request, {})
+	await _await_frames(1)
+
+	var refresh_after_toggle := _last_control_request_by_subtype(transport, "mcp_status")
+	assert_str(str(refresh_after_toggle.get("request_id", ""))).is_not_equal(str(refresh_after_reconnect.get("request_id", "")))
+	_emit_success_control_response(transport, refresh_after_toggle, {
+		"mcpServers": [
+			{"name": "failed-server", "status": "connected", "tools": [{"name": "repair"}]},
+			{"name": "connected-server", "status": "disabled"},
+		],
+	})
+	await _await_frames(2)
+	assert_str(_button(panel, "McpToggleButton_connected_server").text).is_equal("Enable")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_rewind_support_toggle_loads_and_preserves_unrelated_extra_args() -> void:
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(ClaudeAgentOptionsScript.new({
@@ -2043,6 +2195,28 @@ func _checked_built_in_tool_count(panel) -> int:
 
 func _prompt_input(panel) -> TextEdit:
 	return panel.find_child("PromptInput", true, false) as TextEdit
+
+
+func _last_control_request_by_subtype(transport, subtype: String) -> Dictionary:
+	for index in range(transport.writes.size() - 1, -1, -1):
+		var payload: Variant = JSON.parse_string(transport.writes[index])
+		if not (payload is Dictionary):
+			continue
+		var request := (payload as Dictionary).get("request", {}) as Dictionary
+		if str(request.get("subtype", "")) == subtype:
+			return payload as Dictionary
+	return {}
+
+
+func _emit_success_control_response(transport, request_payload: Dictionary, response: Dictionary) -> void:
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(request_payload.get("request_id", "")),
+			"response": response,
+		},
+	})
 
 
 func _session_list(panel) -> ItemList:

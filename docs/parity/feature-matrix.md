@@ -39,8 +39,8 @@ Phase 1 findings that constrain this matrix:
 | `set_permission_mode()` | `client.py`, `e2e-tests/test_dynamic_control.py` | Supports switching from planning to editing flows | control protocol | `v1 core` | Required dynamic control in v1 |
 | `set_model()` | `client.py`, `e2e-tests/test_dynamic_control.py` | Lets clients escalate or cheapen a live session | control protocol | `v1 core` | Required dynamic control in v1 |
 | `get_server_info()` | `client.py` | Exposes initialize result to clients and adapters | initialize flow | `v1 core` | Useful for commands, output styles, capability introspection |
-| `get_context_usage()` | `client.py` | Valuable for advanced UIs and diagnostics | control protocol, typed response models | `v1 later` | Worth adding after core conversation flow |
-| `get_mcp_status()` / reconnect / toggle | `client.py`, `e2e-tests/test_sdk_mcp_tools.py` | Important once MCP parity matters | control protocol, MCP config, typed responses | `v1 later` | Not on the critical path for core chat |
+| `get_context_usage()` | `client.py` | Valuable for advanced UIs and diagnostics | control protocol, typed response models | `v1 later` | Delivered post-v1 on the runtime surfaces, with reference-panel context diagnostics added in Phase 10Z |
+| `get_mcp_status()` / reconnect / toggle | `client.py`, `e2e-tests/test_sdk_mcp_tools.py` | Important once MCP parity matters | control protocol, MCP config, typed responses | `v1 later` | Delivered post-v1 on the runtime surfaces, with reference-panel MCP status/reconnect/toggle controls added in Phase 10Z |
 | `rewind_files()` | `client.py` | Depends on checkpointing and replayed user messages | file checkpointing, message UUIDs, control protocol | `deferred` | Delivered post-v1 in Phase 10N on the runtime surfaces, with reference-panel rewind support added in Phase 10Y |
 | `stop_task()` | `client.py` | Useful only once task notifications and task control are first-class | task messages, control protocol | `deferred` | Delivered post-v1 in Phase 10O through command-style `stop_task(task_id)` parity on the runtime, adapter, and node surfaces |
 | Python async context manager | `client.py` `__aenter__` / `__aexit__` | Convenience only | connect/disconnect | `not applicable` | Use explicit lifecycle methods in GDScript |
@@ -112,7 +112,7 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | External MCP server config passthrough | `types.py`, transport command building | Important once users need external tool ecosystems | transport, settings/config encoding | `v1 later` | Reasonable after core chat and core options settle |
-| MCP status inspection and live toggling | `client.py`, e2e MCP tests | Operational tooling for advanced sessions | MCP config, control protocol | `v1 later` | Tied to broader MCP story |
+| MCP status inspection and live toggling | `client.py`, e2e MCP tests | Operational tooling for advanced sessions | MCP config, control protocol | `v1 later` | Delivered post-v1 on the runtime surfaces, with reference-panel diagnostics added in Phase 10Z |
 | SDK MCP in-process tool helpers | `__init__.py` tool decorator and SDK MCP helpers, `e2e-tests/test_sdk_mcp_tools.py` | Powerful parity feature for in-process tool hosting without external MCP processes | MCP server runtime, callback plumbing | `v1 later` | Delivered post-v1 in Phase 10D with Godot-native builders instead of Python decorators |
 | Python decorator-based tool definition API | `__init__.py` | Python convenience layer | language-specific reflection and decorators | `not applicable` | GDScript should use a different registration shape if/when this feature arrives |
 

@@ -70,6 +70,13 @@ var _current_assistant_entry_id := -1
 var _current_thinking_entry_id := -1
 var _pending_prompt_entry_id := -1
 var _rewind_pending_entry_id := -1
+var _live_context_usage: Dictionary = {}
+var _live_context_usage_error := ""
+var _context_usage_refresh_pending := false
+var _live_mcp_status: Dictionary = {}
+var _live_mcp_status_error := ""
+var _mcp_status_refresh_pending := false
+var _mcp_server_action_pending: Dictionary = {}
 
 @onready var _shell: PanelContainer = $Shell
 @onready var _status_badge: PanelContainer = $Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge
@@ -82,6 +89,13 @@ var _rewind_pending_entry_id := -1
 @onready var _chat_view_button: Button = $Shell/Margin/Body/ViewNavigation/ChatViewButton
 @onready var _settings_view_button: Button = $Shell/Margin/Body/ViewNavigation/SettingsViewButton
 @onready var _settings_scroll: ScrollContainer = $Shell/Margin/Body/SettingsScroll
+@onready var _live_session_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection
+@onready var _refresh_context_usage_button: Button = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody/LiveContextHeader/RefreshContextUsageButton
+@onready var _live_context_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody/LiveContextSummaryValue
+@onready var _live_context_detail_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveContextCard/LiveContextMargin/LiveContextBody/LiveContextDetailValue
+@onready var _refresh_mcp_status_button: Button = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody/LiveMcpHeader/RefreshMcpStatusButton
+@onready var _live_mcp_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody/LiveMcpSummaryValue
+@onready var _live_mcp_server_list: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/LiveSessionSection/LiveMcpCard/LiveMcpMargin/LiveMcpBody/LiveMcpServerList
 @onready var _system_prompt_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/SystemPromptSection
 @onready var _tools_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection
 @onready var _mcp_summary_section: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection
@@ -185,6 +199,7 @@ func _start_connect(prompt = null) -> bool:
 	_rebuild_client_node()
 	_connected_session_id = _effective_connect_session_id()
 	_is_connecting = true
+	_clear_live_session_diagnostics()
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
@@ -193,6 +208,7 @@ func _start_connect(prompt = null) -> bool:
 	if not _client_node.get_last_error().is_empty():
 		_is_connecting = false
 		_status_issue_message = _client_node.get_last_error()
+		_clear_live_session_diagnostics()
 		_emit_error(_client_node.get_last_error())
 		_update_status_from_state()
 		_refresh_composer_state()
@@ -284,6 +300,10 @@ func _wire_ui() -> void:
 		_chat_view_button.pressed.connect(_on_chat_view_pressed)
 	if not _settings_view_button.pressed.is_connected(_on_settings_view_pressed):
 		_settings_view_button.pressed.connect(_on_settings_view_pressed)
+	if not _refresh_context_usage_button.pressed.is_connected(_on_refresh_context_usage_pressed):
+		_refresh_context_usage_button.pressed.connect(_on_refresh_context_usage_pressed)
+	if not _refresh_mcp_status_button.pressed.is_connected(_on_refresh_mcp_status_pressed):
+		_refresh_mcp_status_button.pressed.connect(_on_refresh_mcp_status_pressed)
 	if not _interrupt_button.pressed.is_connected(_on_interrupt_pressed):
 		_interrupt_button.pressed.connect(_on_interrupt_pressed)
 	if not _send_button.pressed.is_connected(_on_send_pressed):
@@ -355,6 +375,8 @@ func _wire_ui() -> void:
 func _apply_static_button_icons() -> void:
 	_refresh_auth_button.icon = RefreshIcon
 	_session_refresh_button.icon = RefreshIcon
+	_refresh_context_usage_button.icon = RefreshIcon
+	_refresh_mcp_status_button.icon = RefreshIcon
 	_send_button.icon = SendIcon
 	_interrupt_button.icon = InterruptIcon
 
@@ -471,6 +493,7 @@ func _apply_initial_control_values() -> void:
 	_tool_rules_advanced_toggle.set_pressed_no_signal(has_advanced_rules)
 	_refresh_mcp_summary()
 	_refresh_configuration_field_visibility()
+	_refresh_live_session_diagnostics()
 	_suppress_configuration_sync = false
 
 
@@ -620,6 +643,7 @@ func _refresh_configuration_controls() -> void:
 	_disallowed_tools_input.editable = not configuration_locked and _tool_rules_advanced_body.visible
 	_rewind_support_toggle.disabled = configuration_locked
 	_refresh_built_in_tool_picker_state()
+	_refresh_live_session_diagnostics()
 
 
 func _refresh_configuration_field_visibility() -> void:
@@ -649,6 +673,225 @@ func _refresh_mcp_summary() -> void:
 		elif _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
 			summary = "External MCP config: %s" % str(_configured_options.mcp_servers).strip_edges()
 	_mcp_summary_value.text = summary
+
+
+func _refresh_live_session_diagnostics() -> void:
+	_live_session_section.visible = _session_live or _is_connecting
+	var context_refresh_locked := (not _session_live) or _context_usage_refresh_pending
+	_refresh_context_usage_button.disabled = context_refresh_locked
+	_refresh_context_usage_button.text = "Refreshing" if _context_usage_refresh_pending else "Refresh"
+	if not _session_live:
+		_live_context_summary_value.text = "Waiting for a connected session." if _is_connecting else "Connect to inspect live context usage."
+		_live_context_detail_value.text = ""
+	elif _live_context_usage.is_empty():
+		_live_context_summary_value.text = _live_context_usage_error if not _live_context_usage_error.is_empty() else "Refresh to inspect live context usage."
+		_live_context_detail_value.text = ""
+	else:
+		_live_context_summary_value.text = _context_usage_summary_text(_live_context_usage)
+		_live_context_detail_value.text = _context_usage_detail_text(_live_context_usage)
+
+	var mcp_refresh_locked := (not _session_live) or _mcp_status_refresh_pending
+	_refresh_mcp_status_button.disabled = mcp_refresh_locked
+	_refresh_mcp_status_button.text = "Refreshing" if _mcp_status_refresh_pending else "Refresh"
+	if not _session_live:
+		_live_mcp_summary_value.text = "Waiting for a connected session." if _is_connecting else "Connect to inspect live MCP server status."
+	else:
+		_live_mcp_summary_value.text = _mcp_status_summary_text(_live_mcp_status, _live_mcp_status_error)
+	_rebuild_live_mcp_server_rows()
+
+
+func _clear_live_session_diagnostics() -> void:
+	_live_context_usage.clear()
+	_live_context_usage_error = ""
+	_context_usage_refresh_pending = false
+	_live_mcp_status.clear()
+	_live_mcp_status_error = ""
+	_mcp_status_refresh_pending = false
+	_mcp_server_action_pending.clear()
+	_refresh_live_session_diagnostics()
+
+
+func _context_usage_summary_text(usage: Dictionary) -> String:
+	if usage.is_empty():
+		return "Refresh to inspect live context usage."
+	var percentage := str(usage.get("percentage", ""))
+	var total_tokens := str(usage.get("totalTokens", ""))
+	var max_tokens := str(usage.get("maxTokens", ""))
+	var model := str(usage.get("model", "")).strip_edges()
+	var parts: Array[String] = []
+	if not percentage.is_empty():
+		parts.append("%s%% used" % percentage)
+	if not total_tokens.is_empty() and not max_tokens.is_empty():
+		parts.append("%s / %s tokens" % [total_tokens, max_tokens])
+	elif not total_tokens.is_empty():
+		parts.append("%s tokens" % total_tokens)
+	if not model.is_empty():
+		parts.append(model)
+	return " · ".join(parts)
+
+
+func _context_usage_detail_text(usage: Dictionary) -> String:
+	var parts: Array[String] = []
+	var categories := usage.get("categories", []) as Array
+	if not categories.is_empty():
+		var category_parts: Array[String] = []
+		for category_variant in categories:
+			if not (category_variant is Dictionary):
+				continue
+			var category := category_variant as Dictionary
+			category_parts.append("%s %s" % [str(category.get("name", "")), str(category.get("tokens", ""))])
+			if category_parts.size() >= 3:
+				break
+		if not category_parts.is_empty():
+			parts.append("Top categories: %s" % " · ".join(category_parts))
+	var memory_files := usage.get("memoryFiles", []) as Array
+	if not memory_files.is_empty():
+		parts.append("%d memory file%s" % [memory_files.size(), "" if memory_files.size() == 1 else "s"])
+	var mcp_tools := usage.get("mcpTools", []) as Array
+	if not mcp_tools.is_empty():
+		parts.append("%d MCP tool%s loaded" % [mcp_tools.size(), "" if mcp_tools.size() == 1 else "s"])
+	var agents := usage.get("agents", []) as Array
+	if not agents.is_empty():
+		parts.append("%d agent definition%s" % [agents.size(), "" if agents.size() == 1 else "s"])
+	return " · ".join(parts)
+
+
+func _mcp_status_summary_text(status: Dictionary, error_message: String = "") -> String:
+	if not error_message.is_empty():
+		return error_message
+	var servers := status.get("mcpServers", []) as Array
+	if servers.is_empty():
+		return "No live MCP servers reported for this session."
+	var counts: Dictionary = {}
+	for server_variant in servers:
+		if not (server_variant is Dictionary):
+			continue
+		var state := str((server_variant as Dictionary).get("status", "unknown"))
+		counts[state] = int(counts.get(state, 0)) + 1
+	var parts: Array[String] = ["%d server%s" % [servers.size(), "" if servers.size() == 1 else "s"]]
+	for state in ["connected", "failed", "needs-auth", "pending", "disabled"]:
+		if int(counts.get(state, 0)) > 0:
+			parts.append("%d %s" % [int(counts.get(state, 0)), state])
+	return " · ".join(parts)
+
+
+func _rebuild_live_mcp_server_rows() -> void:
+	for child in _live_mcp_server_list.get_children():
+		child.queue_free()
+	if not _session_live:
+		return
+	var servers := _live_mcp_status.get("mcpServers", []) as Array
+	if servers.is_empty():
+		return
+	for server_variant in servers:
+		if not (server_variant is Dictionary):
+			continue
+		var server := server_variant as Dictionary
+		var server_name := str(server.get("name", "")).strip_edges()
+		if server_name.is_empty():
+			continue
+		var row := _build_mcp_server_row(server_name, server)
+		_live_mcp_server_list.add_child(row)
+
+
+func _build_mcp_server_row(server_name: String, server: Dictionary) -> Control:
+	var row_name := _mcp_server_node_name(server_name)
+	var card := PanelContainer.new()
+	card.name = "McpServerRow_%s" % row_name
+	card.size_flags_horizontal = SIZE_EXPAND_FILL
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	card.add_child(margin)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	margin.add_child(body)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	body.add_child(header)
+
+	var title := Label.new()
+	title.name = "McpServerTitle_%s" % row_name
+	title.size_flags_horizontal = SIZE_EXPAND_FILL
+	title.text = "%s · %s" % [server_name, str(server.get("status", "unknown")).capitalize()]
+	header.add_child(title)
+
+	var reconnect_button := Button.new()
+	reconnect_button.name = "McpReconnectButton_%s" % row_name
+	reconnect_button.text = _mcp_server_action_text(server_name, "reconnect")
+	reconnect_button.visible = _should_show_mcp_reconnect_button(server)
+	reconnect_button.disabled = reconnect_button.text != "Reconnect"
+	reconnect_button.pressed.connect(_on_mcp_server_reconnect_pressed.bind(server_name))
+	header.add_child(reconnect_button)
+
+	var toggle_button := Button.new()
+	toggle_button.name = "McpToggleButton_%s" % row_name
+	var toggle_target_enabled := _mcp_server_toggle_target(server)
+	toggle_button.text = _mcp_server_action_text(server_name, "toggle", toggle_target_enabled)
+	toggle_button.disabled = not _session_live or toggle_button.text == "Working"
+	toggle_button.pressed.connect(_on_mcp_server_toggle_pressed.bind(server_name, toggle_target_enabled))
+	header.add_child(toggle_button)
+
+	var detail := Label.new()
+	detail.name = "McpServerDetail_%s" % row_name
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.modulate = COLOR_MUTED
+	detail.text = _mcp_server_detail_text(server)
+	body.add_child(detail)
+
+	return card
+
+
+func _mcp_server_detail_text(server: Dictionary) -> String:
+	var parts: Array[String] = []
+	var scope := str(server.get("scope", "")).strip_edges()
+	if not scope.is_empty():
+		parts.append("Scope: %s" % scope)
+	var tools := server.get("tools", []) as Array
+	if not tools.is_empty():
+		parts.append("%d tool%s" % [tools.size(), "" if tools.size() == 1 else "s"])
+	var config := server.get("config", {}) as Dictionary
+	var config_type := str(config.get("type", "")).strip_edges()
+	if not config_type.is_empty():
+		parts.append("Type: %s" % config_type)
+	var error_text := str(server.get("error", "")).strip_edges()
+	if not error_text.is_empty():
+		parts.append(error_text)
+	return " · ".join(parts)
+
+
+func _mcp_server_toggle_target(server: Dictionary) -> bool:
+	return str(server.get("status", "")).strip_edges().to_lower() == "disabled"
+
+
+func _should_show_mcp_reconnect_button(server: Dictionary) -> bool:
+	var status := str(server.get("status", "")).strip_edges().to_lower()
+	return status == "failed" or status == "needs-auth" or status == "pending"
+
+
+func _mcp_server_action_text(server_name: String, action: String, enable_target := false) -> String:
+	if str(_mcp_server_action_pending.get(server_name, "")) == action:
+		return "Working"
+	if action == "toggle":
+		return "Enable" if enable_target else "Disable"
+	return "Reconnect"
+
+
+func _mcp_server_node_name(server_name: String) -> String:
+	var normalized := server_name.strip_edges()
+	var result := ""
+	for index in range(normalized.length()):
+		var letter := normalized.substr(index, 1)
+		var code := letter.unicode_at(0)
+		var is_letter := (code >= 65 and code <= 90) or (code >= 97 and code <= 122)
+		var is_digit := code >= 48 and code <= 57
+		result += letter if is_letter or is_digit else "_"
+	return result if not result.is_empty() else "server"
 
 
 func _panel_rewind_support_enabled() -> bool:
@@ -953,6 +1196,7 @@ func _restore_disconnected_view() -> void:
 	_pending_prompt_echo = ""
 	_pending_prompt_entry_id = -1
 	_rewind_pending_entry_id = -1
+	_clear_live_session_diagnostics()
 	_begin_new_live_turn()
 	if _has_selected_session():
 		_reload_selected_session_transcript()
@@ -971,6 +1215,7 @@ func _on_client_session_ready(server_info: Dictionary) -> void:
 	_refresh_composer_state()
 	_refresh_session_controls()
 	_refresh_transcript_entry_views_visibility()
+	Callable(self, "_refresh_live_session_diagnostics_after_connect").call_deferred()
 
 
 func _on_client_busy_changed(_is_busy: bool) -> void:
@@ -1022,6 +1267,7 @@ func _on_client_message_received(message: Variant) -> void:
 
 func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
 	_begin_new_live_turn()
+	Callable(self, "_refresh_context_usage_async").call_deferred()
 	turn_finished.emit(result_message)
 
 
@@ -1031,6 +1277,8 @@ func _on_client_error_occurred(message: String) -> void:
 	_pending_prompt_entry_id = -1
 	_rewind_pending_entry_id = -1
 	_last_error = message
+	if not _session_live:
+		_clear_live_session_diagnostics()
 	if not _session_live:
 		_status_issue_message = message
 	_update_status_from_state()
@@ -2416,9 +2664,86 @@ func _on_settings_view_pressed() -> void:
 	_settings_scroll.scroll_vertical = 0
 
 
+func _refresh_live_session_diagnostics_after_connect() -> void:
+	await _refresh_context_usage_async()
+	await _refresh_mcp_status_async()
+
+
+func _refresh_context_usage_async() -> void:
+	if _client_node == null or not _session_live or _context_usage_refresh_pending:
+		return
+	_context_usage_refresh_pending = true
+	_live_context_usage_error = ""
+	_refresh_live_session_diagnostics()
+	var usage: Dictionary = await _client_node.get_context_usage()
+	if not _session_live:
+		return
+	_live_context_usage = usage.duplicate(true)
+	_live_context_usage_error = _client_node.get_last_error()
+	_context_usage_refresh_pending = false
+	_refresh_live_session_diagnostics()
+	if not _live_context_usage_error.is_empty():
+		_emit_error(_live_context_usage_error)
+
+
+func _refresh_mcp_status_async() -> void:
+	if _client_node == null or not _session_live or _mcp_status_refresh_pending:
+		return
+	_mcp_status_refresh_pending = true
+	_live_mcp_status_error = ""
+	_refresh_live_session_diagnostics()
+	var status: Dictionary = await _client_node.get_mcp_status()
+	if not _session_live:
+		return
+	_live_mcp_status = status.duplicate(true)
+	_live_mcp_status_error = _client_node.get_last_error()
+	_mcp_status_refresh_pending = false
+	_refresh_live_session_diagnostics()
+	if not _live_mcp_status_error.is_empty():
+		_emit_error(_live_mcp_status_error)
+
+
 func _on_interrupt_pressed() -> void:
 	if _client_node != null:
 		_client_node.interrupt()
+
+
+func _on_refresh_context_usage_pressed() -> void:
+	Callable(self, "_refresh_context_usage_async").call_deferred()
+
+
+func _on_refresh_mcp_status_pressed() -> void:
+	Callable(self, "_refresh_mcp_status_async").call_deferred()
+
+
+func _on_mcp_server_reconnect_pressed(server_name: String) -> void:
+	if _client_node == null or not _session_live:
+		return
+	_mcp_server_action_pending[server_name] = "reconnect"
+	_refresh_live_session_diagnostics()
+	await _client_node.reconnect_mcp_server(server_name)
+	_mcp_server_action_pending.erase(server_name)
+	if not _client_node.get_last_error().is_empty():
+		_live_mcp_status_error = _client_node.get_last_error()
+		_refresh_live_session_diagnostics()
+		_emit_error(_client_node.get_last_error())
+		return
+	await _refresh_mcp_status_async()
+
+
+func _on_mcp_server_toggle_pressed(server_name: String, enabled: bool) -> void:
+	if _client_node == null or not _session_live:
+		return
+	_mcp_server_action_pending[server_name] = "toggle"
+	_refresh_live_session_diagnostics()
+	await _client_node.toggle_mcp_server(server_name, enabled)
+	_mcp_server_action_pending.erase(server_name)
+	if not _client_node.get_last_error().is_empty():
+		_live_mcp_status_error = _client_node.get_last_error()
+		_refresh_live_session_diagnostics()
+		_emit_error(_client_node.get_last_error())
+		return
+	await _refresh_mcp_status_async()
 
 
 func _on_task_stop_pressed(task_id: String) -> void:

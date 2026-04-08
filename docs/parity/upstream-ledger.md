@@ -105,6 +105,8 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeHookInput` plus event-specific hook input classes for additive typed hook callback inputs
   - additive typed hook-input exposure on `ClaudeHookContext.typed_input` / `hook_input` while keeping hook callbacks dictionary-first
   - typed hook-input coercion in `ClaudeQuerySession`, including tool-lifecycle `tool_use_id` backfill from the outer control request without mutating the raw callback dictionary
+  - `ClaudeChatPanel` connected-session context-usage diagnostics with automatic post-connect / post-result refresh plus manual refresh controls
+  - `ClaudeChatPanel` live MCP status cards with reconnect and enable/disable actions backed by the existing runtime MCP controls
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
