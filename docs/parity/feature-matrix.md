@@ -30,7 +30,7 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `ClaudeSDKClient` as the interactive core | `client.py`, `tests/test_streaming_client.py`, `examples/streaming_mode.py` | Basis for chat UIs, tools, and adapters | transport, query control, parser | `v1 core` | Canonical interactive API target |
-| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Delivered post-v1 in Phase 10U through `connect_client(prompt)` support for `null`, string, and `ClaudePromptStream` prompts; repeated local `connect_client()` calls still keep the existing no-op lifecycle rather than recreating the session like upstream |
+| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Delivered post-v1 in Phase 10U/10W through `connect_client(prompt)` support for `null`, string, and `ClaudePromptStream` prompts plus upstream-style reconnect semantics that recreate default transports and reuse injected custom transports cleanly |
 | `query()` on connected client | `client.py`, `examples/streaming_mode.py` | Sends follow-up messages in active sessions | connect, transport writes | `v1 core` | Session-aware string follow-ups shipped in v1; streamed follow-up parity delivered post-v1 in Phase 10T through `ClaudePromptStream` |
 | `receive_messages()` | `client.py` | Lowest-level interactive receive loop | parser, message routing | `v1 core` | Primary stream-consumption primitive |
 | `receive_response()` | `client.py` | Convenient per-turn receive loop for UI code | `receive_messages`, result detection | `v1 core` | Stop after `ResultMessage` |
@@ -173,4 +173,5 @@ Status note:
 - Phase 10O adds task-control `stop_task()` parity plus typed task system message parsing without widening the transport or initialize payload surfaces
 - Phase 10P adds transport-first `ClaudeAgentOptions.user` parity through a POSIX `sudo -n -u` launch wrapper while keeping `user` out of initialize payloads
 - Phase 10V adds typed hook-output helpers plus typed permission-update helpers while keeping hook callback inputs dictionary-first for backward compatibility
+- Phase 10W closes the remaining `connect()` lifecycle gap by making repeated local `connect_client()` calls reopen cleanly instead of no-oping, and the reference chat panel now showcases disconnected connect-and-send behavior directly
 - the reusable chat panel and demo are available project outputs, but they remain outside the upstream core-parity target and distributable addon core rules

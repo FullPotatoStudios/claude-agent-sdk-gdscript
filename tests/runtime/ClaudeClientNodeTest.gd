@@ -119,6 +119,69 @@ func test_node_connect_with_prompt_reemits_adapter_turn_signals() -> void:
 	await _await_frames(2)
 
 
+func test_node_reconnect_reemits_ready_and_prompt_turn_signals() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	var ready_events: Array[Dictionary] = []
+	var closed_events: Array[int] = []
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+
+	node.session_ready.connect(func(server_info: Dictionary): ready_events.append(server_info))
+	node.session_closed.connect(func(): closed_events.append(1))
+	node.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	node.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(2)
+
+	node.connect_client("Reconnect prompt")
+	assert_int(closed_events.size()).is_equal(1)
+	init_request = _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/retry"}]},
+		},
+	})
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+	await _await_frames(2)
+
+	assert_int(ready_events.size()).is_equal(2)
+	assert_array(turn_starts).is_equal([{"prompt": "Reconnect prompt", "session_id": "default"}])
+	assert_array(busy_events).is_equal([true, false])
+
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
 func test_node_auto_disconnects_on_exit_when_enabled() -> void:
 	var transport = FakeTransportScript.new()
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)

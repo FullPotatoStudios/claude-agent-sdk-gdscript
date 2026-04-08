@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10U: prompt-on-connect parity
+- Phase 10X: hook-input compatibility review
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -292,6 +292,13 @@ Delivered in Phase 10V:
 - additive typed suggestion exposure on `ClaudeToolPermissionContext` while preserving the existing raw `suggestions` array
 - explicit local compatibility note that hook callback inputs remain dictionary-first in GDScript
 
+Delivered in Phase 10W:
+- repeated `connect_client()` calls on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode` now follow upstream reconnect semantics by closing the active session and reopening cleanly
+- default transports are recreated on reconnect, while injected custom transports are reused without leaking old session drains or signal listeners
+- reconnect clears stale client error state before reopening and preserves the existing prompt-on-connect wire behavior for string and `ClaudePromptStream` inputs
+- `ClaudeChatPanel` now treats the disconnected composer as a connect-and-send entrypoint, including saved-session resume targets, so the reference UI showcases prompt-on-connect behavior directly
+- roadmap, parity, and panel docs updated to treat reconnect parity as delivered reference-panel behavior rather than a remaining lifecycle gap
+
 ## Current focus
 
-Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially dictionary-first hook-input typing tradeoffs and the repeated `connect_client()` lifecycle divergence from upstream.
+Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, starting with whether hook callback inputs should gain additive typed wrappers without breaking the existing dictionary-first callback contract.

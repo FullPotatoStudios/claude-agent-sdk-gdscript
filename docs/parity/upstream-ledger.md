@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10V hook-output and permission-update typing
+- Active roadmap slice: Phase 10X hook-input compatibility review
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -96,6 +96,8 @@ The first public implementation target is the scene-free core conversation loop,
   - adapter/node passthrough widening for streamed `query()` calls while keeping `turn_started(prompt, session_id)` string-only
   - interactive prompt-on-connect parity through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
   - string connect prompts now queue a post-initialize user payload with literal `session_id = "default"`, while connect-time `ClaudePromptStream` payloads pass through without session-id backfill
+  - repeated `connect_client()` calls now follow upstream reconnect semantics by closing the active session, reopening cleanly, recreating default transports, and reusing injected custom transports without leaking old listeners
+  - `ClaudeChatPanel` now uses the disconnected composer as a connect-and-send shortcut, including saved-session resume targets, so the reference panel exercises prompt-on-connect behavior directly
   - `ClaudePermissionRuleValue` and `ClaudePermissionUpdate` for typed runtime permission-update construction and serialization
   - `ClaudeHookOutput` plus event-specific hook output helper classes for typed runtime hook callback responses
   - additive hook-output coercion in `ClaudeQuerySession`, including Python-style `continue_` / `async_` alias handling for raw dictionaries
@@ -104,7 +106,6 @@ The first public implementation target is the scene-free core conversation loop,
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
-  - repeated local `connect_client()` calls still keep the existing no-op lifecycle instead of recreating the transport/session the way upstream `connect()` currently does
   - hook callback inputs remain dictionary-first in local GDScript for backward compatibility, even though typed hook outputs and permission updates are now supported
 
 ## Update process

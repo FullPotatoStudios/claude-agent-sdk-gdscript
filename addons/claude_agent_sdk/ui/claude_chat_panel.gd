@@ -170,8 +170,12 @@ func setup(options = null, transport = null) -> void:
 
 
 func connect_client() -> void:
+	_start_connect()
+
+
+func _start_connect(prompt = null) -> bool:
 	if _session_live or _is_connecting:
-		return
+		return false
 	_status_issue_message = ""
 	_apply_preconnect_controls_to_options()
 	_apply_session_target_to_options()
@@ -181,7 +185,7 @@ func connect_client() -> void:
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
-	_client_node.connect_client()
+	_client_node.connect_client(prompt)
 
 	if not _client_node.get_last_error().is_empty():
 		_is_connecting = false
@@ -190,6 +194,8 @@ func connect_client() -> void:
 		_update_status_from_state()
 		_refresh_composer_state()
 		_refresh_session_controls()
+		return false
+	return true
 
 
 func disconnect_client() -> void:
@@ -205,7 +211,16 @@ func submit_prompt(prompt: String) -> void:
 	if trimmed.is_empty():
 		return
 	if not _session_live:
-		_emit_error("Connect to Claude before sending a prompt")
+		if _is_connecting:
+			_emit_error("Wait for Claude to finish connecting before sending another prompt")
+			return
+		if not bool(_last_auth_status.get("logged_in", false)):
+			_emit_error("Claude CLI must be authenticated before sending a prompt")
+			return
+		prompt_submitted.emit(trimmed)
+		if _start_connect(trimmed):
+			_prompt_input.text = ""
+			_refresh_composer_state()
 		return
 	if _client_node.is_busy():
 		_emit_error("Wait for the current turn to finish before sending another prompt")
@@ -2007,18 +2022,28 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 
 
 func _refresh_composer_state() -> void:
-	var can_send: bool = _session_live and not _client_node.is_busy() and not _prompt_input.text.strip_edges().is_empty()
-	_prompt_input.editable = _session_live and not _client_node.is_busy()
+	var logged_in := bool(_last_auth_status.get("logged_in", false))
+	var can_draft: bool = not _is_connecting and logged_in and not _client_node.is_busy()
+	var can_send: bool = can_draft and not _prompt_input.text.strip_edges().is_empty()
+	_prompt_input.editable = can_draft
 	_send_button.disabled = not can_send
 	_interrupt_button.disabled = not _session_live or not _client_node.is_busy()
 	_composer_hint.text = _composer_hint_text()
 
 
 func _composer_hint_text() -> String:
+	if _is_connecting:
+		return "Claude is connecting. The initial prompt will send as soon as the session is ready."
+	if not bool(_last_auth_status.get("logged_in", false)):
+		return "Connect the authenticated Claude CLI to start chatting."
 	if not _session_live:
 		if _has_selected_session():
-			return "This saved transcript is read-only until you connect to resume it."
-		return "Connect the authenticated Claude CLI to start chatting."
+			if _prompt_input.text.strip_edges().is_empty():
+				return "Draft a prompt here to reconnect and continue the selected saved session."
+			return "Send the prompt to reconnect and continue the selected saved session."
+		if _prompt_input.text.strip_edges().is_empty():
+			return "Draft a prompt here, or use Connect to open an empty session."
+		return "Send the prompt to connect and start a new chat."
 	if _client_node.is_busy():
 		return "Claude is responding. You can interrupt the active turn if needed."
 	if _has_selected_session():

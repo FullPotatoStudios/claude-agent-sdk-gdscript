@@ -12,6 +12,7 @@ const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var options = null
+var _custom_transport = null
 var _transport = null
 var _session = null
 var _last_error := ""
@@ -19,16 +20,17 @@ var _last_error := ""
 
 func _init(initial_options = null, transport = null) -> void:
 	options = initial_options if initial_options != null else ClaudeAgentOptionsScript.new()
-	_transport = transport if transport != null else ClaudeSubprocessCLITransportScript.new(options)
+	_custom_transport = transport
+	_transport = _create_transport()
 
 
 func connect_client(prompt = null) -> void:
-	if _session != null:
-		if prompt != null:
-			_emit_error("Claude session is already connected. Use query() for follow-up prompts.")
-		return
 	if not _validate_connect_request(prompt):
 		return
+	if _session != null:
+		disconnect_client()
+	_last_error = ""
+	_transport = _create_transport()
 	_session = ClaudeQuerySessionScript.new(_transport, options, _extract_sdk_mcp_servers())
 	_session.session_initialized.connect(_on_session_initialized)
 	_session.error_occurred.connect(_on_session_error_occurred)
@@ -240,3 +242,9 @@ func _validate_options() -> bool:
 		_emit_error("can_use_tool callback cannot be used with permission_prompt_tool_name. Please use one or the other.")
 		return false
 	return true
+
+
+func _create_transport():
+	if _custom_transport != null:
+		return _custom_transport
+	return ClaudeSubprocessCLITransportScript.new(options)

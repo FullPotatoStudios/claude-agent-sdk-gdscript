@@ -370,8 +370,67 @@ func test_panel_shows_issue_and_keeps_composer_disabled_when_initialize_fails() 
 
 	assert_str(_status_badge(panel).text).is_equal("Issue")
 	assert_str(_label(panel, "StatusDetailLabel").text).contains("initialize failed")
-	assert_bool(_prompt_input(panel).editable).is_false()
+	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_bool(_button(panel, "ConnectButton").disabled).is_false()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_disconnected_send_connects_with_prompt_and_restores_composer_after_result() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_prompt_input(panel).text = "Hello from disconnected"
+	_prompt_input(panel).text_changed.emit()
+	await _await_frames(1)
+
+	assert_bool(_button(panel, "SendButton").disabled).is_false()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
+
+	assert_str(_status_badge(panel).text).is_equal("Connecting")
+	assert_bool(_prompt_input(panel).editable).is_false()
+	assert_bool(_button(panel, "SendButton").disabled).is_true()
+	assert_str(_prompt_input(panel).text).is_equal("")
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(1)
+
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_str(str((prompt_payload.get("message", {}) as Dictionary).get("content", ""))).is_equal("Hello from disconnected")
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"session_id": "default",
+		"message": {"role": "user", "content": "Hello from disconnected"},
+		"parent_tool_use_id": null,
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "Connected",
+	})
+	await _await_frames(3)
+
+	assert_bool(_prompt_input(panel).editable).is_true()
+	assert_bool(_button(panel, "SendButton").disabled).is_true()
 
 	await _cleanup_panel(panel)
 
@@ -1229,7 +1288,7 @@ func test_panel_loads_scoped_sessions_and_renders_selected_transcript_without_co
 
 	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
-	assert_bool(_prompt_input(panel).editable).is_false()
+	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Restored session")
 	assert_str(_label(panel, "SelectedSessionMetaValue").text).contains("review")
 	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
@@ -1332,8 +1391,45 @@ func test_panel_resumes_selected_session_and_disables_mutations_while_connected(
 
 	panel.disconnect_client()
 	await _await_frames(2)
-	assert_bool(_prompt_input(panel).editable).is_false()
+	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_disconnected_send_uses_selected_session_resume_target() -> void:
+	var session_id := _create_panel_session_fixture("panel-resume-send")
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	_prompt_input(panel).text = "Continue selected"
+	_prompt_input(panel).text_changed.emit()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
+
+	var runtime_options = panel.get_client_node()._adapter._client.options
+	assert_str(runtime_options.resume).is_equal(session_id)
+	assert_str(runtime_options.session_id).is_equal(session_id)
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(1)
+
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_str(str((prompt_payload.get("message", {}) as Dictionary).get("content", ""))).is_equal("Continue selected")
 
 	await _cleanup_panel(panel)
 

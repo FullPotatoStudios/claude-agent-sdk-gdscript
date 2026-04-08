@@ -69,8 +69,9 @@ Methods:
 
 - auth status is probed on `_ready()`
 - connection is manual
-- the public panel API stays connect-then-send; unlike the lower runtime layers, the shipped panel does not expose a separate connect-time prompt entrypoint or composer shortcut for `connect_client(prompt)`
-- prompt submission is disabled until connected
+- the disconnected composer now doubles as a connect-and-send shortcut: submitting text while logged in and disconnected calls the internal `connect_client(prompt)` path
+- if a saved session is selected while disconnected, the same composer shortcut resumes that session and still sends the first user payload through the normal string prompt-on-connect path
+- prompt submission is only disabled while connecting, while a live turn is busy, or while auth is unavailable
 - the panel renders typed runtime messages and partial stream events from the internal client node
 - the default transcript view is simplified chat first, with thinking/tasks/tools/system/raw detail hidden behind transcript toggles
 
@@ -87,6 +88,7 @@ The shipped panel currently includes:
 - idle-time live switching between saved sessions inside an already connected panel
 - basic rename, tag, clear-tag, delete, and full-session fork controls for saved sessions
 - connect/disconnect controls
+- disconnected composer-driven connect-and-send flow, including selected saved-session resume targets
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
 - transcript granularity toggles for `Thinking`, `Tasks`, `Tools`, `Results`, `System`, and `Raw`
 - live task cards for typed `task_started`, `task_progress`, and `task_notification` messages, including per-task `stop_task(task_id)` controls while a task is active

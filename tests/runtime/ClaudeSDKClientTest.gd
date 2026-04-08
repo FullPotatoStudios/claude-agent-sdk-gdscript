@@ -11,6 +11,19 @@ const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime
 var _async_completions: Array[String] = []
 
 
+class TransportFactoryClient extends ClaudeSDKClient:
+	var transports: Array = []
+
+	func _init(initial_options = null, transports_to_create: Array = []) -> void:
+		transports = transports_to_create.duplicate()
+		super(initial_options, null)
+
+	func _create_transport():
+		if transports.is_empty():
+			return null
+		return transports.pop_front()
+
+
 func after_test() -> void:
 	_async_completions.clear()
 
@@ -180,6 +193,11 @@ func test_client_disconnect_releases_transport_signal_listeners_before_reconnect
 	assert_int(transport.stderr_listener_count()).is_equal(1)
 	assert_int(transport.closed_listener_count()).is_equal(1)
 	assert_int(transport.error_listener_count()).is_equal(1)
+	client.disconnect_client()
+	assert_int(transport.stdout_listener_count()).is_equal(0)
+	assert_int(transport.stderr_listener_count()).is_equal(0)
+	assert_int(transport.closed_listener_count()).is_equal(0)
+	assert_int(transport.error_listener_count()).is_equal(0)
 
 
 func test_client_connect_with_string_prompt_queues_default_user_message_after_initialize() -> void:
@@ -305,11 +323,9 @@ func test_client_connect_rejects_string_prompt_when_can_use_tool_is_configured_b
 	assert_int(transport.writes.size()).is_equal(0)
 
 
-func test_client_connect_with_prompt_emits_error_when_already_connected() -> void:
+func test_client_reconnect_reuses_custom_transport_without_leaking_old_streams() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
-	var errors: Array[String] = []
-	client.error_occurred.connect(func(message: String): errors.append(message))
 
 	client.connect_client()
 	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
@@ -321,13 +337,32 @@ func test_client_connect_with_prompt_emits_error_when_already_connected() -> voi
 			"response": {},
 		},
 	})
+	var old_stream = client.receive_messages()
+	await get_tree().process_frame
 
 	client.connect_client("Follow-up")
+	assert_that(await old_stream.next_message()).is_null()
+	assert_int(transport.writes.size()).is_equal(2)
+	assert_int(transport.stdout_listener_count()).is_equal(1)
+	assert_int(transport.stderr_listener_count()).is_equal(1)
+	assert_int(transport.closed_listener_count()).is_equal(1)
+	assert_int(transport.error_listener_count()).is_equal(1)
 
-	assert_array(errors).contains(["Claude session is already connected. Use query() for follow-up prompts."])
-	assert_int(transport.writes.size()).is_equal(1)
-	client.disconnect_client()
-	client.disconnect_client()
+	init_request = JSON.parse_string(transport.writes[1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(3)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[2])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_str(str((prompt_payload.get("message", {}) as Dictionary).get("content", ""))).is_equal("Follow-up")
 
 	client.disconnect_client()
 	assert_int(transport.stdout_listener_count()).is_equal(0)
@@ -340,6 +375,82 @@ func test_client_connect_with_prompt_emits_error_when_already_connected() -> voi
 	assert_int(transport.stderr_listener_count()).is_equal(1)
 	assert_int(transport.closed_listener_count()).is_equal(1)
 	assert_int(transport.error_listener_count()).is_equal(1)
+	client.disconnect_client()
+	assert_int(transport.stdout_listener_count()).is_equal(0)
+	assert_int(transport.stderr_listener_count()).is_equal(0)
+	assert_int(transport.closed_listener_count()).is_equal(0)
+	assert_int(transport.error_listener_count()).is_equal(0)
+
+
+func test_client_reconnect_recreates_default_transport_when_no_custom_transport_is_injected() -> void:
+	var first_transport = FakeTransportScript.new()
+	var second_transport = FakeTransportScript.new()
+	var client = TransportFactoryClient.new(ClaudeAgentOptions.new(), [
+		FakeTransportScript.new(),
+		first_transport,
+		second_transport,
+	])
+
+	client.connect_client()
+	assert_bool(first_transport.connected).is_true()
+	assert_int(first_transport.writes.size()).is_equal(1)
+	var first_init_request: Dictionary = JSON.parse_string(first_transport.writes[0])
+	first_transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(first_init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	client.connect_client("Fresh session")
+	assert_bool(first_transport.connected).is_false()
+	assert_int(first_transport.stdout_listener_count()).is_equal(0)
+	assert_int(first_transport.stderr_listener_count()).is_equal(0)
+	assert_int(first_transport.closed_listener_count()).is_equal(0)
+	assert_int(first_transport.error_listener_count()).is_equal(0)
+	assert_bool(second_transport.connected).is_true()
+	assert_int(second_transport.writes.size()).is_equal(1)
+
+	var second_init_request: Dictionary = JSON.parse_string(second_transport.writes[0])
+	second_transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(second_init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_int(second_transport.writes.size()).is_equal(2)
+	var prompt_payload: Dictionary = JSON.parse_string(second_transport.writes[1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_str(str((prompt_payload.get("message", {}) as Dictionary).get("content", ""))).is_equal("Fresh session")
+	assert_bool(client.get("_transport") == second_transport).is_true()
+	client.disconnect_client()
+
+
+func test_client_reconnect_clears_last_error_before_opening_new_default_transport() -> void:
+	var failing_transport = FakeTransportScript.new()
+	failing_transport.open_error_message = "transport unavailable"
+	var recovery_transport = FakeTransportScript.new()
+	var client = TransportFactoryClient.new(ClaudeAgentOptions.new(), [
+		FakeTransportScript.new(),
+		failing_transport,
+		recovery_transport,
+	])
+
+	client.connect_client()
+	assert_str(client.get_last_error()).contains("transport unavailable")
+
+	client.connect_client()
+	assert_str(client.get_last_error()).is_empty()
+	assert_bool(recovery_transport.connected).is_true()
+	assert_int(recovery_transport.writes.size()).is_equal(1)
+	client.disconnect_client()
 
 
 func test_client_disconnect_finishes_active_streams() -> void:

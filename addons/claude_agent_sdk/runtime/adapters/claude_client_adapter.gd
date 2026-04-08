@@ -31,9 +31,7 @@ func _init(initial_options = null, transport = null) -> void:
 
 func connect_client(prompt = null) -> void:
 	if _connected:
-		if prompt != null:
-			_emit_error("Claude session is already connected. Use query() for follow-up prompts.")
-		return
+		disconnect_client()
 
 	_last_error = ""
 	_client.connect_client(prompt)

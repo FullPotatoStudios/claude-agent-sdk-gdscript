@@ -383,6 +383,99 @@ func test_adapter_clears_busy_when_initialize_fails_during_connect_prompt() -> v
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_reconnect_emits_session_closed_and_reemits_session_ready() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var ready_payloads: Array = []
+	var closed_events: Array[int] = []
+
+	adapter.session_ready.connect(func(server_info: Dictionary): ready_payloads.append(server_info))
+	adapter.session_closed.connect(func(): closed_events.append(1))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(2)
+
+	adapter.connect_client()
+	assert_int(closed_events.size()).is_equal(1)
+	init_request = _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/retry"}]},
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(ready_payloads.size()).is_equal(2)
+	assert_dict(ready_payloads[0]).contains_keys(["commands"])
+	assert_dict(ready_payloads[1]).contains_keys(["commands"])
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_reconnect_while_busy_resets_busy_and_starts_new_connect_prompt_turn() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+	var turn_results: Array = []
+	var closed_events: Array[int] = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+	adapter.turn_finished.connect(func(message): turn_results.append(message))
+	adapter.session_closed.connect(func(): closed_events.append(1))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("Old turn")
+	await _await_frames(1)
+
+	adapter.connect_client("New prompt")
+	assert_int(closed_events.size()).is_equal(1)
+	assert_array(turn_starts).is_equal([
+		{"prompt": "Old turn", "session_id": "default"},
+		{"prompt": "New prompt", "session_id": "default"},
+	])
+
+	init_request = _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+	transport.emit_stdout_message(_result_payload("reconnected"))
+	await _await_frames(2)
+
+	assert_array(busy_events).is_equal([true, false, true, false])
+	assert_int(turn_results.size()).is_equal(1)
+	await _cleanup_adapter(adapter)
+
+
 func test_adapter_passes_rate_limit_events_through_turn_stream_without_finishing_turn() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
