@@ -245,22 +245,21 @@ func submit_prompt(prompt: String) -> void:
 		if not bool(_last_auth_status.get("logged_in", false)):
 			_emit_error("Claude CLI must be authenticated before sending a prompt")
 			return
+		_begin_new_live_turn()
+		_append_pending_user_prompt(trimmed)
 		prompt_submitted.emit(trimmed)
 		if _start_connect(trimmed):
 			_prompt_input.text = ""
 			_refresh_composer_state()
+		else:
+			_discard_pending_prompt_echo_entry()
 		return
 	if _client_node.is_busy():
 		_emit_error("Wait for the current turn to finish before sending another prompt")
 		return
 
 	_begin_new_live_turn()
-	_pending_prompt_entry_id = _append_transcript_entry("user", {
-		"title": "You",
-		"text": trimmed,
-		"align_right": true,
-	})
-	_pending_prompt_echo = trimmed
+	_append_pending_user_prompt(trimmed)
 	_prompt_input.text = ""
 	_refresh_composer_state()
 	prompt_submitted.emit(trimmed)
@@ -1327,8 +1326,11 @@ func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
 
 func _on_client_error_occurred(message: String) -> void:
 	_is_connecting = false
-	_pending_prompt_echo = ""
-	_pending_prompt_entry_id = -1
+	if not _session_live:
+		_discard_pending_prompt_echo_entry()
+	else:
+		_pending_prompt_echo = ""
+		_pending_prompt_entry_id = -1
 	_rewind_pending_entry_id = -1
 	_last_error = message
 	if not _session_live:
@@ -1820,6 +1822,15 @@ func _append_transcript_entry(kind: String, data: Dictionary) -> int:
 	return int(entry.get("id", -1))
 
 
+func _append_pending_user_prompt(text: String) -> void:
+	_pending_prompt_entry_id = _append_transcript_entry("user", {
+		"title": "You",
+		"text": text,
+		"align_right": true,
+	})
+	_pending_prompt_echo = text
+
+
 func _get_transcript_entry(entry_id: int) -> Dictionary:
 	for entry in _transcript_entries:
 		if int(entry.get("id", -1)) == entry_id:
@@ -1833,6 +1844,25 @@ func _set_transcript_entry(entry_id: int, updated_entry: Dictionary) -> void:
 			_transcript_entries[index] = updated_entry
 			_update_transcript_entry_view(updated_entry)
 			return
+
+
+func _discard_pending_prompt_echo_entry() -> void:
+	var entry_id := _pending_prompt_entry_id
+	_pending_prompt_echo = ""
+	_pending_prompt_entry_id = -1
+	if entry_id < 0:
+		return
+	for index in range(_transcript_entries.size()):
+		if int(_transcript_entries[index].get("id", -1)) != entry_id:
+			continue
+		_transcript_entries.remove_at(index)
+		break
+	var view: Dictionary = _transcript_entry_views.get(entry_id, {})
+	if not view.is_empty():
+		var container := view.get("container") as Control
+		if container != null:
+			container.queue_free()
+		_transcript_entry_views.erase(entry_id)
 
 
 func _render_transcript_entries() -> void:

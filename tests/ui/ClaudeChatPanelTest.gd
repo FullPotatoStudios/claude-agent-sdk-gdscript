@@ -832,6 +832,10 @@ func test_panel_disconnected_send_connects_with_prompt_and_restores_composer_aft
 	assert_bool(_prompt_input(panel).editable).is_false()
 	assert_bool(_button(panel, "SendButton").disabled).is_true()
 	assert_str(_prompt_input(panel).text).is_equal("")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	var disconnected_user_body := _last_entry(panel, "user_bubble").find_child("BubbleBody", true, false) as RichTextLabel
+	assert_object(disconnected_user_body).is_not_null()
+	assert_str(disconnected_user_body.text).contains("Hello from disconnected")
 
 	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
 	transport.emit_stdout_message({
@@ -868,6 +872,35 @@ func test_panel_disconnected_send_connects_with_prompt_and_restores_composer_aft
 
 	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_bool(_button(panel, "SendButton").disabled).is_true()
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_disconnected_send_discards_optimistic_user_bubble_when_connect_fails() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.submit_prompt("Fail to connect")
+	await _await_frames(1)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(init_request.get("request_id", "")),
+			"error": "initialize failed",
+		},
+	})
+	await _await_frames(2)
+
+	assert_str(_status_badge(panel).text).is_equal("Issue")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(0)
 
 	await _cleanup_panel(panel)
 
