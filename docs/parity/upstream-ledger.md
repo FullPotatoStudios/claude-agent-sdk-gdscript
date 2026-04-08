@@ -100,6 +100,7 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` now uses the disconnected composer as a connect-and-send shortcut, including saved-session resume targets, so the reference panel exercises prompt-on-connect behavior directly
   - `ClaudeChatPanel` disconnected saved-session user-message `Fork from here` actions backed by runtime `up_to_message_id` session forking
   - cutoff-based saved-session forks in the panel now auto-select the new branch and restore its truncated transcript immediately
+  - `ClaudeChatPanel` disconnected saved-session assistant-message `Fork from here` actions backed by the same inclusive `up_to_message_id` session-forking path already used for user-message cutoffs
   - `ClaudePermissionRuleValue` and `ClaudePermissionUpdate` for typed runtime permission-update construction and serialization
   - `ClaudeHookOutput` plus event-specific hook output helper classes for typed runtime hook callback responses
   - additive hook-output coercion in `ClaudeQuerySession`, including Python-style `continue_` / `async_` alias handling for raw dictionaries

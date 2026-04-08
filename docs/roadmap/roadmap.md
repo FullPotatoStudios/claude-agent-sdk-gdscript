@@ -275,6 +275,11 @@ Delivered in Phase 10AB:
 - automatic post-fork selection and transcript restoration for cutoff-based saved-session branches in the reference panel
 - docs and UI coverage updated to keep assistant-message cutoff selection and live-session forking explicitly deferred
 
+Delivered in Phase 10AC:
+- `ClaudeChatPanel` disconnected saved-session assistant-message `Fork from here` actions backed by the same runtime `fork_session(..., up_to_message_id, ...)` path used for user-message cutoffs
+- panel/UI coverage updated to keep rewind user-only while proving assistant cutoffs remain inclusive and worktree-aware
+- docs updated so live-session forking and non-message transcript-entry fork parity stay deferred while saved-session chat-bubble cutoff forks now cover both user and assistant messages
+
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
 - per-task `stop_task(task_id)` controls in the reference panel while a task is active
@@ -332,4 +337,4 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, live-session forking, broader transcript-level fork parity beyond saved-session user bubbles, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
+The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, live-session forking, non-message transcript-entry fork parity, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.

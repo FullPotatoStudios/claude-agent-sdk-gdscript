@@ -2019,7 +2019,8 @@ func _should_show_rewind_action(entry: Dictionary) -> bool:
 
 
 func _should_show_saved_fork_action(entry: Dictionary) -> bool:
-	if str(entry.get("kind", "")) != "user":
+	var kind := str(entry.get("kind", ""))
+	if kind != "user" and kind != "assistant":
 		return false
 	if _session_live or _is_connecting:
 		return false
@@ -2188,7 +2189,7 @@ func _create_message_bubble(role: String, entry: Dictionary) -> Control:
 	bubble_text.add_theme_font_size_override("normal_font_size", 15)
 	bubble_body.add_child(bubble_text)
 
-	if role == "user":
+	if role == "user" or role == "assistant":
 		var actions := HBoxContainer.new()
 		actions.name = "BubbleActions"
 		actions.alignment = BoxContainer.ALIGNMENT_END
@@ -2201,12 +2202,13 @@ func _create_message_bubble(role: String, entry: Dictionary) -> Control:
 		fork_button.pressed.connect(_on_saved_transcript_fork_pressed.bind(int(entry.get("id", -1))))
 		actions.add_child(fork_button)
 
-		var rewind_button := Button.new()
-		rewind_button.name = "RewindButton"
-		rewind_button.text = "Rewind files here"
-		rewind_button.focus_mode = Control.FOCUS_NONE
-		rewind_button.pressed.connect(_on_rewind_button_pressed.bind(int(entry.get("id", -1))))
-		actions.add_child(rewind_button)
+		if role == "user":
+			var rewind_button := Button.new()
+			rewind_button.name = "RewindButton"
+			rewind_button.text = "Rewind files here"
+			rewind_button.focus_mode = Control.FOCUS_NONE
+			rewind_button.pressed.connect(_on_rewind_button_pressed.bind(int(entry.get("id", -1))))
+			actions.add_child(rewind_button)
 
 	if align_right:
 		row.add_child(spacer)
@@ -2227,14 +2229,19 @@ func _update_message_bubble(row: Control, role: String, entry: Dictionary) -> vo
 	var bubble_body := row.find_child("BubbleBody", true, false) as RichTextLabel
 	if bubble_body != null:
 		bubble_body.text = body_text
-	if role != "user":
-		return
 	var fork_button := row.find_child("ForkFromHereButton", true, false) as Button
-	var rewind_button := row.find_child("RewindButton", true, false) as Button
 	var actions := row.find_child("BubbleActions", true, false) as HBoxContainer
-	if fork_button == null or rewind_button == null or actions == null:
+	if fork_button == null or actions == null:
 		return
 	var can_fork := _should_show_saved_fork_action(entry)
+	if role == "assistant":
+		actions.visible = can_fork
+		fork_button.visible = can_fork
+		fork_button.disabled = not can_fork
+		return
+	var rewind_button := row.find_child("RewindButton", true, false) as Button
+	if role != "user" or rewind_button == null:
+		return
 	var can_rewind := _should_show_rewind_action(entry)
 	var is_pending := int(entry.get("id", -1)) == _rewind_pending_entry_id
 	actions.visible = can_fork or can_rewind

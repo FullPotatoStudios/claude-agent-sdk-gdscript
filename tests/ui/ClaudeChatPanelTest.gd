@@ -450,7 +450,7 @@ func test_panel_saved_session_rewind_action_appears_after_connect() -> void:
 	await _cleanup_panel(panel)
 
 
-func test_panel_saved_session_cutoff_fork_action_only_appears_on_disconnected_selected_user_entries() -> void:
+func test_panel_saved_session_cutoff_fork_action_only_appears_on_disconnected_selected_chat_entries() -> void:
 	_create_panel_session_fixture("cutoff-fork-visibility")
 	var transport = FakeTransportScript.new()
 	var panel = ChatPanelScene.instantiate()
@@ -466,7 +466,10 @@ func test_panel_saved_session_cutoff_fork_action_only_appears_on_disconnected_se
 	assert_object(disconnected_fork_button).is_not_null()
 	assert_bool(disconnected_fork_button.is_visible_in_tree()).is_true()
 	var assistant_entry := _entry_at(panel, "assistant_bubble", 0)
-	assert_object(assistant_entry.find_child("ForkFromHereButton", true, false)).is_null()
+	var disconnected_assistant_fork_button := assistant_entry.find_child("ForkFromHereButton", true, false) as Button
+	assert_object(disconnected_assistant_fork_button).is_not_null()
+	assert_bool(disconnected_assistant_fork_button.is_visible_in_tree()).is_true()
+	assert_object(assistant_entry.find_child("RewindButton", true, false)).is_null()
 
 	panel.connect_client()
 	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
@@ -483,6 +486,9 @@ func test_panel_saved_session_cutoff_fork_action_only_appears_on_disconnected_se
 	var connected_fork_button := _entry_at(panel, "user_bubble", 0).find_child("ForkFromHereButton", true, false) as Button
 	assert_object(connected_fork_button).is_not_null()
 	assert_bool(connected_fork_button.is_visible_in_tree()).is_false()
+	var connected_assistant_fork_button := _entry_at(panel, "assistant_bubble", 0).find_child("ForkFromHereButton", true, false) as Button
+	assert_object(connected_assistant_fork_button).is_not_null()
+	assert_bool(connected_assistant_fork_button.is_visible_in_tree()).is_false()
 
 	await _cleanup_panel(panel)
 
@@ -2218,6 +2224,54 @@ func test_panel_saved_session_cutoff_fork_uses_runtime_default_title_when_blank(
 	await _cleanup_panel(panel)
 
 
+func test_panel_saved_session_assistant_cutoff_fork_creates_and_selects_truncated_saved_session() -> void:
+	var session_id := _create_panel_cutoff_session_fixture("panel-fork-cutoff-assistant-success")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(2)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(2)
+	_line_edit(panel, "ForkTitleInput").text = "Branch after first answer"
+	var fork_button := _entry_at(panel, "assistant_bubble", 0).find_child("ForkFromHereButton", true, false) as Button
+	fork_button.pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_session_id_from_panel(panel)).is_not_equal(session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Branch after first answer")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).is_equal("First saved answer")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_saved_session_assistant_cutoff_fork_uses_runtime_default_title_when_blank() -> void:
+	_create_panel_cutoff_session_fixture("panel-fork-cutoff-assistant-default-title")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	var fork_button := _entry_at(panel, "assistant_bubble", 0).find_child("ForkFromHereButton", true, false) as Button
+	fork_button.pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Cutoff session (fork)")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).is_equal("First saved answer")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_session_fork_control_uses_runtime_default_title_when_blank() -> void:
 	_create_panel_session_fixture("panel-fork-default-title")
 	var panel = ChatPanelScene.instantiate()
@@ -2267,6 +2321,33 @@ func test_panel_failed_saved_session_cutoff_fork_keeps_selection_and_transcript_
 	await _cleanup_panel(panel)
 
 
+func test_panel_failed_saved_session_assistant_cutoff_fork_keeps_selection_and_transcript_intact() -> void:
+	var session_id := _create_panel_cutoff_session_fixture("panel-fork-cutoff-assistant-failure")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	var config_root := OS.get_environment("CLAUDE_CONFIG_DIR")
+	var project_dir := _make_project_dir(config_root, ProjectSettings.globalize_path("res://"))
+	assert_int(DirAccess.remove_absolute(project_dir.path_join("%s.jsonl" % session_id))).is_equal(OK)
+
+	var fork_button := _entry_at(panel, "assistant_bubble", 0).find_child("ForkFromHereButton", true, false) as Button
+	fork_button.pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(1)
+	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Cutoff session")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(2)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(2)
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("not found")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_failed_session_fork_keeps_selection_and_transcript_intact() -> void:
 	var session_id := _create_panel_session_fixture("panel-fork-failure")
 	var panel = ChatPanelScene.instantiate()
@@ -2289,6 +2370,38 @@ func test_panel_failed_session_fork_keeps_selection_and_transcript_intact() -> v
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Restored session")
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_str(_label(panel, "StatusDetailLabel").text).contains("not found")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_saved_session_assistant_cutoff_fork_uses_selected_worktree_session_directory() -> void:
+	var fixture := _create_duplicate_worktree_detail_session_fixture("panel-worktree-cutoff-assistant-fork")
+	var original_session_id := "84848484-8484-4848-8848-848484848484"
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"cwd": fixture["repo_root"],
+	}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+	_line_edit(panel, "ForkTitleInput").text = "Worktree assistant cutoff fork"
+	var fork_button := _entry_at(panel, "assistant_bubble", 0).find_child("ForkFromHereButton", true, false) as Button
+	fork_button.pressed.emit()
+	await _await_frames(2)
+
+	var forked_session_id := _session_id_from_panel(panel)
+	var repo_project_dir := str(fixture["repo_file"]).get_base_dir()
+	var worktree_project_dir := str(fixture["worktree_file"]).get_base_dir()
+	assert_str(forked_session_id).is_not_equal(original_session_id)
+	assert_bool(FileAccess.file_exists(worktree_project_dir.path_join("%s.jsonl" % forked_session_id))).is_true()
+	assert_bool(FileAccess.file_exists(repo_project_dir.path_join("%s.jsonl" % forked_session_id))).is_false()
+	assert_str(_label(panel, "SelectedSessionCwdValue").text).contains(str(fixture["worktree_root"]))
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Worktree assistant cutoff fork")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 
 	await _cleanup_panel(panel)
 
@@ -2740,6 +2853,66 @@ func _create_duplicate_worktree_session_fixture(label: String) -> Dictionary:
 			"message": {"role": "user", "content": "Worktree prompt"},
 		},
 		{"type": "summary", "customTitle": "Worktree session"},
+	], 1712302600)
+
+	return {
+		"repo_root": repo_root,
+		"worktree_root": worktree_root,
+		"repo_file": repo_file,
+		"worktree_file": worktree_file,
+	}
+
+
+func _create_duplicate_worktree_detail_session_fixture(label: String) -> Dictionary:
+	var config_root := _create_config_root(label)
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var repo_root := _create_temp_root("panel-worktree-detail-repo")
+	var worktree_parent := _create_temp_root("panel-worktree-detail-parent")
+	var worktree_root := worktree_parent.path_join("feature-panel-detail")
+	_init_git_repo(repo_root)
+	_create_git_worktree(repo_root, worktree_root, "feature/panel-detail")
+
+	var session_id := "84848484-8484-4848-8848-848484848484"
+	var repo_project_dir := _make_project_dir(config_root, repo_root)
+	var worktree_project_dir := _make_project_dir(config_root, worktree_root)
+	var repo_file := repo_project_dir.path_join("%s.jsonl" % session_id)
+	var worktree_file := worktree_project_dir.path_join("%s.jsonl" % session_id)
+	_write_session_file(repo_project_dir, session_id, [
+		{
+			"type": "user",
+			"uuid": "85858585-8585-4858-8858-858585858585",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T14:00:00",
+			"cwd": repo_root,
+			"message": {"role": "user", "content": "Repo prompt"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "86868686-8686-4868-8868-868686868686",
+			"parentUuid": "85858585-8585-4858-8858-858585858585",
+			"sessionId": session_id,
+			"message": {"role": "assistant", "content": "Repo answer"},
+		},
+		{"type": "summary", "customTitle": "Repo detail session"},
+	], 1712302500)
+	_write_session_file(worktree_project_dir, session_id, [
+		{
+			"type": "user",
+			"uuid": "87878787-8787-4878-8878-878787878787",
+			"sessionId": session_id,
+			"timestamp": "2026-04-05T14:10:00",
+			"cwd": worktree_root,
+			"message": {"role": "user", "content": "Worktree prompt"},
+		},
+		{
+			"type": "assistant",
+			"uuid": "88888888-8888-4888-8888-888888888888",
+			"parentUuid": "87878787-8787-4878-8878-878787878787",
+			"sessionId": session_id,
+			"message": {"role": "assistant", "content": "Worktree answer"},
+		},
+		{"type": "summary", "customTitle": "Worktree detail session"},
 	], 1712302600)
 
 	return {
