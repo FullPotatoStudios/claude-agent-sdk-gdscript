@@ -87,7 +87,7 @@ The shipped panel currently includes:
 - a resizable session browser pane scoped to the configured project path
 - saved transcript loading and read-only browsing while disconnected
 - reconnect/resume into selected saved sessions
-- idle-time live switching between saved sessions inside an already connected panel
+- reconnect/resume handoff for selected saved sessions while keeping the active live session authoritative until disconnect
 - basic rename, tag, clear-tag, delete, and full-session fork controls for saved sessions
 - connect/disconnect controls
 - disconnected composer-driven connect-and-send flow, including selected saved-session resume targets

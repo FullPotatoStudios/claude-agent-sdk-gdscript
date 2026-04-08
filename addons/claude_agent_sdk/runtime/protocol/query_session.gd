@@ -18,6 +18,7 @@ const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk
 const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
 const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
+const DEFAULT_INITIALIZE_TIMEOUT_SEC := 60.0
 
 var _transport = null
 var _options = null
@@ -41,12 +42,15 @@ var _pending_prompt_stream_backfills_session_id := false
 var _active_prompt_drain_token := 0
 var _last_error := ""
 var _sdk_mcp_servers: Dictionary = {}
+var _initialize_timeout_sec := DEFAULT_INITIALIZE_TIMEOUT_SEC
+var _initialize_timeout_token := 0
 
 
 func _init(transport, options = null, sdk_mcp_servers: Dictionary = {}) -> void:
 	_transport = transport
 	_options = options
 	_sdk_mcp_servers = sdk_mcp_servers.duplicate()
+	_initialize_timeout_sec = _resolve_initialize_timeout_seconds()
 	_connect_transport_signals()
 
 
@@ -65,6 +69,8 @@ func open_session() -> void:
 	_initialize_request_id = _send_control_request(_build_initialize_request())
 	if _initialize_request_id.is_empty():
 		_fail_session(_last_error if not _last_error.is_empty() else "Failed to initialize Claude session")
+		return
+	_arm_initialize_timeout()
 
 
 func close() -> void:
@@ -72,6 +78,7 @@ func close() -> void:
 		return
 	_closed = true
 	_connected = false
+	_initialize_timeout_token += 1
 	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude session closed")
@@ -351,6 +358,7 @@ func _on_transport_stderr_line(_line: String) -> void:
 func _on_transport_closed() -> void:
 	_closed = true
 	_connected = false
+	_initialize_timeout_token += 1
 	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude transport closed")
@@ -399,6 +407,7 @@ func _handle_control_response(data: Dictionary) -> void:
 	if request_id == _initialize_request_id:
 		_server_info = response_payload
 		_initialized = true
+		_initialize_timeout_token += 1
 		_initialize_request_id = ""
 		session_initialized.emit(_server_info.duplicate(true))
 		_flush_pending_prompt()
@@ -426,6 +435,7 @@ func _emit_error(message: String) -> void:
 func _fail_session(message: String) -> void:
 	if _last_error != message:
 		_set_last_error(message)
+	_initialize_timeout_token += 1
 	_active_prompt_drain_token += 1
 	_pending_prompt_payloads.clear()
 	_pending_prompt_stream = null
@@ -437,6 +447,35 @@ func _fail_session(message: String) -> void:
 	_current_response_stream = null
 	_connected = false
 	close()
+
+
+func _arm_initialize_timeout() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	_initialize_timeout_token += 1
+	var token := _initialize_timeout_token
+	Callable(self, "_watch_initialize_timeout").call_deferred(tree, token)
+
+
+func _watch_initialize_timeout(tree: SceneTree, token: int) -> void:
+	if _initialize_request_id.is_empty() or _initialized or _closed:
+		return
+	await tree.create_timer(_initialize_timeout_sec).timeout
+	if token != _initialize_timeout_token:
+		return
+	if _initialize_request_id.is_empty() or _initialized or _closed:
+		return
+	_fail_session(
+		"Claude session initialize timed out after %.1f seconds" % _initialize_timeout_sec
+	)
+
+
+func _resolve_initialize_timeout_seconds() -> float:
+	var raw_timeout := OS.get_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT").strip_edges()
+	if raw_timeout.is_empty() or not raw_timeout.is_valid_int():
+		return DEFAULT_INITIALIZE_TIMEOUT_SEC
+	return max(float(int(raw_timeout)) / 1000.0, DEFAULT_INITIALIZE_TIMEOUT_SEC)
 
 
 func _connect_transport_signals() -> void:

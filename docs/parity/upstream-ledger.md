@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: no new bounded slice selected; next parity planning should start from a fresh upstream diff review
+- Active roadmap slice: reference-panel UX expansion planning after the session-lifecycle truthfulness bugfix slice
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -107,6 +107,12 @@ The first public implementation target is the scene-free core conversation loop,
   - typed hook-input coercion in `ClaudeQuerySession`, including tool-lifecycle `tool_use_id` backfill from the outer control request without mutating the raw callback dictionary
   - `ClaudeChatPanel` connected-session context-usage diagnostics with automatic post-connect / post-result refresh plus manual refresh controls
   - `ClaudeChatPanel` live MCP status cards with reconnect and enable/disable actions backed by the existing runtime MCP controls
+  - upstream-style initialize-timeout handling in `ClaudeQuerySession`, sourced from `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` with the same 60-second floor used by upstream
+  - failed initialize/resume flows now clear `Connecting`, close the stalled transport cleanly, and surface concrete diagnostics instead of hanging indefinitely
+  - saved-session reconnect now uses `resume` without overwriting `session_id`, preserving caller-configured base ids and prompt-on-connect wire behavior
+  - `ClaudeChatPanel` now treats selected saved-session preview state separately from the authoritative live runtime session id
+  - connected-idle saved-session selection and `New chat` now use disconnect-and-handoff behavior instead of in-place live-session switching
+  - `ClaudeChatPanel` stderr capture now chains any existing `ClaudeAgentOptions.stderr` callback while surfacing the latest CLI diagnostic line in connect failures
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors

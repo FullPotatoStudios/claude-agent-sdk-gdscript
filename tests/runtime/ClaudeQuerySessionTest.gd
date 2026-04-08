@@ -247,6 +247,29 @@ func test_initialize_error_fails_pending_streams() -> void:
 	assert_bool(transport.connected).is_false()
 
 
+func test_initialize_timeout_uses_env_value_with_upstream_floor() -> void:
+	var previous_timeout := OS.get_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT")
+	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", "1")
+	var floored_session = ClaudeQuerySession.new(FakeTransportScript.new())
+	assert_float(float(floored_session.get("_initialize_timeout_sec"))).is_equal(60.0)
+
+	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", "120000")
+	var expanded_session = ClaudeQuerySession.new(FakeTransportScript.new())
+	assert_float(float(expanded_session.get("_initialize_timeout_sec"))).is_equal(120.0)
+	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", previous_timeout)
+
+
+func test_initialize_timeout_fails_stalled_connect_and_closes_transport() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.set("_initialize_timeout_sec", 0.01)
+	session.open_session()
+	await get_tree().create_timer(0.05).timeout
+
+	assert_str(session.get_last_error()).contains("initialize timed out")
+	assert_bool(transport.connected).is_false()
+
+
 func test_prompt_stream_waits_for_initialize_and_preserves_stream_payloads() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)

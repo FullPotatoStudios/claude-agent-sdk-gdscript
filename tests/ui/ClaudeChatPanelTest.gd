@@ -1803,7 +1803,7 @@ func test_panel_resumes_selected_session_and_disables_mutations_while_connected(
 
 	var runtime_options = panel.get_client_node()._adapter._client.options
 	assert_str(runtime_options.resume).is_equal(session_id)
-	assert_str(runtime_options.session_id).is_equal(session_id)
+	assert_str(runtime_options.session_id).is_empty()
 	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
 	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
 	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
@@ -1851,7 +1851,7 @@ func test_panel_disconnected_send_uses_selected_session_resume_target() -> void:
 
 	var runtime_options = panel.get_client_node()._adapter._client.options
 	assert_str(runtime_options.resume).is_equal(session_id)
-	assert_str(runtime_options.session_id).is_equal(session_id)
+	assert_str(runtime_options.session_id).is_empty()
 
 	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
 	transport.emit_stdout_message({
@@ -1871,7 +1871,7 @@ func test_panel_disconnected_send_uses_selected_session_resume_target() -> void:
 	await _cleanup_panel(panel)
 
 
-func test_panel_connected_idle_allows_live_session_switching_and_new_chat_reset() -> void:
+func test_panel_connected_idle_selection_disconnects_into_saved_preview_and_new_chat_disconnects_to_draft() -> void:
 	var config_root := _create_config_root("panel-live-switch")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
 	var project_path := ProjectSettings.globalize_path("res://")
@@ -1892,18 +1892,32 @@ func test_panel_connected_idle_allows_live_session_switching_and_new_chat_reset(
 
 	assert_str(_session_id_from_panel(panel)).is_equal(second_session_id)
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Second saved session")
-	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
-	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
+	assert_str(_status_badge(panel).text).is_equal("Saved")
+	assert_bool(_button(panel, "RenameSessionButton").disabled).is_false()
+	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_false()
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 
-	panel.submit_prompt("Switch to the selected history")
-	await _await_frames(2)
-	var first_live_write: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(first_live_write.get("session_id", ""))).is_equal(second_session_id)
+	_prompt_input(panel).text = "Switch to the selected history"
+	_prompt_input(panel).text_changed.emit()
+	var write_count_before_resume: int = transport.writes.size()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
 
-	_select_session_with_click_signal(panel, 1)
-	await _await_frames(2)
-	assert_str(_session_id_from_panel(panel)).is_equal(second_session_id)
-
+	var runtime_options = panel.get_client_node()._adapter._client.options
+	assert_str(runtime_options.resume).is_equal(second_session_id)
+	assert_str(runtime_options.session_id).is_empty()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[write_count_before_resume])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+	var resumed_prompt: Dictionary = JSON.parse_string(transport.writes[write_count_before_resume + 1])
+	assert_bool(str(resumed_prompt.get("session_id", "")) == "default").is_true()
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
@@ -1915,20 +1929,114 @@ func test_panel_connected_idle_allows_live_session_switching_and_new_chat_reset(
 		"result": "Done",
 	})
 	await _await_frames(3)
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal(second_session_id)
 
 	_activate_session_with_keyboard_signal(panel, 1)
 	await _await_frames(2)
 	assert_str(_session_id_from_panel(panel)).is_equal(first_session_id)
+	assert_str(_status_badge(panel).text).is_equal("Saved")
 
 	_button(panel, "NewChatButton").pressed.emit()
 	await _await_frames(2)
 	assert_str(_session_id_from_panel(panel)).is_equal("")
 	assert_int(_transcript_list(panel).get_child_count()).is_equal(0)
+	assert_str(_status_badge(panel).text).is_equal("Ready")
 
+	var write_count_before_reset: int = transport.writes.size()
 	panel.submit_prompt("Fresh turn after reset")
+	await _await_frames(1)
+	var reset_init_request: Dictionary = JSON.parse_string(transport.writes[write_count_before_reset])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(reset_init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+	var reset_write: Dictionary = JSON.parse_string(transport.writes[write_count_before_reset + 1])
+	assert_bool(str(reset_write.get("session_id", "")) == "default").is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_tracks_authoritative_live_session_id_from_runtime_results() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
 	await _await_frames(2)
-	var reset_write: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(reset_write.get("session_id", ""))).is_equal("default")
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	panel.submit_prompt("Track the active session")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "tracked-session-id",
+		"result": "Tracked",
+	})
+	await _await_frames(2)
+
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("tracked-session-id")
+	panel.submit_prompt("Use the tracked session")
+	await _await_frames(1)
+	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("tracked-session-id")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_connect_failure_surfaces_cli_diagnostics_and_preserves_existing_stderr_callback() -> void:
+	var stderr_lines: Array[String] = []
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"stderr": func(line: String) -> void:
+			stderr_lines.append(line),
+	}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	await _await_frames(1)
+	var runtime_options = panel.get_client_node()._adapter._client.options
+	runtime_options.stderr.call("CLI diagnostic line")
+	await _await_frames(2)
+	assert_array(stderr_lines).is_equal(["CLI diagnostic line"])
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("CLI diagnostic line")
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(init_request.get("request_id", "")),
+			"error": "initialize failed",
+		},
+	})
+	await _await_frames(2)
+
+	assert_str(_status_badge(panel).text).is_equal("Issue")
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("initialize failed")
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("CLI diagnostic line")
 
 	await _cleanup_panel(panel)
 

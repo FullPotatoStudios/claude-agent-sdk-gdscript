@@ -55,7 +55,11 @@ var _selected_session_info: ClaudeSessionInfo = null
 var _selected_session_messages: Array[ClaudeSessionMessage] = []
 var _selected_session_transcript: Array[ClaudeSessionTranscriptEntry] = []
 var _delete_confirm_armed := false
-var _connected_session_id := "default"
+var _live_session_target_id := "default"
+var _authoritative_live_session_id := ""
+var _clear_transcript_after_disconnect := false
+var _last_cli_diagnostic_line := ""
+var _forwarded_stderr_callback: Callable = Callable()
 var _did_apply_initial_split := false
 var _suppress_configuration_sync := false
 var _built_in_tool_checks: Dictionary = {}
@@ -150,6 +154,7 @@ var _mcp_server_action_pending: Dictionary = {}
 
 func _init() -> void:
 	_configured_options = ClaudeAgentOptionsScript.new()
+	_install_panel_stderr_callback()
 	_capture_base_session_defaults()
 
 
@@ -177,6 +182,7 @@ func setup(options = null, transport = null) -> void:
 		return
 	_configured_options = options.duplicate_options() if options != null else ClaudeAgentOptionsScript.new()
 	_configured_transport = transport
+	_install_panel_stderr_callback()
 	_capture_base_session_defaults()
 	if is_node_ready():
 		_apply_initial_control_values()
@@ -194,10 +200,13 @@ func _start_connect(prompt = null) -> bool:
 	if _session_live or _is_connecting:
 		return false
 	_status_issue_message = ""
+	_last_cli_diagnostic_line = ""
 	_apply_preconnect_controls_to_options()
 	_apply_session_target_to_options()
 	_rebuild_client_node()
-	_connected_session_id = _effective_connect_session_id()
+	_authoritative_live_session_id = ""
+	_live_session_target_id = _effective_connect_session_target_id()
+	_clear_transcript_after_disconnect = false
 	_is_connecting = true
 	_clear_live_session_diagnostics()
 	_update_status_from_state()
@@ -255,8 +264,7 @@ func submit_prompt(prompt: String) -> void:
 	_prompt_input.text = ""
 	_refresh_composer_state()
 	prompt_submitted.emit(trimmed)
-	_connected_session_id = _effective_connect_session_id()
-	_client_node.query(trimmed, _connected_session_id)
+	_client_node.query(trimmed, _current_live_query_session_id())
 
 	if not _client_node.get_last_error().is_empty():
 		_emit_error(_client_node.get_last_error())
@@ -475,6 +483,7 @@ func _populate_built_in_tool_groups() -> void:
 func _apply_initial_control_values() -> void:
 	if _configured_options == null:
 		_configured_options = ClaudeAgentOptionsScript.new()
+		_install_panel_stderr_callback()
 	if _configured_options.model.is_empty():
 		_configured_options.model = MODEL_PRESETS[0]
 	if _configured_options.effort.is_empty():
@@ -538,7 +547,14 @@ func _apply_built_in_tool_controls_from_options() -> void:
 func _capture_base_session_defaults() -> void:
 	_base_resume = _configured_options.resume if _configured_options != null else ""
 	_base_session_id = _configured_options.session_id if _configured_options != null else ""
-	_connected_session_id = _effective_connect_session_id()
+	_live_session_target_id = _effective_connect_session_target_id()
+
+
+func _install_panel_stderr_callback() -> void:
+	if _configured_options == null:
+		return
+	_forwarded_stderr_callback = _configured_options.stderr
+	_configured_options.stderr = Callable(self, "_handle_cli_stderr_line")
 
 
 func _ensure_client_node() -> void:
@@ -601,18 +617,37 @@ func _apply_preconnect_controls_to_options() -> void:
 func _apply_session_target_to_options() -> void:
 	if _has_selected_session():
 		_configured_options.resume = _selected_session_id
-		_configured_options.session_id = _selected_session_id
+		_configured_options.session_id = _base_session_id
 	else:
 		_configured_options.resume = _base_resume
 		_configured_options.session_id = _base_session_id
 
 
-func _effective_connect_session_id() -> String:
+func _effective_connect_session_target_id() -> String:
 	if _has_selected_session():
 		return _selected_session_id
+	if not _base_resume.is_empty():
+		return _base_resume
 	if not _base_session_id.is_empty():
 		return _base_session_id
 	return "default"
+
+
+func _current_live_query_session_id() -> String:
+	if not _authoritative_live_session_id.is_empty():
+		return _authoritative_live_session_id
+	if not _live_session_target_id.is_empty():
+		return _live_session_target_id
+	return "default"
+
+
+func _active_session_reference_id() -> String:
+	var current_session_id := _current_live_query_session_id()
+	if current_session_id != "default":
+		return current_session_id
+	if not _live_session_target_id.is_empty() and _live_session_target_id != "default":
+		return _live_session_target_id
+	return current_session_id
 
 
 func _resolve_session_scope_directory() -> String:
@@ -1057,12 +1092,24 @@ func _select_session_by_index(index: int) -> void:
 	if index < 0 or index >= _session_infos.size():
 		return
 	var info := _session_infos[index]
+	var was_live := _session_live
+	var prior_selected_id := _selected_session_id
 	_selected_session_id = info.session_id
 	_selected_session_info = info
 	_delete_confirm_armed = false
-	_connected_session_id = _effective_connect_session_id()
 	_session_list.select(index)
 	_refresh_selected_session_fields()
+	if was_live:
+		var active_session_id := _active_session_reference_id()
+		if prior_selected_id == info.session_id and active_session_id == info.session_id:
+			_refresh_selected_session_metadata()
+			_refresh_session_controls()
+			_update_status_from_state()
+			_refresh_composer_state()
+			_refresh_transcript_entry_views_visibility()
+			return
+		_client_node.disconnect_client()
+		return
 	if _can_switch_sessions():
 		_reload_selected_session_transcript()
 	else:
@@ -1079,7 +1126,7 @@ func _clear_selected_session(clear_transcript_too: bool) -> void:
 	_selected_session_messages.clear()
 	_selected_session_transcript.clear()
 	_delete_confirm_armed = false
-	_connected_session_id = _effective_connect_session_id()
+	_live_session_target_id = _effective_connect_session_target_id()
 	_session_list.deselect_all()
 	_refresh_selected_session_fields()
 	if clear_transcript_too:
@@ -1193,6 +1240,8 @@ func _can_switch_sessions() -> bool:
 func _restore_disconnected_view() -> void:
 	_is_connecting = false
 	_session_live = false
+	_authoritative_live_session_id = ""
+	_live_session_target_id = _effective_connect_session_target_id()
 	_pending_prompt_echo = ""
 	_pending_prompt_entry_id = -1
 	_rewind_pending_entry_id = -1
@@ -1200,6 +1249,9 @@ func _restore_disconnected_view() -> void:
 	_begin_new_live_turn()
 	if _has_selected_session():
 		_reload_selected_session_transcript()
+	elif _clear_transcript_after_disconnect:
+		clear_transcript()
+	_clear_transcript_after_disconnect = false
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
@@ -1226,6 +1278,7 @@ func _on_client_busy_changed(_is_busy: bool) -> void:
 
 
 func _on_client_message_received(message: Variant) -> void:
+	_note_runtime_session_id(_message_session_id(message))
 	message_received.emit(message)
 	if message is ClaudeRateLimitEvent:
 		_handle_rate_limit_event(message)
@@ -1266,6 +1319,7 @@ func _on_client_message_received(message: Variant) -> void:
 
 
 func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
+	_note_runtime_session_id(result_message.session_id)
 	_begin_new_live_turn()
 	Callable(self, "_refresh_context_usage_async").call_deferred()
 	turn_finished.emit(result_message)
@@ -1409,6 +1463,7 @@ func _handle_stream_event(message: ClaudeStreamEvent) -> void:
 
 
 func _handle_result_message(message: ClaudeResultMessage) -> void:
+	_note_runtime_session_id(message.session_id)
 	_append_transcript_entry("result", {
 		"title": "Result · %s" % ("Error" if message.is_error else "Success"),
 		"text": message.result,
@@ -1947,14 +2002,58 @@ func _entry_matches_active_session(entry: Dictionary) -> bool:
 	var entry_session_id := _normalize_transcript_session_id(str(entry.get("session_id", "")))
 	if entry_session_id.is_empty():
 		return true
-	return entry_session_id == _connected_session_id
+	return entry_session_id == _active_session_reference_id()
 
 
 func _normalize_transcript_session_id(session_id: String) -> String:
 	var normalized := session_id.strip_edges()
-	if normalized == "default" and _connected_session_id != "default":
-		return _connected_session_id
+	var active_session_id := _active_session_reference_id()
+	if normalized == "default" and active_session_id != "default":
+		return active_session_id
 	return normalized
+
+
+func _message_session_id(message: Variant) -> String:
+	if message is ClaudeAssistantMessage:
+		return message.session_id
+	if message is ClaudeResultMessage:
+		return message.session_id
+	if message is ClaudeStreamEvent:
+		return message.session_id
+	if message is ClaudeRateLimitEvent:
+		return message.session_id
+	if message is ClaudeTaskStartedMessage:
+		return message.session_id
+	if message is ClaudeTaskProgressMessage:
+		return message.session_id
+	if message is ClaudeTaskNotificationMessage:
+		return message.session_id
+	if message is ClaudeUserMessage:
+		return str(message.raw_data.get("session_id", ""))
+	return ""
+
+
+func _note_runtime_session_id(session_id: String) -> void:
+	var normalized := session_id.strip_edges()
+	if normalized.is_empty():
+		return
+	if normalized != "default":
+		_authoritative_live_session_id = normalized
+		_live_session_target_id = normalized
+		return
+	if _authoritative_live_session_id.is_empty() and _live_session_target_id == "default":
+		_authoritative_live_session_id = normalized
+
+
+func _handle_cli_stderr_line(line: String) -> void:
+	if _forwarded_stderr_callback.is_valid():
+		_forwarded_stderr_callback.call_deferred(line)
+	var trimmed := line.strip_edges()
+	if trimmed.is_empty():
+		return
+	_last_cli_diagnostic_line = trimmed
+	if _is_connecting or (not _session_live and not _status_issue_message.is_empty()):
+		call_deferred("_update_status_from_state")
 
 
 func _tool_prompt_title(tool_use_id: String) -> String:
@@ -2372,21 +2471,20 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 		var command_count := (server_info.get("commands", []) as Array).size() if server_info.has("commands") else 0
 		_set_status_badge("Connected", COLOR_SUCCESS)
 		_status_title.text = "Connected to Claude"
-		_status_detail.text = "Live session ready%s%s" % [
-			" · selected saved session is active for the next turns" if _has_selected_session() else "",
+		_status_detail.text = "Live session ready%s" % [
 			" · %d commands advertised" % command_count if command_count > 0 else "",
 		]
 	elif _is_connecting:
 		_set_status_badge("Connecting", COLOR_ACCENT)
 		_status_title.text = "Connecting to Claude"
-		_status_detail.text = "Waiting for the streaming session to initialize."
+		_status_detail.text = _status_detail_with_diagnostic("Waiting for the streaming session to initialize.")
 	else:
 		var logged_in := bool(_last_auth_status.get("logged_in", false))
 		var error_message := str(_last_auth_status.get("error_message", ""))
 		if not _status_issue_message.is_empty():
 			_set_status_badge("Issue", COLOR_ERROR)
 			_status_title.text = "Claude session failed to start"
-			_status_detail.text = _status_issue_message
+			_status_detail.text = _status_detail_with_diagnostic(_status_issue_message)
 		elif not logged_in and not error_message.is_empty():
 			_set_status_badge("Issue", COLOR_ERROR)
 			_status_title.text = "Claude CLI needs attention"
@@ -2422,7 +2520,7 @@ func _refresh_composer_state() -> void:
 
 func _composer_hint_text() -> String:
 	if _is_connecting:
-		return "Claude is connecting. The initial prompt will send as soon as the session is ready."
+		return _status_detail_with_diagnostic("Claude is connecting. The initial prompt will send as soon as the session is ready.")
 	if not bool(_last_auth_status.get("logged_in", false)):
 		return "Connect the authenticated Claude CLI to start chatting."
 	if not _session_live:
@@ -2436,10 +2534,19 @@ func _composer_hint_text() -> String:
 	if _client_node.is_busy():
 		return "Claude is responding. You can interrupt the active turn if needed."
 	if _has_selected_session():
-		return "You are continuing the selected saved session."
+		return "You are connected. Select a saved session to reconnect into it after this live session closes."
 	if _prompt_input.text.strip_edges().is_empty():
 		return "Draft a prompt here. The panel renders typed runtime messages and partial output."
 	return "Send the prompt to Claude."
+
+
+func _status_detail_with_diagnostic(base_text: String) -> String:
+	var diagnostic := _last_cli_diagnostic_line.strip_edges()
+	if diagnostic.is_empty():
+		return base_text
+	if base_text.is_empty():
+		return "Latest CLI diagnostic: %s" % diagnostic
+	return "%s\n\nLatest CLI diagnostic: %s" % [base_text, diagnostic]
 
 
 func _set_status_badge(text: String, color: Color) -> void:
@@ -2879,6 +2986,19 @@ func _on_session_refresh_pressed() -> void:
 
 func _on_new_chat_pressed() -> void:
 	if not _can_switch_sessions():
+		return
+	if _session_live:
+		_selected_session_id = ""
+		_selected_session_info = null
+		_selected_session_messages.clear()
+		_selected_session_transcript.clear()
+		_delete_confirm_armed = false
+		_live_session_target_id = _effective_connect_session_target_id()
+		_session_list.deselect_all()
+		_refresh_selected_session_fields()
+		_refresh_selected_session_metadata()
+		_clear_transcript_after_disconnect = true
+		_client_node.disconnect_client()
 		return
 	_clear_selected_session(true)
 

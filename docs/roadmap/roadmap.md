@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- no new bounded slice selected; next parity planning should start from a fresh upstream diff review
+- reference-panel UX expansion planning after the session-lifecycle truthfulness bugfix slice
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -259,6 +259,17 @@ Delivered in Phase 10P:
 - shared transport/auth-probe launch coverage proving `user` stays transport-only rather than entering initialize payloads
 - documented Windows caveat for the shell-backed runtime, where `ClaudeAgentOptions.user` remains unsupported
 
+Delivered in Phase 10AA:
+- upstream-style initialize-timeout handling in `ClaudeQuerySession`, sourced from `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` with the same 60-second floor used by upstream
+- failed initialize/resume flows now clear `Connecting`, close the stalled transport cleanly, and surface concrete diagnostics instead of hanging indefinitely
+- selected saved sessions now set `resume` without overwriting `session_id`, preserving prompt-on-connect parity and caller-configured base session ids
+- `ClaudeChatPanel` now treats saved-session preview selection and the authoritative live session as separate states
+- connected-idle saved-session selection and `New chat` now perform disconnect-and-handoff transitions instead of pretending to live-switch the active session in place
+- panel stderr diagnostics now preserve any caller-provided `ClaudeAgentOptions.stderr` callback while surfacing the latest CLI line in connect failures
+
+Next candidate slice after Phase 10AA:
+- reference-panel UX expansion focused on multiple simultaneous in-flight sessions, live-session forking UX, cutoff-based fork points, MCP authoring UX, and editor-plugin workflows
+
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
 - per-task `stop_task(task_id)` controls in the reference panel while a task is active
@@ -316,4 +327,4 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded reference-panel diagnostics slice is now delivered. The next parity planning pass should start with a fresh upstream diff review, then decide whether any new bounded runtime or reference-panel slice is worth taking on beyond the remaining Windows `user` caveat and intentionally deferred broader parity work.
+The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the broader reference-panel UX expansion around multiple simultaneous sessions, live-session forking, cutoff-based fork points, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
