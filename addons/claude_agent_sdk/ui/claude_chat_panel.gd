@@ -1031,7 +1031,8 @@ func _on_client_error_occurred(message: String) -> void:
 	_pending_prompt_entry_id = -1
 	_rewind_pending_entry_id = -1
 	_last_error = message
-	_status_issue_message = message
+	if not _session_live:
+		_status_issue_message = message
 	_update_status_from_state()
 	_refresh_composer_state()
 	_refresh_session_controls()
@@ -1047,7 +1048,7 @@ func _handle_user_message(message: ClaudeUserMessage) -> void:
 	var is_tool_linked := not message.parent_tool_use_id.is_empty()
 	var has_recognized_blocks := false
 	var content_text := ""
-	var session_id := str(message.raw_data.get("session_id", ""))
+	var session_id := _normalize_transcript_session_id(str(message.raw_data.get("session_id", "")))
 	if message.content is String:
 		content_text = str(message.content).strip_edges()
 	elif message.content is Array:
@@ -1695,10 +1696,17 @@ func _rewind_support_ready() -> bool:
 
 
 func _entry_matches_active_session(entry: Dictionary) -> bool:
-	var entry_session_id := str(entry.get("session_id", "")).strip_edges()
+	var entry_session_id := _normalize_transcript_session_id(str(entry.get("session_id", "")))
 	if entry_session_id.is_empty():
 		return true
 	return entry_session_id == _connected_session_id
+
+
+func _normalize_transcript_session_id(session_id: String) -> String:
+	var normalized := session_id.strip_edges()
+	if normalized == "default" and _connected_session_id != "default":
+		return _connected_session_id
+	return normalized
 
 
 func _tool_prompt_title(tool_use_id: String) -> String:
@@ -2512,8 +2520,6 @@ func _on_rewind_button_pressed(entry_id: int) -> void:
 	await _client_node.rewind_files(user_message_id)
 	_rewind_pending_entry_id = -1
 	_refresh_transcript_entry_views_visibility()
-	if not _client_node.get_last_error().is_empty():
-		_emit_error(_client_node.get_last_error())
 
 
 func _on_tool_rules_advanced_toggled(_pressed: bool) -> void:

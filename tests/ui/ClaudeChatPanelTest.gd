@@ -401,6 +401,136 @@ func test_panel_rewind_button_uses_echoed_user_uuid_and_sends_control_request() 
 	await _cleanup_panel(panel)
 
 
+func test_panel_selected_session_connect_and_send_keeps_rewind_visible_for_default_wire_session_id() -> void:
+	var session_id := _create_panel_session_fixture("rewind-connect-send")
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"enable_file_checkpointing": true,
+		"extra_args": {"replay-user-messages": null},
+	}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	_prompt_input(panel).text = "Continue selected"
+	_prompt_input(panel).text_changed.emit()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "resume-user-1",
+		"session_id": "default",
+		"message": {
+			"role": "user",
+			"content": "Continue selected",
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 120,
+		"duration_api_ms": 80,
+		"num_turns": 1,
+		"session_id": session_id,
+		"result": "Resumed",
+		"uuid": "resume-result-1",
+	})
+	await _await_frames(2)
+
+	var rewind_button := _last_entry(panel, "user_bubble").find_child("RewindButton", true, false) as Button
+	assert_object(rewind_button).is_not_null()
+	assert_bool(rewind_button.is_visible_in_tree()).is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_rewind_failure_emits_single_error_and_keeps_connected_status() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"enable_file_checkpointing": true,
+		"extra_args": {"replay-user-messages": null},
+	}), transport)
+	var errors: Array[String] = []
+	panel.error_occurred.connect(func(message: String): errors.append(message))
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	panel.submit_prompt("Please refactor files")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "user",
+		"uuid": "live-user-error-1",
+		"session_id": "default",
+		"message": {
+			"role": "user",
+			"content": "Please refactor files",
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 120,
+		"duration_api_ms": 80,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "Done",
+		"uuid": "result-live-error-1",
+	})
+	await _await_frames(2)
+
+	var rewind_button := _last_entry(panel, "user_bubble").find_child("RewindButton", true, false) as Button
+	assert_object(rewind_button).is_not_null()
+	rewind_button.pressed.emit()
+	await _await_frames(1)
+
+	var rewind_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "error",
+			"request_id": str(rewind_request.get("request_id", "")),
+			"error": "rewind denied",
+		},
+	})
+	await _await_frames(2)
+
+	assert_int(errors.size()).is_equal(1)
+	assert_str(errors[0]).contains("rewind denied")
+	assert_str(_label(panel, "StatusTitleLabel").text).is_equal("Connected to Claude")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_auth_states_cover_logged_out_and_transport_issue() -> void:
 	var logged_out_transport = FakeTransportScript.new()
 	logged_out_transport.auth_status_result = {
