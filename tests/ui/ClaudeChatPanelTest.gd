@@ -413,6 +413,57 @@ func test_panel_submit_prompt_renders_user_assistant_and_result_entries() -> voi
 	await _cleanup_panel(panel)
 
 
+func test_panel_rate_limit_events_render_under_system_toggle_without_affecting_turn_completion() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+	var turn_finished_events: Array[int] = []
+
+	panel.turn_finished.connect(func(_message: ClaudeResultMessage): turn_finished_events.append(1))
+	panel.submit_prompt("Hello from the panel")
+	transport.emit_stdout_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"status": "allowed_warning",
+			"resetsAt": 1700000000,
+			"rateLimitType": "five_hour",
+			"utilization": 0.91,
+		},
+		"uuid": "rate-panel-1",
+		"session_id": "default",
+	})
+	await _await_frames(2)
+
+	assert_int(turn_finished_events.size()).is_equal(0)
+	assert_int(_count_entries(panel, "system_card")).is_equal(0)
+	assert_bool(_button(panel, "InterruptButton").disabled).is_false()
+
+	_button(panel, "SystemToggle").button_pressed = true
+	_button(panel, "SystemToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	assert_int(_count_entries(panel, "system_card")).is_equal(1)
+	assert_str(_last_card_body_text(panel, "system_card")).contains("Status: Allowed Warning")
+	assert_str(_last_card_body_text(panel, "system_card")).contains("Utilization: 91%")
+	assert_str(_last_card_body_text(panel, "system_card")).contains("\"rateLimitType\": \"five_hour\"")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 14,
+		"duration_api_ms": 11,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "Hello back",
+	})
+	await _await_frames(2)
+
+	assert_int(turn_finished_events.size()).is_equal(1)
+	assert_bool(_button(panel, "InterruptButton").disabled).is_true()
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_coalesces_partial_stream_events_into_single_assistant_bubble() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport, ClaudeAgentOptionsScript.new({
@@ -1259,6 +1310,8 @@ func test_panel_resumes_selected_session_and_disables_mutations_while_connected(
 	assert_str(runtime_options.session_id).is_equal(session_id)
 	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
 	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_false()
 
 	var init_request: Dictionary = JSON.parse_string(transport.writes[-1])
 	transport.emit_stdout_message({
@@ -1274,6 +1327,8 @@ func test_panel_resumes_selected_session_and_disables_mutations_while_connected(
 	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
 	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_false()
 
 	panel.disconnect_client()
 	await _await_frames(2)
@@ -1382,6 +1437,77 @@ func test_panel_session_mutation_controls_update_selected_session() -> void:
 	await _cleanup_panel(panel)
 
 
+func test_panel_session_fork_control_creates_and_selects_new_saved_session() -> void:
+	var session_id := _create_panel_session_fixture("panel-fork-success")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	_line_edit(panel, "ForkTitleInput").text = "Branch A"
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_session_id_from_panel(panel)).is_not_equal(session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Branch A")
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).contains("Saved answer")
+	assert_str(_line_edit(panel, "ForkTitleInput").text).is_equal("")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_session_fork_control_uses_runtime_default_title_when_blank() -> void:
+	_create_panel_session_fixture("panel-fork-default-title")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	assert_str(_line_edit(panel, "ForkTitleInput").text).is_equal("")
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Restored session (fork)")
+	assert_str(_line_edit(panel, "ForkTitleInput").text).is_equal("")
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).contains("Saved answer")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_failed_session_fork_keeps_selection_and_transcript_intact() -> void:
+	var session_id := _create_panel_session_fixture("panel-fork-failure")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	var config_root := OS.get_environment("CLAUDE_CONFIG_DIR")
+	var project_dir := _make_project_dir(config_root, ProjectSettings.globalize_path("res://"))
+	assert_int(DirAccess.remove_absolute(project_dir.path_join("%s.jsonl" % session_id))).is_equal(OK)
+
+	_line_edit(panel, "ForkTitleInput").text = "Should fail"
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(1)
+	assert_str(_session_id_from_panel(panel)).is_equal(session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Restored session")
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("not found")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_keeps_selected_worktree_session_identity_for_mutations() -> void:
 	var fixture := _create_duplicate_worktree_session_fixture("panel-worktree-selection")
 	var panel = ChatPanelScene.instantiate()
@@ -1405,6 +1531,35 @@ func test_panel_keeps_selected_worktree_session_identity_for_mutations() -> void
 
 	assert_bool(FileAccess.get_file_as_string(str(fixture["repo_file"])).contains('"customTitle":"Worktree renamed"')).is_false()
 	assert_bool(FileAccess.get_file_as_string(str(fixture["worktree_file"])).contains('"customTitle":"Worktree renamed"')).is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_fork_uses_selected_worktree_session_directory() -> void:
+	var fixture := _create_duplicate_worktree_session_fixture("panel-worktree-fork")
+	var original_session_id := "42424242-4242-4424-8424-424242424242"
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"cwd": fixture["repo_root"],
+	}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+	_line_edit(panel, "ForkTitleInput").text = "Worktree fork"
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(2)
+
+	var forked_session_id := _session_id_from_panel(panel)
+	var repo_project_dir := str(fixture["repo_file"]).get_base_dir()
+	var worktree_project_dir := str(fixture["worktree_file"]).get_base_dir()
+	assert_str(forked_session_id).is_not_equal(original_session_id)
+	assert_bool(FileAccess.file_exists(worktree_project_dir.path_join("%s.jsonl" % forked_session_id))).is_true()
+	assert_bool(FileAccess.file_exists(repo_project_dir.path_join("%s.jsonl" % forked_session_id))).is_false()
+	assert_str(_label(panel, "SelectedSessionCwdValue").text).contains(str(fixture["worktree_root"]))
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Worktree fork")
 
 	await _cleanup_panel(panel)
 

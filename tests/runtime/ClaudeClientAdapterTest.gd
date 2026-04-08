@@ -6,6 +6,7 @@ const ClaudeClientAdapterScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeSessionsScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_sessions.gd")
 const ClaudeSystemMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_system_message.gd")
 const ClaudeAssistantMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_assistant_message.gd")
+const ClaudeRateLimitEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_rate_limit_event.gd")
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 
 var _created_roots: Array[String] = []
@@ -181,6 +182,62 @@ func test_adapter_can_run_second_turn_after_first_result() -> void:
 
 	assert_array(turn_results).is_equal(["first", "second"])
 	assert_bool(adapter.is_busy()).is_false()
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_passes_rate_limit_events_through_turn_stream_without_finishing_turn() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var all_messages: Array = []
+	var turn_messages: Array = []
+	var turn_results: Array = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.message_received.connect(func(message): all_messages.append(message))
+	adapter.turn_message_received.connect(func(message): turn_messages.append(message))
+	adapter.turn_finished.connect(func(message): turn_results.append(message))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("Hi")
+	transport.emit_stdout_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"status": "allowed_warning",
+			"resetsAt": 1700000000,
+			"rateLimitType": "five_hour",
+			"utilization": 0.91,
+		},
+		"uuid": "rate-1",
+		"session_id": "default",
+	})
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_array(busy_events).is_equal([true])
+	assert_int(turn_results.size()).is_equal(0)
+	assert_int(all_messages.size()).is_equal(1)
+	assert_object(all_messages[0]).is_instanceof(ClaudeRateLimitEventScript)
+	assert_int(turn_messages.size()).is_equal(1)
+	assert_object(turn_messages[0]).is_instanceof(ClaudeRateLimitEventScript)
+
+	transport.emit_stdout_message(_result_payload("done"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_int(turn_results.size()).is_equal(1)
 	await _cleanup_adapter(adapter)
 
 

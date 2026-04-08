@@ -106,10 +106,12 @@ var _current_thinking_entry_id := -1
 @onready var _selected_session_cwd: Label = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SelectedSessionCwdValue
 @onready var _session_title_input: LineEdit = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionTitleGroup/SessionTitleInput
 @onready var _session_tag_input: LineEdit = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionTagGroup/SessionTagInput
+@onready var _fork_title_input: LineEdit = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/ForkTitleGroup/ForkTitleInput
 @onready var _rename_session_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid/RenameSessionButton
 @onready var _apply_tag_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid/ApplyTagButton
 @onready var _clear_tag_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid/ClearTagButton
 @onready var _delete_session_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid/DeleteSessionButton
+@onready var _fork_session_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid/ForkSessionButton
 @onready var _confirm_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/ConfirmDeleteButton
 @onready var _cancel_delete_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/DeleteConfirmRow/CancelDeleteButton
 @onready var _thinking_toggle: CheckButton = $Shell/Margin/Body/SplitRow/ChatColumn/TranscriptCard/TranscriptMargin/TranscriptBody/TranscriptToolbar/ThinkingToggle
@@ -313,6 +315,8 @@ func _wire_ui() -> void:
 		_clear_tag_button.pressed.connect(_on_clear_tag_pressed)
 	if not _delete_session_button.pressed.is_connected(_on_delete_session_pressed):
 		_delete_session_button.pressed.connect(_on_delete_session_pressed)
+	if not _fork_session_button.pressed.is_connected(_on_fork_session_pressed):
+		_fork_session_button.pressed.connect(_on_fork_session_pressed)
 	if not _confirm_delete_button.pressed.is_connected(_on_confirm_delete_pressed):
 		_confirm_delete_button.pressed.connect(_on_confirm_delete_pressed)
 	if not _cancel_delete_button.pressed.is_connected(_on_cancel_delete_pressed):
@@ -321,6 +325,8 @@ func _wire_ui() -> void:
 		_session_title_input.text_changed.connect(_on_session_title_text_changed)
 	if not _session_tag_input.text_changed.is_connected(_on_session_tag_text_changed):
 		_session_tag_input.text_changed.connect(_on_session_tag_text_changed)
+	if not _fork_title_input.text_changed.is_connected(_on_fork_title_text_changed):
+		_fork_title_input.text_changed.connect(_on_fork_title_text_changed)
 
 
 func _apply_static_button_icons() -> void:
@@ -827,11 +833,13 @@ func _refresh_selected_session_fields() -> void:
 	if _selected_session_info == null:
 		_session_title_input.text = ""
 		_session_tag_input.text = ""
+		_fork_title_input.text = ""
 		return
 	_session_title_input.text = str(
 		_selected_session_info.custom_title if _selected_session_info.custom_title != null else _selected_session_info.summary
 	)
 	_session_tag_input.text = str(_selected_session_info.tag) if _selected_session_info.tag != null else ""
+	_fork_title_input.text = ""
 
 
 func _refresh_selected_session_metadata() -> void:
@@ -864,10 +872,12 @@ func _refresh_session_controls() -> void:
 	_session_list.focus_mode = Control.FOCUS_NONE if switching_locked else Control.FOCUS_ALL
 	_session_title_input.editable = has_selection and not mutations_locked
 	_session_tag_input.editable = has_selection and not mutations_locked
+	_fork_title_input.editable = has_selection and not mutations_locked
 	_rename_session_button.disabled = not has_selection or mutations_locked or _session_title_input.text.strip_edges().is_empty()
 	_apply_tag_button.disabled = not has_selection or mutations_locked or _session_tag_input.text.strip_edges().is_empty()
 	_clear_tag_button.disabled = not has_selection or mutations_locked or _selected_session_info == null or _selected_session_info.tag == null or str(_selected_session_info.tag).is_empty()
 	_delete_session_button.disabled = not has_selection or mutations_locked
+	_fork_session_button.disabled = not has_selection or mutations_locked
 	_confirm_delete_button.visible = has_selection and not mutations_locked and _delete_confirm_armed
 	_cancel_delete_button.visible = has_selection and not mutations_locked and _delete_confirm_armed
 
@@ -919,6 +929,9 @@ func _on_client_busy_changed(_is_busy: bool) -> void:
 
 func _on_client_message_received(message: Variant) -> void:
 	message_received.emit(message)
+	if message is ClaudeRateLimitEvent:
+		_handle_rate_limit_event(message)
+		return
 	if message is ClaudeTaskStartedMessage:
 		_handle_task_started_message(message)
 		return
@@ -1062,6 +1075,14 @@ func _handle_result_message(message: ClaudeResultMessage) -> void:
 	})
 	_update_status_from_state()
 	_refresh_composer_state()
+
+
+func _handle_rate_limit_event(message: ClaudeRateLimitEvent) -> void:
+	_append_transcript_entry("system", {
+		"title": "System · Rate limit",
+		"text": _rate_limit_event_text(message),
+		"raw_data": message.raw_data,
+	})
 
 
 func _handle_task_started_message(message: ClaudeTaskStartedMessage) -> void:
@@ -1288,6 +1309,33 @@ func _task_usage_summary(usage: Variant) -> String:
 func _is_terminal_task_status(status: String) -> bool:
 	var normalized := status.strip_edges().to_lower()
 	return normalized == "completed" or normalized == "failed" or normalized == "stopped"
+
+
+func _rate_limit_event_text(message: ClaudeRateLimitEvent) -> String:
+	var info := message.rate_limit_info
+	var lines: Array[String] = []
+	lines.append("Status: %s" % _humanize_label(info.status))
+	if info.rate_limit_type != null and not str(info.rate_limit_type).is_empty():
+		lines.append("Window: %s" % _humanize_label(str(info.rate_limit_type)))
+	if info.utilization != null:
+		lines.append("Utilization: %.0f%%" % (float(info.utilization) * 100.0))
+	if info.resets_at != null:
+		lines.append("Resets: %s" % Time.get_datetime_string_from_unix_time(int(info.resets_at), true))
+	if info.overage_status != null and not str(info.overage_status).is_empty():
+		lines.append("Overage: %s" % _humanize_label(str(info.overage_status)))
+	if info.overage_resets_at != null:
+		lines.append("Overage resets: %s" % Time.get_datetime_string_from_unix_time(int(info.overage_resets_at), true))
+	if info.overage_disabled_reason != null and not str(info.overage_disabled_reason).is_empty():
+		lines.append("Overage reason: %s" % str(info.overage_disabled_reason))
+	return "%s\n\n%s" % ["\n".join(lines), _json_pretty(message.raw_data)]
+
+
+func _humanize_label(value: String) -> String:
+	var tokens := value.strip_edges().replace("-", "_").split("_", false)
+	var formatted: Array[String] = []
+	for token in tokens:
+		formatted.append(token.capitalize())
+	return " ".join(formatted)
 
 
 func _begin_new_live_turn() -> void:
@@ -2394,6 +2442,31 @@ func _on_confirm_delete_pressed() -> void:
 	_reload_sessions(false)
 
 
+func _on_fork_session_pressed() -> void:
+	if not _has_selected_session():
+		return
+	var fork_result: Variant = _client_node.fork_session(
+		_selected_session_id,
+		_selected_session_directory(),
+		"",
+		_fork_title_input.text
+	)
+	if fork_result == null:
+		_status_issue_message = _client_node.get_last_error()
+		_update_status_from_state()
+		_refresh_session_controls()
+		return
+	_status_issue_message = ""
+	var forked_session_id: String = fork_result.session_id
+	_reload_sessions(false)
+	var forked_index := _find_session_index(forked_session_id)
+	if forked_index >= 0:
+		_select_session_by_index(forked_index)
+	else:
+		_update_status_from_state()
+		_refresh_session_controls()
+
+
 func _on_cancel_delete_pressed() -> void:
 	_delete_confirm_armed = false
 	_refresh_session_controls()
@@ -2404,4 +2477,8 @@ func _on_session_title_text_changed(_new_text: String) -> void:
 
 
 func _on_session_tag_text_changed(_new_text: String) -> void:
+	_refresh_session_controls()
+
+
+func _on_fork_title_text_changed(_new_text: String) -> void:
 	_refresh_session_controls()

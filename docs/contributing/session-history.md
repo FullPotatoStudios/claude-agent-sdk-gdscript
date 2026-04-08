@@ -8,7 +8,7 @@ The canonical low-level entrypoint remains `ClaudeSessions`, but the same sessio
 
 - `ClaudeClientAdapter`
 - `ClaudeClientNode`
-- the shipped `ClaudeChatPanel` reference UI
+- the shipped `ClaudeChatPanel` reference UI, including saved-session forking with an optional title override
 
 ## Public API
 
@@ -109,6 +109,12 @@ Transcript reading reconstructs the main visible conversation chain and skips si
 - `parent_tool_use_id` is included when it exists in the underlying history
 
 `get_session_messages()` remains the compatibility API for visible top-level user/assistant messages. `get_session_transcript()` is the richer API for UIs that want the same thinking/tool/system granularity used by the shipped panel.
+
+Panel-specific note:
+
+- `ClaudeChatPanel` now exposes saved-session forking through the selected-session card
+- the panel currently forks only from the visible tail of the selected saved session
+- cutoff selection through `up_to_message_id` remains runtime-only in this slice
 
 Basic mutation behavior:
 

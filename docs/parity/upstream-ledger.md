@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10P process-user launch parity
+- Active roadmap slice: Phase 10S typed rate-limit event parity
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -87,6 +87,10 @@ The first public implementation target is the scene-free core conversation loop,
   - command-style `stop_task(task_id)` parity through `ClaudeQuerySession`, `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
   - typed task system message parity through `ClaudeTaskStartedMessage`, `ClaudeTaskProgressMessage`, and `ClaudeTaskNotificationMessage`
   - transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
+  - `ClaudeChatPanel` task-aware transcript controls with per-task stop actions and saved-session `progress` routing
+  - `ClaudeChatPanel` saved-session forking UI backed by the existing runtime `fork_session()` helpers
+  - typed `ClaudeRateLimitInfo` and `ClaudeRateLimitEvent` parsing for top-level `rate_limit_event` messages
+  - `ClaudeChatPanel` rendering for rate-limit events through the existing `System` transcript path
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors

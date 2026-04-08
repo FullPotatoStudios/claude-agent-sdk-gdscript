@@ -12,6 +12,8 @@ const ClaudeSystemMessageScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeTaskStartedMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_task_started_message.gd")
 const ClaudeTaskProgressMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_task_progress_message.gd")
 const ClaudeTaskNotificationMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_task_notification_message.gd")
+const ClaudeRateLimitEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_rate_limit_event.gd")
+const ClaudeRateLimitInfoScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_rate_limit_info.gd")
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_stream_event.gd")
 
@@ -323,9 +325,99 @@ func test_task_system_messages_require_upstream_mandatory_fields() -> void:
 	assert_that(missing_summary).is_null()
 
 
-func test_skip_unknown_top_level_message_types() -> void:
+func test_parse_rate_limit_event_into_typed_message() -> void:
 	var message: Variant = ClaudeMessageParserScript.parse_message({
 		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"status": "allowed_warning",
+			"resetsAt": 1700000000,
+			"rateLimitType": "five_hour",
+			"utilization": 0.91,
+		},
+		"uuid": "abc-123",
+		"session_id": "session_xyz",
+	})
+
+	assert_object(message).is_instanceof(ClaudeRateLimitEventScript)
+	assert_str(message.uuid).is_equal("abc-123")
+	assert_str(message.session_id).is_equal("session_xyz")
+	assert_object(message.rate_limit_info).is_instanceof(ClaudeRateLimitInfoScript)
+	assert_str(message.rate_limit_info.status).is_equal("allowed_warning")
+	assert_that(message.rate_limit_info.resets_at).is_equal(1700000000)
+	assert_that(message.rate_limit_info.rate_limit_type).is_equal("five_hour")
+	assert_that(message.rate_limit_info.utilization).is_equal(0.91)
+	assert_dict(message.rate_limit_info.raw_data).is_equal({
+		"status": "allowed_warning",
+		"resetsAt": 1700000000,
+		"rateLimitType": "five_hour",
+		"utilization": 0.91,
+	})
+
+
+func test_parse_rate_limit_event_preserves_optional_overage_fields() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"status": "rejected",
+			"overageStatus": "rejected",
+			"overageResetsAt": 1700000300,
+			"overageDisabledReason": "budget_exhausted",
+		},
+		"uuid": "abc-456",
+		"session_id": "session_overage",
+	})
+
+	assert_object(message).is_instanceof(ClaudeRateLimitEventScript)
+	assert_that(message.rate_limit_info.overage_status).is_equal("rejected")
+	assert_that(message.rate_limit_info.overage_resets_at).is_equal(1700000300)
+	assert_that(message.rate_limit_info.overage_disabled_reason).is_equal("budget_exhausted")
+
+
+func test_rate_limit_event_requires_expected_fields() -> void:
+	var missing_info: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "rate_limit_event",
+		"uuid": "abc-789",
+		"session_id": "session_missing_info",
+	})
+	var invalid_info_type: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": "not-a-dictionary",
+		"uuid": "abc-789",
+		"session_id": "session_invalid_info",
+	})
+	var missing_status: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"resetsAt": 1700000000,
+		},
+		"uuid": "abc-789",
+		"session_id": "session_missing_status",
+	})
+	var missing_uuid: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"status": "allowed",
+		},
+		"session_id": "session_missing_uuid",
+	})
+	var missing_session_id: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "rate_limit_event",
+		"rate_limit_info": {
+			"status": "allowed",
+		},
+		"uuid": "abc-789",
+	})
+
+	assert_that(missing_info).is_null()
+	assert_that(invalid_info_type).is_null()
+	assert_that(missing_status).is_null()
+	assert_that(missing_uuid).is_null()
+	assert_that(missing_session_id).is_null()
+
+
+func test_skip_unknown_top_level_message_types() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "future_sdk_event",
 		"event": {},
 	})
 

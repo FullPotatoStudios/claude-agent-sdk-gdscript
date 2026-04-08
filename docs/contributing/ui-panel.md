@@ -84,11 +84,12 @@ The shipped panel currently includes:
 - saved transcript loading and read-only browsing while disconnected
 - reconnect/resume into selected saved sessions
 - idle-time live switching between saved sessions inside an already connected panel
-- basic rename, tag, clear-tag, and delete controls for saved sessions
+- basic rename, tag, clear-tag, delete, and full-session fork controls for saved sessions
 - connect/disconnect controls
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
 - transcript granularity toggles for `Thinking`, `Tasks`, `Tools`, `Results`, `System`, and `Raw`
 - live task cards for typed `task_started`, `task_progress`, and `task_notification` messages, including per-task `stop_task(task_id)` controls while a task is active
+- rate-limit warning cards for typed `rate_limit_event` messages through the existing `System` transcript path
 - interrupt support during active turns
 - live model and permission-mode changes while connected
 - reconnect-only effort changes, exposed in the chat view but disabled while connected
@@ -101,12 +102,14 @@ Live transcript detail uses the same normalized transcript model as saved-sessio
 - tool-use and tool-result entries stay grouped under the `Tools` toggle, including tool blocks carried inside top-level live `user` messages
 - raw inspection stays hidden by default and is only shown through the `Raw` toggle
 - saved-session transcript loading uses the richer `ClaudeSessions.get_session_transcript()` detail model under the same filter toggles
+- saved-session forking uses the existing runtime `fork_session()` helper, supports an optional title override, auto-selects the new fork, and restores its transcript immediately
 
 The panel intentionally does not yet include:
 
 - multiple simultaneous in-flight sessions inside one panel instance
-- session forking
+- cutoff selection or transcript-entry-level fork points
 - richer task dashboards beyond the current per-task transcript cards and stop control
+- live-session forking UX
 - SDK-hosted MCP/custom-tool authoring UX
 - editor-plugin workflows
 

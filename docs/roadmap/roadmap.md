@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- Phase 10P: process-user launch parity
+- Phase 10S: typed rate-limit event parity
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -259,6 +259,21 @@ Delivered in Phase 10P:
 - shared transport/auth-probe launch coverage proving `user` stays transport-only rather than entering initialize payloads
 - documented Windows caveat for the shell-backed runtime, where `ClaudeAgentOptions.user` remains unsupported
 
+Delivered in Phase 10Q:
+- `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
+- per-task `stop_task(task_id)` controls in the reference panel while a task is active
+- saved-session `progress` transcript routing under the same `Tasks` filter as live task cards
+
+Delivered in Phase 10R:
+- `ClaudeChatPanel` saved-session forking UI backed by the existing runtime `fork_session()` helpers
+- optional fork-title override in the panel, plus post-fork auto-selection and transcript restoration
+- mutation locking for saved-session fork controls while connected or connecting
+
+Delivered in Phase 10S:
+- typed `ClaudeRateLimitInfo` and `ClaudeRateLimitEvent` runtime models
+- parser support for top-level `rate_limit_event` messages with normalized upstream wire keys
+- reference-panel rendering for rate-limit events through the existing `System` transcript path
+
 ## Current focus
 
-Work should currently prioritize the next upstream sync review from the ledger to identify any new additive post-`v0.1.54` parity work beyond the completed Phase 10 backlog.
+Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially streamed prompt input parity and richer hook/tool-permission typing.

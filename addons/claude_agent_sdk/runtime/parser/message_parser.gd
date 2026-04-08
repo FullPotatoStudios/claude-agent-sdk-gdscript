@@ -38,6 +38,8 @@ static func parse_message(data: Dictionary) -> Variant:
 				data.get("event", {}) if data.get("event", {}) is Dictionary else {},
 				str(data.get("parent_tool_use_id", ""))
 			)
+		"rate_limit_event":
+			return _parse_rate_limit_event(data)
 		_:
 			return null
 
@@ -89,14 +91,72 @@ static func _parse_system_message(data: Dictionary) -> Variant:
 
 
 static func _require_system_fields(data: Dictionary, required_fields: Array[String], dictionary_fields: Array[String] = []) -> bool:
+	return _require_fields(data, required_fields, dictionary_fields, "system message")
+
+
+static func _require_fields(data: Dictionary, required_fields: Array[String], dictionary_fields: Array[String], context: String) -> bool:
 	for field_name in required_fields:
 		if not data.has(field_name):
-			push_error("Missing required field in system message: %s" % field_name)
+			push_error("Missing required field in %s: %s" % [context, field_name])
 			return false
 		if dictionary_fields.has(field_name) and data[field_name] is not Dictionary:
-			push_error("Invalid required dictionary field in system message: %s" % field_name)
+			push_error("Invalid required dictionary field in %s: %s" % [context, field_name])
 			return false
 	return true
+
+
+static func _parse_rate_limit_event(data: Dictionary) -> Variant:
+	if not _require_fields(data, ["rate_limit_info", "uuid", "session_id"], ["rate_limit_info"], "rate_limit_event message"):
+		return null
+	var info := data.get("rate_limit_info", {})
+	if info is not Dictionary:
+		return null
+	var info_dict := info as Dictionary
+	if not info_dict.has("status"):
+		push_error("Missing required field in rate_limit_info: status")
+		return null
+	return ClaudeRateLimitEvent.new(
+		data,
+		ClaudeRateLimitInfo.new(
+			str(info_dict.get("status", "")),
+			_optional_int(info_dict, "resetsAt"),
+			_optional_string(info_dict, "rateLimitType"),
+			_optional_float(info_dict, "utilization"),
+			_optional_string(info_dict, "overageStatus"),
+			_optional_int(info_dict, "overageResetsAt"),
+			_optional_string(info_dict, "overageDisabledReason"),
+			info_dict
+		),
+		str(data.get("uuid", "")),
+		str(data.get("session_id", ""))
+	)
+
+
+static func _optional_int(data: Dictionary, key: String) -> Variant:
+	if not data.has(key):
+		return null
+	var value: Variant = data.get(key)
+	if value is int or value is float:
+		return int(value)
+	return null
+
+
+static func _optional_float(data: Dictionary, key: String) -> Variant:
+	if not data.has(key):
+		return null
+	var value: Variant = data.get(key)
+	if value is int or value is float:
+		return float(value)
+	return null
+
+
+static func _optional_string(data: Dictionary, key: String) -> Variant:
+	if not data.has(key):
+		return null
+	var value: Variant = data.get(key)
+	if value == null:
+		return null
+	return str(value)
 
 
 static func _parse_user_message(data: Dictionary) -> ClaudeUserMessage:

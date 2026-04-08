@@ -470,6 +470,19 @@ label_settings = SubResource("LabelSettings_bjn48")
 layout_mode = 2
 placeholder_text = "review"
 
+[node name="ForkTitleGroup" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=2147000002]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ForkTitleFieldLabel" type="Label" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/ForkTitleGroup" unique_id=2147000003]
+layout_mode = 2
+text = "Fork title"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="ForkTitleInput" type="LineEdit" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/ForkTitleGroup" unique_id=2147000004]
+layout_mode = 2
+placeholder_text = "Optional; defaults to a derived title (fork)"
+
 [node name="SessionActionGrid" type="GridContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1135350695]
 layout_mode = 2
 theme_override_constants/h_separation = 8
@@ -491,6 +504,10 @@ text = "Clear tag"
 [node name="DeleteSessionButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid" unique_id=1898013709]
 layout_mode = 2
 text = "Delete"
+
+[node name="ForkSessionButton" type="Button" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody/SessionActionGrid" unique_id=2147000005]
+layout_mode = 2
+text = "Fork session"
 
 [node name="DeleteConfirmRow" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SelectedSessionCard/SelectedSessionMargin/SelectedSessionBody" unique_id=1545263050]
 layout_mode = 2

@@ -73,7 +73,7 @@ Phase 1 findings that constrain this matrix:
 | Forward-compatible unknown message handling | parser | Prevents older SDK versions from crashing on new CLI events | parser | `v1 core` | Skip unknown message types |
 | Specialized task system messages | parser, `types.py` | Useful once task-oriented features exist | system message parsing | `v1 later` | Delivered post-v1 in Phase 10O through typed task message subclasses that preserve generic `ClaudeSystemMessage` compatibility |
 | `StreamEvent` partial-message model | parser, `e2e-tests/test_include_partial_messages.py` | Needed for token-by-token / delta UIs | parser, partial-message option | `v1 later` | Valuable, but not required for first full chat loop |
-| `RateLimitEvent` model | parser | Useful for UX warnings and dashboards | parser | `v1 later` | Nice parity after core loop is stable |
+| `RateLimitEvent` model | parser | Useful for UX warnings and dashboards | parser | `v1 later` | Delivered post-v1 in Phase 10S through typed `ClaudeRateLimitEvent` and normalized `ClaudeRateLimitInfo` parsing |
 
 ## Dynamic control operations
 
