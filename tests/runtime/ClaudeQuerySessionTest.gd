@@ -259,6 +259,18 @@ func test_initialize_timeout_uses_env_value_with_upstream_floor() -> void:
 	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", previous_timeout)
 
 
+func test_initialize_timeout_rejects_malformed_env_value() -> void:
+	var previous_timeout := OS.get_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT")
+	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", "not-a-number")
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+
+	assert_str(session.get_last_error()).contains("Invalid CLAUDE_CODE_STREAM_CLOSE_TIMEOUT")
+	assert_bool(transport.connected).is_false()
+	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", previous_timeout)
+
+
 func test_initialize_timeout_fails_stalled_connect_and_closes_transport() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)

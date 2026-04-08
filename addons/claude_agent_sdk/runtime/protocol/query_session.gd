@@ -44,6 +44,7 @@ var _last_error := ""
 var _sdk_mcp_servers: Dictionary = {}
 var _initialize_timeout_sec := DEFAULT_INITIALIZE_TIMEOUT_SEC
 var _initialize_timeout_token := 0
+var _initialize_timeout_error := ""
 
 
 func _init(transport, options = null, sdk_mcp_servers: Dictionary = {}) -> void:
@@ -56,6 +57,10 @@ func _init(transport, options = null, sdk_mcp_servers: Dictionary = {}) -> void:
 
 func open_session() -> void:
 	if _connected:
+		return
+	if not _initialize_timeout_error.is_empty():
+		_emit_error(_initialize_timeout_error)
+		_message_stream.fail(_initialize_timeout_error)
 		return
 	if not _transport.open_transport():
 		var transport_error: String = _transport.get_last_error()
@@ -473,7 +478,14 @@ func _watch_initialize_timeout(tree: SceneTree, token: int) -> void:
 
 func _resolve_initialize_timeout_seconds() -> float:
 	var raw_timeout := OS.get_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT").strip_edges()
-	if raw_timeout.is_empty() or not raw_timeout.is_valid_int():
+	_initialize_timeout_error = ""
+	if raw_timeout.is_empty():
+		return DEFAULT_INITIALIZE_TIMEOUT_SEC
+	if not raw_timeout.is_valid_int():
+		_initialize_timeout_error = (
+			"Invalid CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: expected integer milliseconds, got '%s'"
+			% raw_timeout
+		)
 		return DEFAULT_INITIALIZE_TIMEOUT_SEC
 	return max(float(int(raw_timeout)) / 1000.0, DEFAULT_INITIALIZE_TIMEOUT_SEC)
 
