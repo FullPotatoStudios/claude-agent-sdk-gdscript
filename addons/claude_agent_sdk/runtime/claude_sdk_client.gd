@@ -9,6 +9,7 @@ const ClaudeQuerySessionScript := preload("res://addons/claude_agent_sdk/runtime
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
+const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var options = null
 var _transport = null
@@ -33,11 +34,23 @@ func connect_client() -> void:
 	_last_error = _session.get_last_error()
 
 
-func query(prompt: String, session_id: String = "default") -> void:
+func query(prompt, session_id: String = "default", backfill_session_id := true) -> void:
 	if _session == null:
 		_emit_error("Call connect_client() before query()")
 		return
-	_session.send_user_prompt(prompt, session_id)
+	if not (prompt is String or prompt is ClaudePromptStreamScript):
+		_emit_error("prompt must be either a String or ClaudePromptStream")
+		return
+	if options != null and options.can_use_tool.is_valid() and prompt is String:
+		_emit_error(
+			"can_use_tool callback requires streamed prompt input. " +
+			"Please provide prompt as a ClaudePromptStream instead of a String."
+		)
+		return
+	if prompt is ClaudePromptStreamScript:
+		_session.send_prompt_stream(prompt, session_id, backfill_session_id)
+	else:
+		_session.send_user_prompt(str(prompt), session_id)
 	_last_error = _session.get_last_error()
 
 

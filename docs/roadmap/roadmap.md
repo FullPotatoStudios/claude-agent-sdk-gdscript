@@ -274,6 +274,11 @@ Delivered in Phase 10S:
 - parser support for top-level `rate_limit_event` messages with normalized upstream wire keys
 - reference-panel rendering for rate-limit events through the existing `System` transcript path
 
+Delivered in Phase 10T:
+- `ClaudePromptStream` as a scene-free streamed prompt input helper for outbound query payloads
+- streamed prompt input parity on `ClaudeQuery.query()` and `ClaudeSDKClient.query()`, with upstream-style `session_id` handling differences between one-shot and interactive query flows
+- adapter/node passthrough widening for streamed `query()` calls while keeping `turn_started(prompt, session_id)` string-only
+
 ## Current focus
 
-Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially streamed prompt input parity and richer hook/tool-permission typing.
+Work should currently prioritize the remaining bounded post-v1 parity gaps that still sit outside the shipped panel and runtime surface, especially prompt-on-connect parity plus richer hook/tool-permission typing.

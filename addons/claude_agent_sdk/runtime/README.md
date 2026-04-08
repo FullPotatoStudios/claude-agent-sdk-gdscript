@@ -11,6 +11,7 @@ The intended Phase 4 layering is:
 - `sessions/`
 - `transport/`
 - `protocol/`
+- `input/`
 - `messages/`
 - `parser/`
 

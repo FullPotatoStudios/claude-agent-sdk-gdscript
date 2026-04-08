@@ -6,6 +6,7 @@ const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/
 const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_stream_event.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
+const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var _async_completions: Array[String] = []
 
@@ -137,6 +138,28 @@ func test_client_rejects_second_query_while_response_is_active() -> void:
 	client.disconnect_client()
 
 
+func test_client_rejects_second_query_while_prompt_stream_is_still_active() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query(prompt_stream)
+	client.query("Second")
+
+	assert_str(client.get_last_error()).contains("still in flight")
+	client.disconnect_client()
+
+
 func test_client_emits_error_signal_for_query_before_connect() -> void:
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
 	var errors: Array[String] = []
@@ -260,6 +283,57 @@ func test_one_shot_query_returns_pull_stream() -> void:
 	await get_tree().process_frame
 
 
+func test_one_shot_query_with_prompt_stream_writes_items_without_backfilling_session_id() -> void:
+	var transport = FakeTransportScript.new()
+	var prompt_stream = ClaudePromptStreamScript.new()
+	var stream = ClaudeQuery.query(prompt_stream, ClaudeAgentOptions.new(), transport)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.push_message({
+		"type": "user",
+		"session_id": "explicit-session",
+		"message": {"role": "user", "content": "Second"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(3)
+	var first_prompt: Dictionary = JSON.parse_string(transport.writes[1])
+	var second_prompt: Dictionary = JSON.parse_string(transport.writes[2])
+	assert_bool(first_prompt.has("session_id")).is_false()
+	assert_str(str(second_prompt.get("session_id", ""))).is_equal("explicit-session")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await stream.next_message()).is_null()
+	await get_tree().process_frame
+
+
 func test_one_shot_query_supports_hook_configuration_for_string_prompts() -> void:
 	var transport = FakeTransportScript.new()
 	var options = ClaudeAgentOptions.new({
@@ -360,6 +434,72 @@ func test_one_shot_query_initializes_with_agents_before_writing_prompt() -> void
 	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
 	assert_that(await stream.next_message()).is_null()
 	await get_tree().process_frame
+
+
+func test_client_query_with_prompt_stream_backfills_missing_session_id() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query(prompt_stream, "session-42")
+	var response_stream = client.receive_response()
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.push_message({
+		"type": "user",
+		"session_id": "explicit-session",
+		"message": {"role": "user", "content": "Second"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(3)
+	var first_prompt: Dictionary = JSON.parse_string(transport.writes[1])
+	var second_prompt: Dictionary = JSON.parse_string(transport.writes[2])
+	assert_str(str(first_prompt.get("session_id", ""))).is_equal("session-42")
+	assert_str(str(second_prompt.get("session_id", ""))).is_equal("explicit-session")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-42",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+
+
+func test_client_query_rejects_string_prompt_when_can_use_tool_is_configured() -> void:
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
+		return ClaudePermissionResultAllowScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new({
+		"can_use_tool": permission_callback,
+	}), FakeTransportScript.new())
+
+	client.connect_client()
+	client.query("Hi")
+
+	assert_str(client.get_last_error()).contains("requires streamed prompt input")
 
 
 func test_one_shot_query_fails_when_initialize_fails() -> void:
@@ -567,12 +707,23 @@ func test_one_shot_query_fails_when_permission_prompt_conflicts_with_can_use_too
 	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
 		return ClaudePermissionResultAllowScript.new()
 	var transport = FakeTransportScript.new()
-	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new({
+	var stream = ClaudeQuery.query(ClaudePromptStreamScript.new(), ClaudeAgentOptions.new({
 		"can_use_tool": permission_callback,
 		"permission_prompt_tool_name": "custom-permission",
 	}), transport)
 
 	assert_str(stream.get_error()).contains("cannot be used with permission_prompt_tool_name")
+	assert_that(await stream.next_message()).is_null()
+
+
+func test_one_shot_query_rejects_string_prompt_when_can_use_tool_is_configured() -> void:
+	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
+		return ClaudePermissionResultAllowScript.new()
+	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new({
+		"can_use_tool": permission_callback,
+	}), FakeTransportScript.new())
+
+	assert_str(stream.get_error()).contains("requires streamed prompt input")
 	assert_that(await stream.next_message()).is_null()
 
 

@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: Phase 10S typed rate-limit event parity
+- Active roadmap slice: Phase 10T streamed prompt input query-surface parity
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -91,10 +91,14 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` saved-session forking UI backed by the existing runtime `fork_session()` helpers
   - typed `ClaudeRateLimitInfo` and `ClaudeRateLimitEvent` parsing for top-level `rate_limit_event` messages
   - `ClaudeChatPanel` rendering for rate-limit events through the existing `System` transcript path
+  - `ClaudePromptStream` scene-free outbound prompt queue support
+  - streamed prompt input parity on `ClaudeQuery.query()` and `ClaudeSDKClient.query()`
+  - adapter/node passthrough widening for streamed `query()` calls while keeping `turn_started(prompt, session_id)` string-only
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
+  - prompt-on-connect parity is still incomplete locally; upstream `connect(prompt=...)` accepts both string and streamed inputs, while local `connect_client()` still remains connect-first/query-second
 
 ## Update process
 

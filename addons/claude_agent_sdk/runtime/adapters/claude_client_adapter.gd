@@ -20,6 +20,7 @@ var _last_error := ""
 var _session_ready_emitted := false
 var _active_token := 0
 var _closed_token := -1
+var _turn_watch_token := 0
 
 
 func _init(initial_options = null, transport = null) -> void:
@@ -53,20 +54,28 @@ func disconnect_client() -> void:
 
 	var token := _active_token
 	_active_token += 1
+	_turn_watch_token += 1
 	_connected = false
 	_client.disconnect_client()
 	_set_busy(false)
 	_emit_session_closed_once(token)
 
 
-func query(prompt: String, session_id: String = "default") -> void:
+func query(prompt, session_id: String = "default") -> void:
 	if not _connected or _busy:
 		_client.query(prompt, session_id)
 		return
 
 	_client.query(prompt, session_id)
+	if not _client.get_last_error().is_empty():
+		return
+	_turn_watch_token += 1
+	var turn_token := _turn_watch_token
+	var response_stream = _client.receive_response()
 	_set_busy(true)
-	turn_started.emit(prompt, session_id)
+	if prompt is String:
+		turn_started.emit(prompt, session_id)
+	Callable(self, "_watch_turn_response").call_deferred(turn_token, response_stream)
 
 
 func interrupt() -> void:
@@ -212,6 +221,7 @@ func _run_message_drain(token: int, stream) -> void:
 		return
 
 	_connected = false
+	_turn_watch_token += 1
 	_set_busy(false)
 	_emit_session_closed_once(token)
 
@@ -220,6 +230,20 @@ func _set_busy(value: bool) -> void:
 		return
 	_busy = value
 	busy_changed.emit(_busy)
+
+
+func _watch_turn_response(turn_token: int, response_stream) -> void:
+	var saw_result := false
+	while turn_token == _turn_watch_token:
+		var message: Variant = await response_stream.next_message()
+		if turn_token != _turn_watch_token:
+			return
+		if message == null:
+			if _busy and not saw_result:
+				_set_busy(false)
+			return
+		if message is ClaudeResultMessage:
+			saw_result = true
 
 
 func _emit_session_closed_once(token: int) -> void:

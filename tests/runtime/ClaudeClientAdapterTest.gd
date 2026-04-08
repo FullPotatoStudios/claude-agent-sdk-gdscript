@@ -8,6 +8,7 @@ const ClaudeSystemMessageScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeAssistantMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_assistant_message.gd")
 const ClaudeRateLimitEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_rate_limit_event.gd")
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
+const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var _created_roots: Array[String] = []
 var _async_completions: Array[String] = []
@@ -182,6 +183,87 @@ func test_adapter_can_run_second_turn_after_first_result() -> void:
 
 	assert_array(turn_results).is_equal(["first", "second"])
 	assert_bool(adapter.is_busy()).is_false()
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_streamed_query_sets_busy_without_emitting_turn_started() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query(prompt_stream, "stream-session")
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "Second"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_array(busy_events).is_equal([true])
+	assert_array(turn_starts).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+
+	transport.emit_stdout_message(_result_payload("done"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_clears_busy_when_prompt_stream_fails_before_result() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	var busy_events: Array[bool] = []
+	var errors: Array[String] = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.error_occurred.connect(func(message: String): errors.append(message))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query(prompt_stream, "stream-session")
+	prompt_stream.fail("prompt stream canceled")
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_array(errors).contains(["prompt stream canceled"])
 	await _cleanup_adapter(adapter)
 
 

@@ -5,6 +5,7 @@ const FakeTransportScript := preload("res://tests/support/fake_transport.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
+const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var _async_completions: Array[String] = []
 
@@ -244,6 +245,160 @@ func test_initialize_error_fails_pending_streams() -> void:
 	assert_str(response_stream.get_error()).contains("initialize failed")
 	assert_that(await response_stream.next_message()).is_null()
 	assert_bool(transport.connected).is_false()
+
+
+func test_prompt_stream_waits_for_initialize_and_preserves_stream_payloads() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	session.open_session()
+
+	session.send_prompt_stream(prompt_stream, "fallback-session", false)
+	var response_stream = session.receive_response()
+	assert_str(response_stream.get_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(1)
+
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.push_message({
+		"type": "user",
+		"session_id": "explicit-session",
+		"message": {"role": "user", "content": "Second"},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(3)
+	var first_prompt: Dictionary = JSON.parse_string(transport.writes[1])
+	var second_prompt: Dictionary = JSON.parse_string(transport.writes[2])
+	assert_bool(first_prompt.has("session_id")).is_false()
+	assert_str(str((first_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("First")
+	assert_str(str(second_prompt.get("session_id", ""))).is_equal("explicit-session")
+	assert_str(str((second_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("Second")
+
+
+func test_prompt_stream_write_failure_fails_active_response_stream() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_prompt_stream(prompt_stream)
+	var response_stream = session.receive_response()
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
+
+	transport.connected = false
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "Second"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_str(session.get_last_error()).contains("FakeClaudeTransport is not connected")
+	assert_str(response_stream.get_error()).contains("FakeClaudeTransport is not connected")
+	assert_that(await response_stream.next_message()).is_null()
+
+
+func test_empty_prompt_stream_fails_active_response_stream() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_prompt_stream(prompt_stream)
+	var response_stream = session.receive_response()
+	prompt_stream.finish()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_str(session.get_last_error()).contains("without emitting any prompt items")
+	assert_str(response_stream.get_error()).contains("without emitting any prompt items")
+	assert_that(await response_stream.next_message()).is_null()
+
+
+func test_prompt_stream_stops_accepting_new_items_after_first_result() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_prompt_stream(prompt_stream)
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+	await get_tree().process_frame
+
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "Late"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(2)
 
 
 func test_inbound_hook_callback_writes_success_response() -> void:

@@ -42,7 +42,7 @@ func disconnect_client() -> void:
 	_adapter.disconnect_client()
 
 
-func query(prompt: String, session_id: String = "default") -> void:
+func query(prompt, session_id: String = "default") -> void:
 	_adapter.query(prompt, session_id)
 
 

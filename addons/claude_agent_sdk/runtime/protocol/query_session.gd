@@ -14,6 +14,7 @@ const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sd
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
 const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
 const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
+const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var _transport = null
 var _options = null
@@ -30,7 +31,11 @@ var _inflight_control_requests: Dictionary = {}
 var _message_stream = ClaudeMessageStreamScript.new(false)
 var _current_response_stream = null
 var _last_response_stream = null
-var _pending_prompt_payload := ""
+var _pending_prompt_payloads: Array[String] = []
+var _pending_prompt_stream = null
+var _pending_prompt_stream_session_id := "default"
+var _pending_prompt_stream_backfills_session_id := false
+var _active_prompt_drain_token := 0
 var _last_error := ""
 var _sdk_mcp_servers: Dictionary = {}
 
@@ -64,6 +69,7 @@ func close() -> void:
 		return
 	_closed = true
 	_connected = false
+	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude session closed")
 	_finish_streams()
@@ -72,6 +78,14 @@ func close() -> void:
 
 
 func send_user_prompt(prompt: String, session_id: String = "default") -> void:
+	send_prompt(prompt, session_id, true)
+
+
+func send_prompt_stream(prompt_stream, session_id: String = "default", backfill_session_id := true) -> void:
+	send_prompt(prompt_stream, session_id, backfill_session_id)
+
+
+func send_prompt(prompt, session_id: String = "default", backfill_session_id := true) -> void:
 	if not _connected:
 		_emit_error("Cannot query before connect() completes")
 		return
@@ -79,17 +93,19 @@ func send_user_prompt(prompt: String, session_id: String = "default") -> void:
 		_emit_error("Cannot start a new query while another response is still in flight")
 		return
 
+	_set_last_error("")
 	_current_response_stream = ClaudeMessageStreamScript.new(true)
 	_last_response_stream = _current_response_stream
-	_pending_prompt_payload = JSON.stringify({
-		"type": "user",
-		"session_id": session_id,
-		"message": {
-			"role": "user",
-			"content": prompt,
-		},
-		"parent_tool_use_id": null,
-	})
+	_pending_prompt_payloads.clear()
+	_pending_prompt_stream = null
+	_pending_prompt_stream_session_id = session_id
+	_pending_prompt_stream_backfills_session_id = backfill_session_id
+	_active_prompt_drain_token += 1
+
+	if prompt is ClaudePromptStreamScript:
+		_pending_prompt_stream = prompt
+	else:
+		_pending_prompt_payloads.append(_build_user_prompt_payload(str(prompt), session_id))
 
 	if _initialized:
 		_flush_pending_prompt()
@@ -219,14 +235,72 @@ func _send_control_request_and_wait(request: Dictionary) -> Dictionary:
 
 
 func _flush_pending_prompt() -> void:
-	if _pending_prompt_payload.is_empty():
+	for payload in _pending_prompt_payloads:
+		if not _transport.write(payload):
+			_fail_active_prompt_write(_transport.get_last_error())
+			return
+	_pending_prompt_payloads.clear()
+
+	if _pending_prompt_stream == null:
 		return
-	if not _transport.write(_pending_prompt_payload):
-		_emit_error(_transport.get_last_error())
-		if _current_response_stream != null:
-			_current_response_stream.fail(_last_error)
-		return
-	_pending_prompt_payload = ""
+	var token := _active_prompt_drain_token
+	var prompt_stream = _pending_prompt_stream
+	var stream_session_id := _pending_prompt_stream_session_id
+	var should_backfill := _pending_prompt_stream_backfills_session_id
+	_pending_prompt_stream = null
+	Callable(self, "_drain_prompt_stream").call_deferred(prompt_stream, stream_session_id, should_backfill, token)
+
+
+func _drain_prompt_stream(prompt_stream, session_id: String, backfill_session_id: bool, token: int) -> void:
+	var wrote_any_message := false
+	while token == _active_prompt_drain_token and not _closed:
+		var next_message: Variant = await prompt_stream.next_message()
+		if token != _active_prompt_drain_token or _closed:
+			return
+		if next_message == null:
+			var prompt_error := str(prompt_stream.get_error())
+			if not prompt_error.is_empty():
+				_fail_active_prompt_write(prompt_error)
+			elif not wrote_any_message:
+				_fail_active_prompt_write("ClaudePromptStream finished without emitting any prompt items")
+			return
+		if next_message is not Dictionary:
+			_fail_active_prompt_write("ClaudePromptStream must emit Dictionary items")
+			return
+
+		var payload := _prepare_prompt_stream_payload(next_message as Dictionary, session_id, backfill_session_id)
+		if not _transport.write(JSON.stringify(payload)):
+			_fail_active_prompt_write(_transport.get_last_error())
+			return
+		wrote_any_message = true
+
+
+func _prepare_prompt_stream_payload(message: Dictionary, session_id: String, backfill_session_id: bool) -> Dictionary:
+	var payload := message.duplicate(true)
+	if backfill_session_id and not payload.has("session_id"):
+		payload["session_id"] = session_id
+	return payload
+
+
+func _build_user_prompt_payload(prompt: String, session_id: String) -> String:
+	return JSON.stringify({
+		"type": "user",
+		"session_id": session_id,
+		"message": {
+			"role": "user",
+			"content": prompt,
+		},
+		"parent_tool_use_id": null,
+	})
+
+
+func _fail_active_prompt_write(message: String) -> void:
+	_emit_error(message)
+	_active_prompt_drain_token += 1
+	_pending_prompt_payloads.clear()
+	_pending_prompt_stream = null
+	if _current_response_stream != null:
+		_current_response_stream.fail(_last_error)
 
 
 func _on_transport_stdout_line(line: String) -> void:
@@ -262,6 +336,8 @@ func _on_transport_stdout_line(line: String) -> void:
 	if _current_response_stream != null:
 		_current_response_stream.push_message(message)
 		if message is Object and str(message.get("message_type")) == "result":
+			_active_prompt_drain_token += 1
+			_pending_prompt_stream = null
 			_current_response_stream = null
 
 
@@ -272,6 +348,7 @@ func _on_transport_stderr_line(_line: String) -> void:
 func _on_transport_closed() -> void:
 	_closed = true
 	_connected = false
+	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude transport closed")
 	_disconnect_transport_signals()
@@ -280,6 +357,7 @@ func _on_transport_closed() -> void:
 
 func _on_transport_error(message: String) -> void:
 	_emit_error(message)
+	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests(message)
 	_message_stream.fail(message)
@@ -345,6 +423,9 @@ func _emit_error(message: String) -> void:
 func _fail_session(message: String) -> void:
 	if _last_error != message:
 		_set_last_error(message)
+	_active_prompt_drain_token += 1
+	_pending_prompt_payloads.clear()
+	_pending_prompt_stream = null
 	_complete_pending_control_requests(message)
 	_cancel_all_inflight_control_requests()
 	_message_stream.fail(message)
@@ -382,6 +463,8 @@ func _disconnect_transport_signals() -> void:
 
 
 func _finish_streams() -> void:
+	_pending_prompt_payloads.clear()
+	_pending_prompt_stream = null
 	_message_stream.finish()
 	if _current_response_stream != null:
 		_current_response_stream.finish()

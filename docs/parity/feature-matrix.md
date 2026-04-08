@@ -22,7 +22,7 @@ Phase 1 findings that constrain this matrix:
 | --- | --- | --- | --- | --- | --- |
 | One-shot `query(prompt, options)` API | `query.py`, `tests/test_query.py`, `examples/quick_start.py` | Smallest useful SDK entrypoint for scripts and simple tools | transport, parser, core options | `v1 core` | Canonical one-shot API target |
 | String prompt flow | `query.py`, `tests/test_client.py`, `examples/quick_start.py` | Most common call shape for gameplay tools and editor tools | query API, parser | `v1 core` | Should map to a simple `String` prompt |
-| Async/streaming prompt input for one-shot mode | `query.py`, `tests/test_query.py` | Enables parity with upstream streaming input patterns | query API, transport lifecycle | `v1 later` | Useful, but not required for first Godot-facing implementation |
+| Async/streaming prompt input for one-shot mode | `query.py`, `tests/test_query.py` | Enables parity with upstream streaming input patterns | query API, transport lifecycle | `v1 later` | Delivered post-v1 in Phase 10T through `ClaudePromptStream` support on `ClaudeQuery.query()` |
 | Public custom transport injection | `query.py`, `client.py` | Helps advanced embedders and parity testing | transport abstraction | `v1 later` | Keep internal transport abstraction in v1 even if public injection waits |
 
 ## Interactive client API
@@ -30,8 +30,8 @@ Phase 1 findings that constrain this matrix:
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `ClaudeSDKClient` as the interactive core | `client.py`, `tests/test_streaming_client.py`, `examples/streaming_mode.py` | Basis for chat UIs, tools, and adapters | transport, query control, parser | `v1 core` | Canonical interactive API target |
-| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Must support empty connect and prompt-on-connect |
-| `query()` on connected client | `client.py`, `examples/streaming_mode.py` | Sends follow-up messages in active sessions | connect, transport writes | `v1 core` | Must support session-aware follow-ups |
+| `connect()` | `client.py`, `tests/test_client.py` | Opens a reusable Claude session | transport, initialize flow | `v1 core` | Empty connect is shipped locally; prompt-on-connect parity remains follow-up work after Phase 10T |
+| `query()` on connected client | `client.py`, `examples/streaming_mode.py` | Sends follow-up messages in active sessions | connect, transport writes | `v1 core` | Session-aware string follow-ups shipped in v1; streamed follow-up parity delivered post-v1 in Phase 10T through `ClaudePromptStream` |
 | `receive_messages()` | `client.py` | Lowest-level interactive receive loop | parser, message routing | `v1 core` | Primary stream-consumption primitive |
 | `receive_response()` | `client.py` | Convenient per-turn receive loop for UI code | `receive_messages`, result detection | `v1 core` | Stop after `ResultMessage` |
 | `disconnect()` | `client.py` | Needed for predictable shutdown in Godot runtime | transport lifecycle | `v1 core` | Important because there is no Python async context manager equivalent |

@@ -2,7 +2,7 @@
 
 The addon now exposes three layers for integrating Claude into Godot projects:
 
-- `ClaudeQuery` for one-shot string prompts where you are happy to `await` a `ClaudeMessageStream`
+- `ClaudeQuery` for one-shot prompts where you are happy to `await` a `ClaudeMessageStream`
 - `ClaudeSDKClient` for scene-free interactive control over a long-lived Claude session
 - `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-native signal-driven integration
 - `ClaudeChatPanel` for a ready-to-drop-in reference UI built on the Node layer
@@ -68,6 +68,7 @@ The adapter owns one background drain of `ClaudeSDKClient.receive_messages()`.
 - `message_received` is the continuous session-wide stream
 - `turn_message_received` only covers the currently active turn
 - `turn_finished` fires on the first `ClaudeResultMessage` for that turn
+- `turn_started` stays string-only and fires only for string-backed `query()` calls; streamed `ClaudePromptStream` prompts still set busy state but do not emit `turn_started`
 
 ## Scope and limits
 
@@ -88,6 +89,8 @@ The integration layer is intentionally thin.
 - `plugins` and `fork_session` are also transport-only in the current parity slice; they do not enter initialize payloads
 - `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`, emitted as repeated `--plugin-dir` flags
 - `permission_prompt_tool_name` cannot be combined with `can_use_tool`; when you use `can_use_tool`, the transport continues to auto-configure Claude's permission prompt tool as `stdio`
+- `ClaudeQuery.query()` and `ClaudeSDKClient.query()` now accept either a `String` or `ClaudePromptStream`; when `can_use_tool` is configured, upstream-style streamed prompt input is required
+- local `ClaudePromptStream` behavior is intentionally strict: an empty stream or `fail(...)` ends the active turn locally instead of leaving the query busy forever
 - `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path
 - the deprecated Python `debug_stderr` convenience shim is intentionally not mirrored in GDScript; use `stderr` plus optional `extra_args = {"debug-to-stderr": null}` instead
