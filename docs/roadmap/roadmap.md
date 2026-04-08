@@ -270,6 +270,11 @@ Delivered in Phase 10AA:
 Next candidate slice after Phase 10AA:
 - reference-panel UX expansion focused on multiple simultaneous in-flight sessions, live-session forking UX, cutoff-based fork points, MCP authoring UX, and editor-plugin workflows
 
+Delivered in Phase 10AB:
+- `ClaudeChatPanel` disconnected saved-session user-message `Fork from here` actions backed by runtime `fork_session(..., up_to_message_id, ...)`
+- automatic post-fork selection and transcript restoration for cutoff-based saved-session branches in the reference panel
+- docs and UI coverage updated to keep assistant-message cutoff selection and live-session forking explicitly deferred
+
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
 - per-task `stop_task(task_id)` controls in the reference panel while a task is active
@@ -327,4 +332,4 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the broader reference-panel UX expansion around multiple simultaneous sessions, live-session forking, cutoff-based fork points, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
+The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, live-session forking, broader transcript-level fork parity beyond saved-session user bubbles, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.

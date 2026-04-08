@@ -89,6 +89,7 @@ The shipped panel currently includes:
 - reconnect/resume into selected saved sessions
 - reconnect/resume handoff for selected saved sessions while keeping the active live session authoritative until disconnect
 - basic rename, tag, clear-tag, delete, and full-session fork controls for saved sessions
+- disconnected saved-session user-message `Fork from here` actions backed by runtime `up_to_message_id` support
 - connect/disconnect controls
 - disconnected composer-driven connect-and-send flow, including selected saved-session resume targets
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
@@ -111,12 +112,13 @@ Live transcript detail uses the same normalized transcript model as saved-sessio
 - raw inspection stays hidden by default and is only shown through the `Raw` toggle
 - saved-session transcript loading uses the richer `ClaudeSessions.get_session_transcript()` detail model under the same filter toggles
 - saved-session forking uses the existing runtime `fork_session()` helper, supports an optional title override, auto-selects the new fork, and restores its transcript immediately
+- saved-session user-message fork points branch from the clicked message UUID inclusively and reuse the same fork-title input as the selected-session card
 - the rewind toggle is panel-owned: it enables file checkpointing and adds `replay-user-messages` so user transcript entries can expose rewind actions without hand-editing `extra_args`
 
 The panel intentionally does not yet include:
 
 - multiple simultaneous in-flight sessions inside one panel instance
-- cutoff selection or transcript-entry-level fork points
+- assistant-message cutoff fork points or broader transcript-entry fork parity
 - richer task dashboards beyond the current per-task transcript cards and stop control
 - live-session forking UX
 - SDK-hosted MCP/custom-tool authoring UX

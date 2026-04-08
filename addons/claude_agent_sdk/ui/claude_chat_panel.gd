@@ -2018,6 +2018,18 @@ func _should_show_rewind_action(entry: Dictionary) -> bool:
 	return _entry_matches_active_session(entry)
 
 
+func _should_show_saved_fork_action(entry: Dictionary) -> bool:
+	if str(entry.get("kind", "")) != "user":
+		return false
+	if _session_live or _is_connecting:
+		return false
+	if not _has_selected_session():
+		return false
+	if str(entry.get("uuid", "")).strip_edges().is_empty():
+		return false
+	return _normalize_transcript_session_id(str(entry.get("session_id", ""))) == _selected_session_id
+
+
 func _rewind_support_ready() -> bool:
 	return (
 		_session_live and
@@ -2182,6 +2194,13 @@ func _create_message_bubble(role: String, entry: Dictionary) -> Control:
 		actions.alignment = BoxContainer.ALIGNMENT_END
 		bubble_body.add_child(actions)
 
+		var fork_button := Button.new()
+		fork_button.name = "ForkFromHereButton"
+		fork_button.text = "Fork from here"
+		fork_button.focus_mode = Control.FOCUS_NONE
+		fork_button.pressed.connect(_on_saved_transcript_fork_pressed.bind(int(entry.get("id", -1))))
+		actions.add_child(fork_button)
+
 		var rewind_button := Button.new()
 		rewind_button.name = "RewindButton"
 		rewind_button.text = "Rewind files here"
@@ -2210,13 +2229,17 @@ func _update_message_bubble(row: Control, role: String, entry: Dictionary) -> vo
 		bubble_body.text = body_text
 	if role != "user":
 		return
+	var fork_button := row.find_child("ForkFromHereButton", true, false) as Button
 	var rewind_button := row.find_child("RewindButton", true, false) as Button
 	var actions := row.find_child("BubbleActions", true, false) as HBoxContainer
-	if rewind_button == null or actions == null:
+	if fork_button == null or rewind_button == null or actions == null:
 		return
+	var can_fork := _should_show_saved_fork_action(entry)
 	var can_rewind := _should_show_rewind_action(entry)
 	var is_pending := int(entry.get("id", -1)) == _rewind_pending_entry_id
-	actions.visible = can_rewind
+	actions.visible = can_fork or can_rewind
+	fork_button.visible = can_fork
+	fork_button.disabled = not can_fork
 	rewind_button.visible = can_rewind
 	rewind_button.disabled = not can_rewind or _client_node == null or _client_node.is_busy() or _rewind_pending_entry_id >= 0
 	rewind_button.text = "Rewinding..." if is_pending else "Rewind files here"
@@ -3105,12 +3128,28 @@ func _on_confirm_delete_pressed() -> void:
 
 
 func _on_fork_session_pressed() -> void:
+	_fork_selected_session()
+
+
+func _on_saved_transcript_fork_pressed(entry_id: int) -> void:
+	if not _has_selected_session():
+		return
+	var entry := _get_transcript_entry(entry_id)
+	if entry.is_empty() or not _should_show_saved_fork_action(entry):
+		return
+	var cutoff_message_id := str(entry.get("uuid", "")).strip_edges()
+	if cutoff_message_id.is_empty():
+		return
+	_fork_selected_session(cutoff_message_id)
+
+
+func _fork_selected_session(up_to_message_id: String = "") -> void:
 	if not _has_selected_session():
 		return
 	var fork_result: Variant = _client_node.fork_session(
 		_selected_session_id,
 		_selected_session_directory(),
-		"",
+		up_to_message_id,
 		_fork_title_input.text
 	)
 	if fork_result == null:
