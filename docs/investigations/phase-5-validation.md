@@ -112,6 +112,9 @@ Additional implemented modes:
 - `stderr_debug`
 - `hook_pre_tool_use`
 - `tool_permission_bash_touch`
+- `dynamic_permission_mode`
+- `dynamic_model`
+- `dynamic_interrupt`
 
 Historically validated in this environment before the current auth regression:
 
@@ -125,13 +128,16 @@ Implemented assertions for the new smoke modes:
 - `stderr_debug`: requires the runtime `stderr` callback to capture at least one real Claude CLI `[DEBUG]` line when `extra_args = {"debug-to-stderr": null}`
 - `hook_pre_tool_use`: requires a `PreToolUse` hook to match a real Bash invocation, see a non-empty `tool_use_id`, and allow the request through `hookSpecificOutput.permissionDecision = "allow"`
 - `tool_permission_bash_touch`: requires a streamed `ClaudePromptStream` query to trigger a real Bash permission callback, see a non-empty `tool_use_id`, and create the prompted temporary file via `touch`
+- `dynamic_permission_mode`: connects a real `ClaudeSDKClient`, waits for initialize completion, switches from the default permission mode to `acceptEdits`, completes a first turn, switches back to `default`, and completes a second turn without control or stream errors
+- `dynamic_model`: connects a real `ClaudeSDKClient`, completes one turn on the initial model, switches to `haiku`, completes another turn, then resets the live model with the local `set_model("")` equivalent of upstream `set_model(None)` and completes a third turn
+- `dynamic_interrupt`: connects a real `ClaudeSDKClient`, starts a longer-running turn, sends `interrupt()`, and verifies the request does not surface a local client error while the response stream remains consumable without assuming a specific interrupted result shape
 
 Current local rerun status:
 
 - a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` is currently blocked at the first `baseline` prompt because the live Claude API returns `401 Invalid authentication credentials`, even though `claude auth status --json` still reports the CLI as logged in
-- because the run stops at `baseline`, the widened `stderr_debug`, `hook_pre_tool_use`, and `tool_permission_bash_touch` modes were implemented but not re-validated end to end during this run
+- because the run stops at `baseline`, the widened `stderr_debug`, `hook_pre_tool_use`, `tool_permission_bash_touch`, `dynamic_permission_mode`, `dynamic_model`, and `dynamic_interrupt` modes were implemented but not re-validated end to end during this run
 
 Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
-- dynamic control, SDK MCP, session-forking, rewind/task, context/MCP diagnostics, and `plugins` / `user` coverage remain future follow-up work
+- SDK MCP, session-forking, rewind/task, context/MCP diagnostics, and `plugins` / `user` coverage remain future follow-up work

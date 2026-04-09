@@ -22,6 +22,9 @@ const SUPPORTED_MODES := [
 	"stderr_debug",
 	"hook_pre_tool_use",
 	"tool_permission_bash_touch",
+	"dynamic_permission_mode",
+	"dynamic_model",
+	"dynamic_interrupt",
 ]
 
 var _stderr_lines: Array[String] = []
@@ -59,6 +62,12 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_hook_pre_tool_use_smoke(args)
 		"tool_permission_bash_touch":
 			return await _run_tool_permission_bash_touch_smoke(args)
+		"dynamic_permission_mode":
+			return await _run_dynamic_permission_mode_smoke(args)
+		"dynamic_model":
+			return await _run_dynamic_model_smoke(args)
+		"dynamic_interrupt":
+			return await _run_dynamic_interrupt_smoke(args)
 		_:
 			var failed := _empty_summary(mode)
 			failed["stream_error"] = "Unknown smoke mode"
@@ -310,6 +319,137 @@ func _run_tool_permission_bash_touch_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_dynamic_permission_mode_smoke(args: Dictionary) -> Dictionary:
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"permission_mode": "default",
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("dynamic_permission_mode", client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var control_errors: Array[String] = []
+	client.set_permission_mode("acceptEdits")
+	await process_frame
+	_append_client_error(control_errors, client)
+	var accept_edits_turn := await _run_connected_client_turn(
+		client,
+		"permission_mode_accept_edits",
+		"What is 2 + 2? Just respond with the number."
+	)
+
+	client.set_permission_mode("default")
+	await process_frame
+	_append_client_error(control_errors, client)
+	var default_turn := await _run_connected_client_turn(
+		client,
+		"permission_mode_default",
+		"What is 3 + 3? Just respond with the number."
+	)
+	client.disconnect_client()
+
+	summary["control_errors"] = control_errors
+	summary["turn_summaries"] = [accept_edits_turn, default_turn]
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and control_errors.is_empty() \
+		and _turn_summary_succeeded(accept_edits_turn) \
+		and _turn_summary_succeeded(default_turn)
+	return summary
+
+
+func _run_dynamic_model_smoke(args: Dictionary) -> Dictionary:
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"effort": "low",
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("dynamic_model", client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var control_errors: Array[String] = []
+	var default_turn := await _run_connected_client_turn(
+		client,
+		"model_default",
+		"What is 1 + 1? Just respond with the number."
+	)
+
+	client.set_model("haiku")
+	await process_frame
+	_append_client_error(control_errors, client)
+	var switched_turn := await _run_connected_client_turn(
+		client,
+		"model_haiku",
+		"What is 2 + 2? Just respond with the number."
+	)
+
+	client.set_model("")
+	await process_frame
+	_append_client_error(control_errors, client)
+	var reset_turn := await _run_connected_client_turn(
+		client,
+		"model_default_reset",
+		"What is 3 + 3? Just respond with the number."
+	)
+	client.disconnect_client()
+
+	summary["control_errors"] = control_errors
+	summary["model_switch_value"] = "haiku"
+	summary["model_reset_value"] = ""
+	summary["turn_summaries"] = [default_turn, switched_turn, reset_turn]
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and control_errors.is_empty() \
+		and _turn_summary_succeeded(default_turn) \
+		and _turn_summary_succeeded(switched_turn) \
+		and _turn_summary_succeeded(reset_turn)
+	return summary
+
+
+func _run_dynamic_interrupt_smoke(args: Dictionary) -> Dictionary:
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("dynamic_interrupt", client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	client.query("Count from 1 to 100 slowly, one number per line.")
+	var query_error := client.get_last_error()
+	var response_stream = client.receive_response()
+	await create_timer(0.25).timeout
+	client.interrupt()
+	await process_frame
+	var interrupt_error := client.get_last_error()
+	var turn_summary := await _collect_stream_summary("interrupt_response", response_stream)
+	client.disconnect_client()
+
+	summary["query_error"] = query_error
+	summary["interrupt_error"] = interrupt_error
+	summary["interrupt_stream_summary"] = turn_summary
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and query_error.is_empty() \
+		and interrupt_error.is_empty() \
+		and str(turn_summary.get("stream_error", "")).is_empty() \
+		and (
+			bool(turn_summary.get("assistant_present", false)) \
+			or bool(turn_summary.get("result_present", false)) \
+			or not (turn_summary.get("message_types", []) as Array).is_empty()
+		)
+	return summary
+
+
 func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
@@ -327,6 +467,49 @@ func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String
 	var summary := await _collect_stream_summary(mode, client.receive_response())
 	client.disconnect_client()
 	return summary
+
+
+func _wait_for_client_initialize(mode: String, client: ClaudeSDKClient, timeout_sec := 30.0) -> Dictionary:
+	var summary := _empty_summary(mode)
+	var timeout_at_usec := Time.get_ticks_usec() + int(timeout_sec * 1000000.0)
+	while Time.get_ticks_usec() < timeout_at_usec:
+		var server_info := client.get_server_info()
+		if not server_info.is_empty():
+			summary["init_present"] = true
+			summary["init_agents"] = _variant_to_string_array(server_info.get("agents", []))
+			summary["init_output_style"] = str(server_info.get("output_style", ""))
+			summary["ok"] = true
+			return summary
+		var error_message := client.get_last_error()
+		if not error_message.is_empty():
+			summary["stream_error"] = error_message
+			return summary
+		await process_frame
+	summary["stream_error"] = "Timed out waiting for client initialization"
+	return summary
+
+
+func _run_connected_client_turn(client: ClaudeSDKClient, label: String, prompt: String) -> Dictionary:
+	client.query(prompt)
+	var query_error := client.get_last_error()
+	var summary := await _collect_stream_summary(label, client.receive_response())
+	summary["query_error"] = query_error
+	summary["ok"] = query_error.is_empty() and _turn_summary_succeeded(summary)
+	return summary
+
+
+func _turn_summary_succeeded(summary: Dictionary) -> bool:
+	return bool(summary.get("assistant_present", false)) \
+		and bool(summary.get("result_present", false)) \
+		and not bool(summary.get("result_is_error", true)) \
+		and str(summary.get("stream_error", "")).is_empty() \
+		and str(summary.get("query_error", "")).is_empty()
+
+
+func _append_client_error(errors: Array[String], client: ClaudeSDKClient) -> void:
+	var message := client.get_last_error()
+	if not message.is_empty():
+		errors.append(message)
 
 
 func _collect_stream_summary(mode: String, stream) -> Dictionary:
@@ -433,6 +616,13 @@ func _empty_summary(mode: String) -> Dictionary:
 		"permission_tool_use_id_present": false,
 		"touched_file": "",
 		"touched_file_exists": false,
+		"control_errors": [],
+		"turn_summaries": [],
+		"query_error": "",
+		"interrupt_error": "",
+		"interrupt_stream_summary": {},
+		"model_switch_value": "",
+		"model_reset_value": "",
 	}
 
 

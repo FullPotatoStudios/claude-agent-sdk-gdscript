@@ -30,6 +30,9 @@ It also now exercises bounded authenticated parity coverage for:
 - `stderr` diagnostics via `debug-to-stderr`
 - `PreToolUse` hook callbacks on real Bash tool use
 - `can_use_tool` permission callbacks on a streamed Bash `touch` prompt
+- live `set_permission_mode()` switching on a connected `ClaudeSDKClient`
+- live `set_model()` switching plus local empty-string reset parity for upstream `set_model(None)`
+- live `interrupt()` requests on a connected `ClaudeSDKClient`
 
 ### Release prep
 
