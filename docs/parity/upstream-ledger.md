@@ -130,14 +130,21 @@ The first public implementation target is the scene-free core conversation loop,
   - subprocess transport shutdown grace parity after stdin EOF, with a 5-second wait before forced kill so final session-file flushes are less likely to be lost
   - malformed known-message payloads now fail loudly through `ClaudeMessageParser.parse_message_result()` and fatal `ClaudeQuerySession` stream/session errors, while unknown top-level message types still skip forward-compatibly
   - broader session-tag Unicode compatibility normalization through generated upstream-derived single-codepoint NFKC rewrite data plus iterative stripping of format/private-use/unassigned codepoint ranges
+  - additive different-session overlap compatibility on connected clients through per-session active-turn tracking in `ClaudeQuerySession`, matching upstream's shared receive stream and lack of a client-wide busy guard without claiming explicit upstream overlap tests
+  - additive `receive_response_for_session(session_id)` on `ClaudeQuerySession` and `ClaudeSDKClient`, while `receive_response()` now follows upstream global first-result convenience semantics
+  - default-turn runtime-session promotion now binds once to the resolved runtime session ID instead of re-routing later foreign session traffic into `"default"`
+  - aggregate plus per-session busy tracking on `ClaudeClientAdapter` and `ClaudeClientNode` through `is_busy()` and additive `is_session_busy(session_id)`
+  - `ClaudeChatPanel` guardrails that keep one authoritative live session even if unrelated session traffic appears on the shared runtime stream
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
+  - local session-scoped helpers can bind a brand-new `"default"` turn to the first unresolved runtime session ID seen on the owned connection because the shared CLI stream does not expose a stronger per-turn correlation primitive before the runtime session UUID appears
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
   - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
   - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
   - session-tag sanitization now mirrors a broader upstream-derived compatibility/strip set, but it still stops short of upstream whole-string Unicode normalization/composition parity
+  - same-session overlap now stays serialized locally as a determinism/truthfulness guard, even though upstream's shared-stream client does not currently add an explicit same-session query guard
 
 ## Update process
 

@@ -2608,6 +2608,92 @@ func test_panel_tracks_authoritative_live_session_id_from_runtime_results() -> v
 	await _cleanup_panel(panel)
 
 
+func test_panel_ignores_foreign_session_results_after_authoritative_live_session_is_set() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	panel.submit_prompt("Track the active session")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "tracked-session-id",
+		"result": "Tracked",
+	})
+	await _await_frames(2)
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("tracked-session-id")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "foreign-session-id",
+		"result": "Foreign",
+	})
+	await _await_frames(2)
+
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("tracked-session-id")
+	panel.submit_prompt("Use the tracked session")
+	await _await_frames(1)
+	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("tracked-session-id")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_ignores_foreign_runtime_session_ids_before_authoritative_live_session_is_set() -> void:
+	var transport = FakeTransportScript.new()
+	var expected_session_id := "expected-session-id"
+	var panel = await _connected_panel(
+		transport,
+		ClaudeAgentOptionsScript.new({"model": "haiku", "session_id": expected_session_id})
+	)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "foreign-session-id",
+		"result": "Foreign",
+	})
+	await _await_frames(2)
+
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_empty()
+	assert_str(str(panel.get("_live_session_target_id"))).is_equal(expected_session_id)
+
+	panel.submit_prompt("Use the expected session")
+	await _await_frames(1)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal(expected_session_id)
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_connect_failure_surfaces_cli_diagnostics_and_preserves_existing_stderr_callback() -> void:
 	var stderr_lines: Array[String] = []
 	var transport = FakeTransportScript.new()

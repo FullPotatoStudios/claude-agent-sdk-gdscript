@@ -81,6 +81,14 @@ func receive_response():
 	return _session.receive_response()
 
 
+func receive_response_for_session(session_id: String):
+	if _session == null:
+		var stream = ClaudeMessageStreamScript.new(true)
+		stream.fail("Call connect_client() before receive_response_for_session()")
+		return stream
+	return _session.receive_response_for_session(session_id)
+
+
 func disconnect_client() -> void:
 	if _session == null:
 		return

@@ -23,6 +23,7 @@ Use `ClaudeSDKClient` directly when:
 - you want transport-side stdout buffering control through `ClaudeAgentOptions.max_buffer_size`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
 - you want additive typed runtime helpers for hook callback inputs/outputs or permission updates while keeping the existing dictionary callback flow compatible
+- you want to overlap turns for different `session_id` values on one connected client while keeping same-session turns serialized
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
 normal result dictionary with `is_error = true`. Unlike the upstream Python
@@ -68,9 +69,14 @@ Because `Object` already defines `is_connected(signal_name, callable)`, the Godo
 The adapter owns one background drain of `ClaudeSDKClient.receive_messages()`.
 
 - `message_received` is the continuous session-wide stream
-- `turn_message_received` only covers the currently active turn
-- `turn_finished` fires on the first `ClaudeResultMessage` for that turn
+- `ClaudeSDKClient.receive_response()` is now a global convenience stream that starts at the call site and finishes on the first `ClaudeResultMessage` from any session
+- `ClaudeSDKClient.receive_response_for_session(session_id)` is the additive session-scoped helper for callers that need per-session turn drains
+- session-scoped drains stay isolated to tracked turns by `session_id`; a `"default"` turn may bind once to the first unresolved runtime session ID that appears for that connection, and later foreign session traffic stays on the shared stream
+- `turn_message_received` covers messages that belong to any currently active session turn
+- `turn_finished` fires on the first `ClaudeResultMessage` for each active session turn
 - `turn_started` stays string-only and now covers both string-backed `connect_client(prompt)` and `query()` calls; streamed `ClaudePromptStream` prompts still set busy state but do not emit `turn_started`
+- `busy_changed` and `is_busy()` are aggregate: they stay busy while any active session turn is in flight
+- `is_session_busy(session_id)` lets adapter/node callers inspect whether one specific session turn is still active
 
 ## Scope and limits
 
@@ -97,6 +103,7 @@ The integration layer is intentionally thin.
 - `ClaudeToolPermissionContext` preserves raw `suggestions` and now also exposes additive typed suggestion coercion through `typed_suggestions`
 - hook and `can_use_tool` callback contexts now expose a cooperative `signal` object that is canceled when Claude retracts a control request or the local session closes; unlike the upstream Python SDK, GDScript still cannot force-preempt an arbitrary awaited `Callable`
 - `ClaudeSDKClient.connect_client()`, `ClaudeClientAdapter.connect_client()`, and `ClaudeClientNode.connect_client()` now accept `null`, a `String`, or `ClaudePromptStream` for prompt-on-connect parity; string connect prompts still send a literal `session_id = "default"` user payload, matching upstream connect behavior, and repeated local `connect_client()` calls now reopen the session instead of no-oping
+- connected `query()` calls now allow overlap across different `session_id` values on one local client as an additive compatibility layer over upstream's shared-stream, no-global-busy-guard behavior; same-session overlap still rejects with an error as a local determinism/truthfulness guard, and the shipped panel continues to expose only one live session at a time
 - local `ClaudePromptStream` behavior is intentionally strict: an empty stream or `fail(...)` ends the active turn locally instead of leaving the query busy forever
 - `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path

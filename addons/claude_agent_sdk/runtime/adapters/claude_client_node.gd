@@ -154,6 +154,10 @@ func is_busy() -> bool:
 	return _adapter.is_busy()
 
 
+func is_session_busy(session_id: String) -> bool:
+	return _adapter.is_session_busy(session_id)
+
+
 func _bind_adapter_signals() -> void:
 	if _adapter_bound or _adapter == null:
 		return

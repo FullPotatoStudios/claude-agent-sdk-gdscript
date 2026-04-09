@@ -119,6 +119,71 @@ func test_node_connect_with_prompt_reemits_adapter_turn_signals() -> void:
 	await _await_frames(2)
 
 
+func test_node_exposes_session_busy_passthrough_for_overlapping_turns() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	node.query("A", "session-a")
+	node.query("B", "session-b")
+	await _await_frames(1)
+
+	assert_bool(node.is_busy()).is_true()
+	assert_bool(node.is_session_busy("session-a")).is_true()
+	assert_bool(node.is_session_busy("session-b")).is_true()
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-a",
+	})
+	await _await_frames(2)
+
+	assert_bool(node.is_busy()).is_true()
+	assert_bool(node.is_session_busy("session-a")).is_false()
+	assert_bool(node.is_session_busy("session-b")).is_true()
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-b",
+		"result": "done-b",
+	})
+	await _await_frames(2)
+
+	assert_bool(node.is_busy()).is_false()
+	assert_bool(node.is_session_busy("session-b")).is_false()
+
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
 func test_node_reconnect_reemits_ready_and_prompt_turn_signals() -> void:
 	var transport = FakeTransportScript.new()
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)

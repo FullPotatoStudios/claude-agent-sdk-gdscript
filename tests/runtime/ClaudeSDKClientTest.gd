@@ -142,7 +142,7 @@ func test_client_receive_response_yields_stream_events_in_order() -> void:
 	client.disconnect_client()
 
 
-func test_client_rejects_second_query_while_response_is_active() -> void:
+func test_client_receive_response_for_session_ignores_other_sessions() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
 	client.connect_client()
@@ -156,14 +156,92 @@ func test_client_rejects_second_query_while_response_is_active() -> void:
 		},
 	})
 
-	client.query("First")
-	client.query("Second")
+	client.query("A", "session-a")
+	client.query("B", "session-b")
+	var response_stream = client.receive_response_for_session("session-a")
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-b",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "B"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "A"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-b",
+		"result": "done-b",
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-a",
+	})
 
-	assert_str(client.get_last_error()).contains("still in flight")
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
 	client.disconnect_client()
 
 
-func test_client_rejects_second_query_while_prompt_stream_is_still_active() -> void:
+func test_client_allows_different_session_queries_to_overlap() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query("First", "session-a")
+	client.query("Second", "session-b")
+
+	assert_str(client.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+	assert_str(str((JSON.parse_string(transport.writes[1]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+	assert_str(str((JSON.parse_string(transport.writes[2]) as Dictionary).get("session_id", ""))).is_equal("session-b")
+	client.disconnect_client()
+
+
+func test_client_rejects_second_query_for_same_session_while_response_is_active() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query("First", "session-a")
+	client.query("Second", "session-a")
+
+	assert_str(client.get_last_error()).contains("session 'session-a'")
+	client.disconnect_client()
+
+
+func test_client_rejects_second_query_for_same_session_while_prompt_stream_is_still_active() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
 	var prompt_stream = ClaudePromptStreamScript.new()
@@ -178,10 +256,10 @@ func test_client_rejects_second_query_while_prompt_stream_is_still_active() -> v
 		},
 	})
 
-	client.query(prompt_stream)
-	client.query("Second")
+	client.query(prompt_stream, "session-a")
+	client.query("Second", "session-a")
 
-	assert_str(client.get_last_error()).contains("still in flight")
+	assert_str(client.get_last_error()).contains("session 'session-a'")
 	client.disconnect_client()
 
 
@@ -248,6 +326,44 @@ func test_client_connect_with_string_prompt_queues_default_user_message_after_in
 		"is_error": false,
 		"num_turns": 1,
 		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	client.disconnect_client()
+
+
+func test_client_receive_response_can_start_after_connect_before_query() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+
+	client.connect_client()
+	var response_stream = client.receive_response()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "foreign-session",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Hi"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "foreign-session",
 		"result": "done",
 	})
 

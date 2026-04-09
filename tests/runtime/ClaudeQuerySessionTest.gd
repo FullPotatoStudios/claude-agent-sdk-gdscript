@@ -1269,6 +1269,292 @@ func test_receive_response_finishes_on_first_result_but_message_stream_keeps_his
 	assert_int(all_messages.size()).is_equal(2)
 
 
+func test_receive_response_can_start_after_connect_before_query() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var response_stream = session.receive_response()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {
+			"model": "haiku",
+			"content": [{"type": "text", "text": "Connected"}],
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "foreign-session",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+
+
+func test_different_sessions_can_overlap_and_session_streams_track_each_turn() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-b")
+	var session_a_stream = session.receive_response_for_session("session-a")
+	var session_b_stream = session.receive_response_for_session("session-b")
+
+	assert_int(transport.writes.size()).is_equal(3)
+	assert_str(str((JSON.parse_string(transport.writes[1]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+	assert_str(str((JSON.parse_string(transport.writes[2]) as Dictionary).get("session_id", ""))).is_equal("session-b")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-b",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "B"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "A"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-b",
+		"result": "done-b",
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-a",
+	})
+
+	assert_object(await session_b_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await session_b_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await session_b_stream.next_message()).is_null()
+
+	assert_object(await session_a_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await session_a_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await session_a_stream.next_message()).is_null()
+
+
+func test_receive_response_finishes_on_first_result_across_overlapping_sessions() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-b")
+	var response_stream = session.receive_response()
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "A"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-b",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "B"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-b",
+		"result": "done-b",
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-a",
+	})
+
+	var first_message = await response_stream.next_message()
+	var second_message = await response_stream.next_message()
+	var first_result = await response_stream.next_message()
+
+	assert_object(first_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((first_message as ClaudeAssistantMessage).session_id).is_equal("session-a")
+	assert_object(second_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((second_message as ClaudeAssistantMessage).session_id).is_equal("session-b")
+	assert_object(first_result).is_instanceof(ClaudeResultMessage)
+	assert_str((first_result as ClaudeResultMessage).session_id).is_equal("session-b")
+	assert_that(await response_stream.next_message()).is_null()
+
+
+func test_same_session_second_query_is_rejected_while_response_is_active() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-a")
+
+	assert_str(session.get_last_error()).contains("session 'session-a'")
+	assert_int(transport.writes.size()).is_equal(2)
+
+
+func test_same_session_second_query_is_rejected_while_prompt_stream_is_active() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var prompt_stream = ClaudePromptStreamScript.new()
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_prompt_stream(prompt_stream, "session-a")
+	session.send_user_prompt("Second", "session-a")
+
+	assert_str(session.get_last_error()).contains("session 'session-a'")
+
+
+func test_default_session_stream_tracks_promoted_runtime_session_id() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Resolve")
+	var response_stream = session.receive_response_for_session("default")
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "resolved-session-id",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Resolved"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "resolved-session-id",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+
+
+func test_default_session_stream_ignores_foreign_session_messages_after_binding_runtime_session_id() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Resolve")
+	var response_stream = session.receive_response_for_session("default")
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "resolved-session-id",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Resolved"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "foreign-session-id",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Foreign"}]},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "resolved-session-id",
+		"result": "done",
+	})
+
+	var assistant_message = await response_stream.next_message()
+	assert_object(assistant_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((assistant_message as ClaudeAssistantMessage).session_id).is_equal("resolved-session-id")
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+
+
 func test_non_initialize_control_response_does_not_complete_initialization() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)

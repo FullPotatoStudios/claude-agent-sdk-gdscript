@@ -20,7 +20,8 @@ var _last_error := ""
 var _session_ready_emitted := false
 var _active_token := 0
 var _closed_token := -1
-var _turn_watch_token := 0
+var _turn_watch_counter := 0
+var _active_turns_by_session: Dictionary = {}
 
 
 func _init(initial_options = null, transport = null) -> void:
@@ -46,7 +47,7 @@ func connect_client(prompt = null) -> void:
 	var token := _active_token
 	Callable(self, "_run_message_drain").call_deferred(token, stream)
 	if prompt != null and _client.get_last_error().is_empty():
-		_begin_turn_watch(prompt, _client.receive_response(), "default")
+		_begin_turn_watch(prompt, "default")
 
 
 func disconnect_client() -> void:
@@ -56,22 +57,18 @@ func disconnect_client() -> void:
 
 	var token := _active_token
 	_active_token += 1
-	_turn_watch_token += 1
 	_connected = false
 	_client.disconnect_client()
-	_set_busy(false)
+	_active_turns_by_session.clear()
+	_refresh_busy()
 	_emit_session_closed_once(token)
 
 
 func query(prompt, session_id: String = "default") -> void:
-	if not _connected or _busy:
-		_client.query(prompt, session_id)
-		return
-
 	_client.query(prompt, session_id)
 	if not _client.get_last_error().is_empty():
 		return
-	_begin_turn_watch(prompt, _client.receive_response(), session_id)
+	_begin_turn_watch(prompt, session_id)
 
 
 func interrupt() -> void:
@@ -195,6 +192,10 @@ func is_busy() -> bool:
 	return _busy
 
 
+func is_session_busy(session_id: String) -> bool:
+	return _active_turns_by_session.has(session_id)
+
+
 func _run_message_drain(token: int, stream) -> void:
 	if token != _active_token:
 		return
@@ -207,48 +208,51 @@ func _run_message_drain(token: int, stream) -> void:
 			break
 
 		message_received.emit(message)
-		if _busy:
+		var active_turn_session_id := _active_turn_session_key_for_message(message)
+		if not active_turn_session_id.is_empty():
 			turn_message_received.emit(message)
 			if message is ClaudeResultMessage:
-				_set_busy(false)
+				_clear_active_turn(active_turn_session_id)
 				turn_finished.emit(message)
 
 	if token != _active_token:
 		return
 
 	_connected = false
-	_turn_watch_token += 1
-	_set_busy(false)
+	_active_turns_by_session.clear()
+	_refresh_busy()
 	_emit_session_closed_once(token)
 
-func _set_busy(value: bool) -> void:
-	if _busy == value:
-		return
-	_busy = value
-	busy_changed.emit(_busy)
 
-
-func _watch_turn_response(turn_token: int, response_stream) -> void:
+func _watch_turn_response(connection_token: int, session_id: String, turn_token: int, response_stream) -> void:
 	var saw_result := false
-	while turn_token == _turn_watch_token:
+	while (
+		connection_token == _active_token
+		and _has_matching_turn_token(session_id, turn_token)
+	):
 		var message: Variant = await response_stream.next_message()
-		if turn_token != _turn_watch_token:
+		if connection_token != _active_token or not _has_matching_turn_token(session_id, turn_token):
 			return
 		if message == null:
-			if _busy and not saw_result:
-				_set_busy(false)
+			if not saw_result:
+				_clear_active_turn(session_id)
 			return
 		if message is ClaudeResultMessage:
 			saw_result = true
 
 
-func _begin_turn_watch(prompt, response_stream, session_id: String) -> void:
-	_turn_watch_token += 1
-	var turn_token := _turn_watch_token
-	_set_busy(true)
+func _begin_turn_watch(prompt, session_id: String) -> void:
+	_turn_watch_counter += 1
+	var turn_token := _turn_watch_counter
+	_active_turns_by_session[session_id] = {
+		"turn_token": turn_token,
+		"promoted_session_id": "",
+	}
+	_refresh_busy()
 	if prompt is String:
 		turn_started.emit(str(prompt), session_id)
-	Callable(self, "_watch_turn_response").call_deferred(turn_token, response_stream)
+	var response_stream = _client.receive_response_for_session(session_id)
+	Callable(self, "_watch_turn_response").call_deferred(_active_token, session_id, turn_token, response_stream)
 
 
 func _emit_session_closed_once(token: int) -> void:
@@ -282,3 +286,70 @@ func _handle_session_mutation_result(result: int) -> int:
 		return OK
 	_emit_error(ClaudeSessionsScript.get_last_error())
 	return result
+
+
+func _refresh_busy() -> void:
+	var next_busy := not _active_turns_by_session.is_empty()
+	if _busy == next_busy:
+		return
+	_busy = next_busy
+	busy_changed.emit(_busy)
+
+
+func _has_matching_turn_token(session_id: String, turn_token: int) -> bool:
+	var turn_state: Dictionary = _active_turns_by_session.get(session_id, {}) if _active_turns_by_session.get(session_id, {}) is Dictionary else {}
+	if turn_state.is_empty():
+		return false
+	return int(turn_state.get("turn_token", -1)) == turn_token
+
+
+func _clear_active_turn(session_id: String) -> void:
+	if session_id.is_empty():
+		return
+	_active_turns_by_session.erase(session_id)
+	_refresh_busy()
+
+
+func _message_session_id(message: Variant) -> String:
+	if message == null:
+		return ""
+	if message is Object:
+		var raw_data: Variant = message.get("raw_data")
+		if raw_data is Dictionary and (raw_data as Dictionary).has("session_id"):
+			return str((raw_data as Dictionary).get("session_id", ""))
+		var session_id: Variant = message.get("session_id")
+		if session_id != null:
+			return str(session_id)
+	return ""
+
+
+func _is_message_for_active_turn(message: Variant) -> bool:
+	return not _active_turn_session_key_for_message(message).is_empty()
+
+
+func _active_turn_session_key_for_message(message: Variant) -> String:
+	var session_id := _message_session_id(message)
+	if session_id.is_empty():
+		return ""
+	if _active_turns_by_session.has(session_id):
+		return session_id
+	if session_id != "default":
+		var default_turn_state: Dictionary = _active_turns_by_session.get("default", {}) if _active_turns_by_session.get("default", {}) is Dictionary else {}
+		if not default_turn_state.is_empty():
+			var promoted_session_id := str(default_turn_state.get("promoted_session_id", ""))
+			if promoted_session_id == session_id:
+				return "default"
+			if promoted_session_id.is_empty() and _can_promote_default_turn_to_session(session_id):
+				default_turn_state["promoted_session_id"] = session_id
+				_active_turns_by_session["default"] = default_turn_state
+				return "default"
+	return ""
+
+
+func _can_promote_default_turn_to_session(session_id: String) -> bool:
+	if session_id.is_empty() or session_id == "default":
+		return false
+	# The shared CLI stream does not expose a stronger turn correlation before the
+	# runtime session UUID appears, so we only bind when this adapter owns the
+	# connection's sole active unresolved turn.
+	return _active_turns_by_session.size() == 1 and _active_turns_by_session.has("default")

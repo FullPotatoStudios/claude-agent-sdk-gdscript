@@ -186,6 +186,124 @@ func test_adapter_can_run_second_turn_after_first_result() -> void:
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_tracks_overlapping_different_session_turns_and_aggregate_busy() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var turn_starts: Array = []
+	var turn_messages: Array[String] = []
+	var turn_results: Array[String] = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_started.connect(func(prompt: String, session_id: String): turn_starts.append({"prompt": prompt, "session_id": session_id}))
+	adapter.turn_message_received.connect(func(message):
+		if message is ClaudeAssistantMessage:
+			turn_messages.append(message.session_id)
+	)
+	adapter.turn_finished.connect(func(message: ClaudeResultMessage): turn_results.append("%s:%s" % [message.session_id, message.result]))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("First", "session-a")
+	adapter.query("Second", "session-b")
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+	assert_bool(adapter.is_session_busy("session-b")).is_true()
+	assert_array(turn_starts).is_equal([
+		{"prompt": "First", "session_id": "session-a"},
+		{"prompt": "Second", "session_id": "session-b"},
+	])
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-b",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "B"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-b", "session-b"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+	assert_bool(adapter.is_session_busy("session-b")).is_false()
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "A"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-a", "session-a"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_array(turn_messages).is_equal(["session-b", "session-a"])
+	assert_int(turn_results.size()).is_equal(2)
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_ignores_foreign_session_messages_after_default_turn_binds_runtime_session_id() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var turn_messages: Array[String] = []
+	var turn_results: Array[String] = []
+
+	adapter.turn_message_received.connect(func(message):
+		if message is ClaudeAssistantMessage:
+			turn_messages.append(message.session_id)
+	)
+	adapter.turn_finished.connect(func(message: ClaudeResultMessage): turn_results.append("%s:%s" % [message.session_id, message.result]))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("Default")
+	assert_bool(adapter.is_session_busy("default")).is_true()
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "resolved-session-id",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Resolved"}]},
+	})
+	await _await_frames(2)
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "foreign-session-id",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Foreign"}]},
+	})
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("default")).is_true()
+	assert_array(turn_messages).is_equal(["resolved-session-id"])
+
+	transport.emit_stdout_message(_result_payload("done", "resolved-session-id"))
+	await _await_frames(3)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(turn_results).is_equal(["resolved-session-id:done"])
+	await _cleanup_adapter(adapter)
+
+
 func test_adapter_streamed_query_sets_busy_without_emitting_turn_started() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
@@ -227,7 +345,7 @@ func test_adapter_streamed_query_sets_busy_without_emitting_turn_started() -> vo
 	assert_array(turn_starts).is_empty()
 	assert_int(transport.writes.size()).is_equal(3)
 
-	transport.emit_stdout_message(_result_payload("done"))
+	transport.emit_stdout_message(_result_payload("done", "stream-session"))
 	await _await_frames(2)
 
 	assert_bool(adapter.is_busy()).is_false()
@@ -267,7 +385,7 @@ func test_adapter_string_connect_prompt_sets_busy_and_emits_turn_started() -> vo
 	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
 	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
 
-	transport.emit_stdout_message(_result_payload("done"))
+	transport.emit_stdout_message(_result_payload("done", "session-a"))
 	await _await_frames(2)
 
 	assert_bool(adapter.is_busy()).is_false()
@@ -312,7 +430,7 @@ func test_adapter_streamed_connect_prompt_sets_busy_without_emitting_turn_starte
 	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
 	assert_bool(prompt_payload.has("session_id")).is_false()
 
-	transport.emit_stdout_message(_result_payload("done"))
+	transport.emit_stdout_message(_result_payload("done", "session-a"))
 	await _await_frames(2)
 
 	assert_bool(adapter.is_busy()).is_false()
@@ -532,7 +650,7 @@ func test_adapter_passes_rate_limit_events_through_turn_stream_without_finishing
 	await _cleanup_adapter(adapter)
 
 
-func test_adapter_emits_error_for_query_while_busy_without_interrupting_current_turn() -> void:
+func test_adapter_emits_error_for_same_session_query_while_busy_without_interrupting_current_turn() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
 	var errors: Array[String] = []
@@ -555,15 +673,15 @@ func test_adapter_emits_error_for_query_while_busy_without_interrupting_current_
 	})
 	await _await_frames(1)
 
-	adapter.query("First")
-	adapter.query("Second")
-	transport.emit_stdout_message(_result_payload("done"))
-	await _await_frames(2)
+	adapter.query("First", "session-a")
+	adapter.query("Second", "session-a")
+	transport.emit_stdout_message(_result_payload("done", "session-a"))
+	await _await_frames(3)
 
 	assert_bool(adapter.is_busy()).is_false()
 	assert_array(busy_events).is_equal([true, false])
 	assert_int(turn_results.size()).is_equal(1)
-	assert_str(errors[-1]).contains("still in flight")
+	assert_str(errors[-1]).contains("session 'session-a'")
 	await _cleanup_adapter(adapter)
 
 
@@ -902,7 +1020,7 @@ func _read_last_write(transport) -> Dictionary:
 	return JSON.parse_string(transport.writes[-1])
 
 
-func _result_payload(result_text: String) -> Dictionary:
+func _result_payload(result_text: String, session_id: String = "default") -> Dictionary:
 	return {
 		"type": "result",
 		"subtype": "success",
@@ -910,7 +1028,7 @@ func _result_payload(result_text: String) -> Dictionary:
 		"duration_api_ms": 5,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": "default",
+		"session_id": session_id,
 		"result": result_text,
 	}
 

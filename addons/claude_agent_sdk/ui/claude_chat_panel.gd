@@ -2504,6 +2504,20 @@ func _note_runtime_session_id(session_id: String) -> void:
 	var normalized := session_id.strip_edges()
 	if normalized.is_empty():
 		return
+	var expected_live_session_id := _live_session_target_id.strip_edges()
+	if (
+		not _authoritative_live_session_id.is_empty()
+		and _authoritative_live_session_id != "default"
+		and normalized != _authoritative_live_session_id
+	):
+		return
+	if (
+		expected_live_session_id != ""
+		and expected_live_session_id != "default"
+		and normalized != "default"
+		and normalized != expected_live_session_id
+	):
+		return
 	if normalized != "default":
 		_authoritative_live_session_id = normalized
 		_live_session_target_id = normalized

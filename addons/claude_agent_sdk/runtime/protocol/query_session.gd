@@ -34,13 +34,11 @@ var _hook_callbacks: Dictionary = {}
 var _next_hook_callback_id := 0
 var _inflight_control_requests: Dictionary = {}
 var _message_stream = ClaudeMessageStreamScript.new(false)
-var _current_response_stream = null
-var _last_response_stream = null
-var _pending_prompt_payloads: Array[String] = []
-var _pending_prompt_stream = null
-var _pending_prompt_stream_session_id := "default"
-var _pending_prompt_stream_backfills_session_id := false
-var _active_prompt_drain_token := 0
+var _global_response_streams: Array = []
+var _session_response_streams: Dictionary = {}
+var _active_turns_by_session: Dictionary = {}
+var _pending_prompt_order: Array[String] = []
+var _next_prompt_drain_token := 0
 var _last_error := ""
 var _sdk_mcp_servers: Dictionary = {}
 var _initialize_timeout_sec := DEFAULT_INITIALIZE_TIMEOUT_SEC
@@ -85,7 +83,6 @@ func close() -> void:
 	_closed = true
 	_connected = false
 	_initialize_timeout_token += 1
-	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude session closed")
 	_finish_streams()
@@ -105,26 +102,31 @@ func send_prompt(prompt, session_id: String = "default", backfill_session_id := 
 	if not _connected:
 		_emit_error("Cannot query before connect() completes")
 		return
-	if _current_response_stream != null and not _current_response_stream.is_finished():
-		_emit_error("Cannot start a new query while another response is still in flight")
+	if _active_turns_by_session.has(session_id):
+		_emit_error("Cannot start a new query for session '%s' while another response is still in flight" % session_id)
 		return
 
 	_set_last_error("")
-	_current_response_stream = ClaudeMessageStreamScript.new(true)
-	_last_response_stream = _current_response_stream
-	_pending_prompt_payloads.clear()
-	_pending_prompt_stream = null
-	_pending_prompt_stream_session_id = session_id
-	_pending_prompt_stream_backfills_session_id = backfill_session_id
-	_active_prompt_drain_token += 1
+	_next_prompt_drain_token += 1
+	var turn_state := {
+		"pending_prompt_payloads": [],
+		"pending_prompt_stream": null,
+		"backfill_session_id": backfill_session_id,
+		"drain_token": _next_prompt_drain_token,
+		"promoted_session_id": "",
+	}
 
 	if prompt is ClaudePromptStreamScript:
-		_pending_prompt_stream = prompt
+		turn_state["pending_prompt_stream"] = prompt
 	else:
-		_pending_prompt_payloads.append(_build_user_prompt_payload(str(prompt), session_id))
+		(turn_state["pending_prompt_payloads"] as Array).append(_build_user_prompt_payload(str(prompt), session_id))
+
+	_active_turns_by_session[session_id] = turn_state
+	if not _pending_prompt_order.has(session_id):
+		_pending_prompt_order.append(session_id)
 
 	if _initialized:
-		_flush_pending_prompt()
+		_flush_pending_prompt_for_session(session_id)
 
 
 func receive_messages():
@@ -132,11 +134,19 @@ func receive_messages():
 
 
 func receive_response():
-	if _last_response_stream == null:
-		var stream = ClaudeMessageStreamScript.new(true)
-		stream.fail("No response stream is available before query() is called")
-		return stream
-	return _last_response_stream
+	var stream = ClaudeMessageStreamScript.new(true)
+	_register_global_response_stream(stream)
+	return stream
+
+
+func receive_response_for_session(session_id: String):
+	if not _active_turns_by_session.has(session_id):
+		var missing_stream = ClaudeMessageStreamScript.new(true)
+		missing_stream.fail("No response stream is available for session '%s' before query() is called" % session_id)
+		return missing_stream
+	var session_stream = ClaudeMessageStreamScript.new(true)
+	_register_session_response_stream(session_id, session_stream)
+	return session_stream
 
 
 func get_context_usage() -> Dictionary:
@@ -250,43 +260,57 @@ func _send_control_request_and_wait(request: Dictionary) -> Dictionary:
 	return {}
 
 
-func _flush_pending_prompt() -> void:
-	for payload in _pending_prompt_payloads:
-		if not _transport.write(payload):
-			_fail_active_prompt_write(_transport.get_last_error())
-			return
-	_pending_prompt_payloads.clear()
+func _flush_pending_prompts() -> void:
+	var session_ids := _pending_prompt_order.duplicate()
+	_pending_prompt_order.clear()
+	for session_id_variant in session_ids:
+		_flush_pending_prompt_for_session(str(session_id_variant))
 
-	if _pending_prompt_stream == null:
+
+func _flush_pending_prompt_for_session(session_id: String) -> void:
+	var state := _turn_state(session_id)
+	if state.is_empty():
 		return
-	var token := _active_prompt_drain_token
-	var prompt_stream = _pending_prompt_stream
-	var stream_session_id := _pending_prompt_stream_session_id
-	var should_backfill := _pending_prompt_stream_backfills_session_id
-	_pending_prompt_stream = null
-	Callable(self, "_drain_prompt_stream").call_deferred(prompt_stream, stream_session_id, should_backfill, token)
+	var payloads: Array = state.get("pending_prompt_payloads", []) if state.get("pending_prompt_payloads", []) is Array else []
+	for payload_variant in payloads:
+		var payload := str(payload_variant)
+		if not _transport.write(payload):
+			_fail_turn(session_id, _transport.get_last_error())
+			return
+	payloads.clear()
+	state["pending_prompt_payloads"] = payloads
+
+	var prompt_stream: Variant = state.get("pending_prompt_stream", null)
+	if prompt_stream == null:
+		_active_turns_by_session[session_id] = state
+		return
+	var token := int(state.get("drain_token", 0))
+	var should_backfill := bool(state.get("backfill_session_id", false))
+	state["pending_prompt_stream"] = null
+	_active_turns_by_session[session_id] = state
+	Callable(self, "_drain_prompt_stream").call_deferred(prompt_stream, session_id, should_backfill, token)
 
 
 func _drain_prompt_stream(prompt_stream, session_id: String, backfill_session_id: bool, token: int) -> void:
 	var wrote_any_message := false
-	while token == _active_prompt_drain_token and not _closed:
+	while _is_prompt_drain_active(session_id, token) and not _closed:
 		var next_message: Variant = await prompt_stream.next_message()
-		if token != _active_prompt_drain_token or _closed:
+		if not _is_prompt_drain_active(session_id, token) or _closed:
 			return
 		if next_message == null:
 			var prompt_error := str(prompt_stream.get_error())
 			if not prompt_error.is_empty():
-				_fail_active_prompt_write(prompt_error)
+				_fail_turn(session_id, prompt_error)
 			elif not wrote_any_message:
-				_fail_active_prompt_write("ClaudePromptStream finished without emitting any prompt items")
+				_fail_turn(session_id, "ClaudePromptStream finished without emitting any prompt items")
 			return
 		if next_message is not Dictionary:
-			_fail_active_prompt_write("ClaudePromptStream must emit Dictionary items")
+			_fail_turn(session_id, "ClaudePromptStream must emit Dictionary items")
 			return
 
 		var payload := _prepare_prompt_stream_payload(next_message as Dictionary, session_id, backfill_session_id)
 		if not _transport.write(JSON.stringify(payload)):
-			_fail_active_prompt_write(_transport.get_last_error())
+			_fail_turn(session_id, _transport.get_last_error())
 			return
 		wrote_any_message = true
 
@@ -310,13 +334,14 @@ func _build_user_prompt_payload(prompt: String, session_id: String) -> String:
 	})
 
 
-func _fail_active_prompt_write(message: String) -> void:
+func _fail_turn(session_id: String, message: String) -> void:
 	_emit_error(message)
-	_active_prompt_drain_token += 1
-	_pending_prompt_payloads.clear()
-	_pending_prompt_stream = null
-	if _current_response_stream != null:
-		_current_response_stream.fail(_last_error)
+	_fail_session_response_streams(session_id, _last_error)
+	_active_turns_by_session.erase(session_id)
+	_pending_prompt_order.erase(session_id)
+	if _active_turns_by_session.is_empty():
+		for stream in _global_response_streams.duplicate():
+			stream.fail(_last_error)
 
 
 func _on_transport_stdout_line(line: String) -> void:
@@ -327,9 +352,7 @@ func _on_transport_stdout_line(line: String) -> void:
 		var parse_error := "Failed to parse Claude CLI stdout as JSON: %s" % line
 		push_error(parse_error)
 		_emit_error(parse_error)
-		_message_stream.fail(_last_error)
-		if _current_response_stream != null:
-			_current_response_stream.fail(_last_error)
+		_fail_all_streams(_last_error)
 		return
 
 	var data: Dictionary = parsed
@@ -354,13 +377,14 @@ func _on_transport_stdout_line(line: String) -> void:
 	if message == null:
 		return
 
+	var message_session_id := _message_session_id(message)
+	var routed_session_id := _active_turn_session_key_for_message(message_session_id)
 	_message_stream.push_message(message)
-	if _current_response_stream != null:
-		_current_response_stream.push_message(message)
-		if message is Object and str(message.get("message_type")) == "result":
-			_active_prompt_drain_token += 1
-			_pending_prompt_stream = null
-			_current_response_stream = null
+	_push_to_global_response_streams(message)
+	if not routed_session_id.is_empty():
+		_push_to_session_response_streams(routed_session_id, message)
+	if message is ClaudeResultMessage:
+		_complete_turn(routed_session_id)
 
 
 func _on_transport_stderr_line(_line: String) -> void:
@@ -371,7 +395,6 @@ func _on_transport_closed() -> void:
 	_closed = true
 	_connected = false
 	_initialize_timeout_token += 1
-	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude transport closed")
 	_disconnect_transport_signals()
@@ -380,12 +403,9 @@ func _on_transport_closed() -> void:
 
 func _on_transport_error(message: String) -> void:
 	_emit_error(message)
-	_active_prompt_drain_token += 1
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests(message)
-	_message_stream.fail(message)
-	if _current_response_stream != null:
-		_current_response_stream.fail(message)
+	_fail_all_streams(message)
 
 
 func _handle_control_response(data: Dictionary) -> void:
@@ -422,7 +442,7 @@ func _handle_control_response(data: Dictionary) -> void:
 		_initialize_timeout_token += 1
 		_initialize_request_id = ""
 		session_initialized.emit(_server_info.duplicate(true))
-		_flush_pending_prompt()
+		_flush_pending_prompts()
 
 	_set_last_error("")
 
@@ -448,15 +468,9 @@ func _fail_session(message: String) -> void:
 	if _last_error != message:
 		_set_last_error(message)
 	_initialize_timeout_token += 1
-	_active_prompt_drain_token += 1
-	_pending_prompt_payloads.clear()
-	_pending_prompt_stream = null
 	_complete_pending_control_requests(message)
 	_cancel_all_inflight_control_requests()
-	_message_stream.fail(message)
-	if _current_response_stream != null:
-		_current_response_stream.fail(message)
-	_current_response_stream = null
+	_fail_all_streams(message)
 	_connected = false
 	close()
 
@@ -524,12 +538,138 @@ func _disconnect_transport_signals() -> void:
 
 
 func _finish_streams() -> void:
-	_pending_prompt_payloads.clear()
-	_pending_prompt_stream = null
+	_pending_prompt_order.clear()
+	_active_turns_by_session.clear()
 	_message_stream.finish()
-	if _current_response_stream != null:
-		_current_response_stream.finish()
-		_current_response_stream = null
+	_finish_global_response_streams()
+	_finish_all_session_response_streams()
+
+
+func _turn_state(session_id: String) -> Dictionary:
+	return _active_turns_by_session.get(session_id, {}) if _active_turns_by_session.get(session_id, {}) is Dictionary else {}
+
+
+func _is_prompt_drain_active(session_id: String, token: int) -> bool:
+	var state := _turn_state(session_id)
+	if state.is_empty():
+		return false
+	return int(state.get("drain_token", -1)) == token
+
+
+func _register_global_response_stream(stream) -> void:
+	_global_response_streams.append(stream)
+	stream.set_finish_callback(Callable(self, "_on_global_response_stream_finished").bind(stream))
+
+
+func _on_global_response_stream_finished(stream) -> void:
+	_global_response_streams.erase(stream)
+
+
+func _register_session_response_stream(session_id: String, stream) -> void:
+	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+	streams.append(stream)
+	_session_response_streams[session_id] = streams
+	stream.set_finish_callback(Callable(self, "_on_session_response_stream_finished").bind(session_id, stream))
+
+
+func _on_session_response_stream_finished(session_id: String, stream) -> void:
+	if not _session_response_streams.has(session_id):
+		return
+	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+	streams.erase(stream)
+	if streams.is_empty():
+		_session_response_streams.erase(session_id)
+	else:
+		_session_response_streams[session_id] = streams
+
+
+func _push_to_global_response_streams(message: Variant) -> void:
+	for stream in _global_response_streams.duplicate():
+		stream.push_message(message)
+
+
+func _push_to_session_response_streams(session_id: String, message: Variant) -> void:
+	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+	for stream in streams.duplicate():
+		stream.push_message(message)
+
+
+func _complete_turn(session_id: String) -> void:
+	if session_id.is_empty():
+		return
+	_active_turns_by_session.erase(session_id)
+	_pending_prompt_order.erase(session_id)
+
+
+func _fail_all_streams(message: String) -> void:
+	_pending_prompt_order.clear()
+	_active_turns_by_session.clear()
+	_message_stream.fail(message)
+	for stream in _global_response_streams.duplicate():
+		stream.fail(message)
+	for session_id_variant in _session_response_streams.keys():
+		_fail_session_response_streams(str(session_id_variant), message)
+
+
+func _fail_session_response_streams(session_id: String, message: String) -> void:
+	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+	for stream in streams.duplicate():
+		stream.fail(message)
+
+
+func _finish_global_response_streams() -> void:
+	for stream in _global_response_streams.duplicate():
+		stream.finish()
+	_global_response_streams.clear()
+
+
+func _finish_all_session_response_streams() -> void:
+	for session_id_variant in _session_response_streams.keys().duplicate():
+		var session_id := str(session_id_variant)
+		var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+		for stream in streams.duplicate():
+			stream.finish()
+	_session_response_streams.clear()
+
+
+func _message_session_id(message: Variant) -> String:
+	if message == null:
+		return ""
+	if message is Object:
+		var raw_data: Variant = message.get("raw_data")
+		if raw_data is Dictionary and (raw_data as Dictionary).has("session_id"):
+			return str((raw_data as Dictionary).get("session_id", ""))
+		var session_id: Variant = message.get("session_id")
+		if session_id != null:
+			return str(session_id)
+	return ""
+
+
+func _active_turn_session_key_for_message(message_session_id: String) -> String:
+	if message_session_id.is_empty():
+		return ""
+	if _active_turns_by_session.has(message_session_id):
+		return message_session_id
+	if message_session_id != "default":
+		var default_state := _turn_state("default")
+		if not default_state.is_empty():
+			var promoted_session_id := str(default_state.get("promoted_session_id", ""))
+			if promoted_session_id == message_session_id:
+				return "default"
+			if promoted_session_id.is_empty() and _can_promote_default_turn_to_session(message_session_id):
+				default_state["promoted_session_id"] = message_session_id
+				_active_turns_by_session["default"] = default_state
+				return "default"
+	return ""
+
+
+func _can_promote_default_turn_to_session(message_session_id: String) -> bool:
+	if message_session_id.is_empty() or message_session_id == "default":
+		return false
+	# The shared CLI stream does not expose a stronger turn correlation before the
+	# runtime session UUID appears, so we only bind when this session owns the
+	# connection's sole active unresolved turn.
+	return _active_turns_by_session.size() == 1 and _active_turns_by_session.has("default")
 
 
 func _build_initialize_request() -> Dictionary:

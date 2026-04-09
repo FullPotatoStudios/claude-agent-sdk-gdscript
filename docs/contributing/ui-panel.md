@@ -127,6 +127,16 @@ The panel intentionally does not yet include:
 - richer task dashboards beyond the current per-task transcript cards and stop control
 - editor-plugin workflows
 
+The lower runtime layers now allow overlapping turns for different
+`session_id` values on one connected client, but the shipped panel still keeps
+one authoritative live session and does not surface that concurrency as panel UX.
+The lower runtime still rejects same-session overlap so one live conversation
+does not race itself inside the shared panel state.
+When the live turn begins from `"default"`, the panel only adopts the resolved
+runtime session UUID that matches its current live target; unrelated foreign
+session traffic stays visible in the shared stream but does not retarget the
+composer.
+
 The built-in tool picker only covers Claude's built-in tools. SDK/external MCP
 tools still stay code-driven through `ClaudeMcp` and `ClaudeAgentOptions`.
 The panel can edit simple external `stdio` config and inspect existing
