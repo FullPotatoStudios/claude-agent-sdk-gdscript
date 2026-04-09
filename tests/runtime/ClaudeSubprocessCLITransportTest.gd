@@ -27,6 +27,8 @@ class CloseBehaviorTransport extends ClaudeSubprocessCLITransport:
 		_stderr_thread = null
 
 	func _wait_for_process_exit_with_timeout(timeout_msec: int) -> bool:
+		if _pid <= 0:
+			return true
 		wait_timeouts.append(timeout_msec)
 		if wait_results.is_empty():
 			return true
@@ -303,3 +305,26 @@ func test_close_force_kills_process_after_grace_period_timeout() -> void:
 	assert_int(transport.reader_wait_calls).is_equal(1)
 	assert_bool(transport.transport_is_connected()).is_false()
 	assert_int(transport._pid).is_equal(0)
+
+
+func test_close_does_not_wait_or_kill_again_after_process_has_already_exited() -> void:
+	var transport := CloseBehaviorTransport.new({}, [true])
+	var close_events := [0]
+	transport.transport_closed.connect(func() -> void:
+		close_events[0] += 1
+	)
+	transport._pid = 789
+	transport._connected = true
+	transport._process = {"pid": 789}
+
+	transport.close()
+	transport.close()
+
+	assert_array(transport.wait_timeouts).is_equal([PROCESS_EXIT_GRACE_MSEC])
+	assert_int(transport.kill_calls).is_equal(0)
+	assert_int(transport.close_pipes_calls).is_equal(2)
+	assert_int(transport.reader_wait_calls).is_equal(2)
+	assert_bool(transport.transport_is_connected()).is_false()
+	assert_int(transport._pid).is_equal(0)
+	assert_dict(transport._process).is_empty()
+	assert_int(int(close_events[0])).is_equal(1)
