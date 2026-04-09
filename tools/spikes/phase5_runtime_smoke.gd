@@ -182,6 +182,7 @@ func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String
 	if not client.get_last_error().is_empty():
 		var failed := _empty_summary(mode)
 		failed["stream_error"] = client.get_last_error()
+		client.disconnect_client()
 		return failed
 	client.query(prompt)
 	if not client.get_last_error().is_empty():
