@@ -27,6 +27,7 @@ This is the local-only authenticated runtime smoke. It now covers the original `
 
 It also now exercises bounded authenticated parity coverage for:
 
+- local plugin discovery through `ClaudeAgentOptions.plugins`, requiring init plugin metadata or command exposure from the demo fixture without overstating slash-command execution
 - `stderr` diagnostics via `debug-to-stderr`
 - `PreToolUse` hook callbacks on real Bash tool use
 - `can_use_tool` permission callbacks on an interactive Bash `touch` prompt, using a temp target outside the project cwd

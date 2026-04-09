@@ -106,6 +106,7 @@ The reusable authenticated smoke entrypoint under `tools/spikes/phase5_runtime_s
 Additional implemented modes:
 
 - `agents`
+- `plugins`
 - `setting_sources_default`
 - `setting_sources_project_included`
 - `filesystem_agent_project`
@@ -125,6 +126,7 @@ Additional implemented modes:
 Validated in this environment during authenticated live runs:
 
 - `agents`: `ClaudeAgentOptions.agents` appeared in the init `SystemMessage` and the query still completed with assistant plus result messages
+- `plugins`: `ClaudeAgentOptions.plugins` loaded the local `demo-plugin` fixture from an absolute repo fixture path with repo-root `cwd`; the init payload exposed either `plugins = ["demo-plugin", ...]` or the `greet` command, which is truthful CLI-side evidence that the plugin directory was discovered even though this environment does not reliably prove `/greet` end-to-end execution from prompt text
 - `setting_sources_default`: a temporary project-local `.claude/settings.local.json` was loaded when `setting_sources` was left unset, and init reported `output_style = "local-test-style"`
 - `setting_sources_project_included`: the same local settings file was loaded when `setting_sources = ["user", "project", "local"]`, again surfacing `output_style = "local-test-style"` in init
 - `filesystem_agent_project`: a temporary `.claude/agents/fs-test-agent.md` file was discovered when `setting_sources = ["project"]`; init listed `fs-test-agent`, and the session continued through assistant plus result messages instead of stopping at init-only
@@ -134,6 +136,7 @@ Implemented assertions for the new smoke modes:
 - `stderr_debug`: requires the runtime `stderr` callback to capture at least one real Claude CLI `[DEBUG]` line when `extra_args = {"debug-to-stderr": null}`
 - `hook_pre_tool_use`: requires a `PreToolUse` hook to match a real Bash invocation, see a non-empty `tool_use_id`, and allow the request through `hookSpecificOutput.permissionDecision = "allow"`
 - `tool_permission_bash_touch`: connects a real `ClaudeSDKClient`, sends an interactive string `query("Run the command: touch ...")`, then requires a real Bash permission callback, a non-empty `tool_use_id`, and the prompted temp file created via `touch` outside the project cwd
+- `plugins`: runs a one-shot query with `cwd = res://` plus `plugins = [{"type": "local", "path": "<absolute demo fixture>"}]`, then requires either `init.plugins` to list `demo-plugin` or `init.commands` to expose `greet`; a metadata-only pass is documented as plugin discovery/configuration evidence rather than proof that the slash command executed end-to-end
 - `dynamic_permission_mode`: connects a real `ClaudeSDKClient`, waits for initialize completion, switches from the default permission mode to `acceptEdits`, completes a first turn, switches back to `default`, and completes a second turn without control or stream errors
 - `dynamic_model`: connects a real `ClaudeSDKClient`, completes one turn on the initial model, switches to `haiku`, completes another turn, then resets to the default model through local `set_model(null)` parity with upstream `set_model(None)` before attempting a third turn
 - `dynamic_interrupt`: connects a real `ClaudeSDKClient`, starts a longer-running turn, sends `interrupt()`, and verifies the request does not surface a local client error while the response stream remains consumable without assuming a specific interrupted result shape
@@ -147,6 +150,7 @@ Implemented assertions for the new smoke modes:
 Current local rerun status:
 
 - a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` now succeeds through the full current bounded wrapper, including `tool_permission_bash_touch`, `dynamic_model`, `dynamic_interrupt`, `context_usage`, `mcp_status`, and the SDK MCP live modes
+- direct authenticated reruns on `2026-04-09` now also pass for the new `plugins` mode, with this environment surfacing `demo-plugin` in init plugin metadata even when slash-command execution is not separately proven
 - the same authenticated environment also passes upstream Python `e2e-tests/test_tool_permissions.py`, confirming the local smoke now matches the pinned `v0.1.54` callback path instead of relying on the earlier in-project workaround
 - the `dynamic_model` reset leg now passes after the local runtime widened `set_model()` to nullable/default-null control requests, so the wire payload mirrors upstream `{"subtype": "set_model", "model": null}` semantics instead of sending an empty string
 - the new SDK MCP modes were re-validated directly on `2026-04-09` through authenticated `tools/spikes/phase5_runtime_smoke.gd` invocations:
@@ -164,6 +168,6 @@ Current local rerun status:
 Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
-- session-forking, rewind/task, and `plugins` / `user` coverage remain future follow-up work
+- session-forking, rewind/task, and host-sensitive `user` coverage remain future follow-up work
 - live SDK-hosted `toggle_mcp_server()` / `reconnect_mcp_server()` coverage is not in the passing wrapper because the pinned upstream Python SDK reproduces the same runtime limitation; any future live toggle/reconnect slice should target an external MCP server or another harness that can create a genuine disabled/disconnected state truthfully
 - `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run while new parity slices are being developed or debugged

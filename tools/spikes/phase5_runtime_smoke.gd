@@ -10,12 +10,15 @@ const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.
 
 const DEFAULT_OUTPUT_STYLE := "local-test-style"
 const FILESYSTEM_AGENT_NAME := "fs-test-agent"
+const PLUGIN_COMMAND_NAME := "greet"
+const PLUGIN_FIXTURE_NAME := "demo-plugin"
 const SDK_AGENT_NAME := "test-agent"
 const SUPPORTED_MODES := [
 	"baseline",
 	"structured",
 	"partial",
 	"agents",
+	"plugins",
 	"setting_sources_default",
 	"setting_sources_project_included",
 	"filesystem_agent_project",
@@ -55,7 +58,7 @@ func _init() -> void:
 func _run_smoke(args: Dictionary) -> Dictionary:
 	var mode := str(args.get("mode", "baseline"))
 	match mode:
-		"baseline", "structured", "partial", "agents":
+		"baseline", "structured", "partial", "agents", "plugins":
 			return await _run_query_smoke(mode, args)
 		"setting_sources_default":
 			return await _run_setting_sources_default_smoke(args)
@@ -131,11 +134,29 @@ func _run_query_smoke(mode: String, args: Dictionary) -> Dictionary:
 				}),
 			}
 			prompt = "What is 2 + 2? Answer only with the number."
+		"plugins":
+			options.max_turns = 1
+			options.cwd = ProjectSettings.globalize_path("res://")
+			options.plugins = [
+				{
+					"type": "local",
+					"path": options.cwd.path_join("tools/examples/fixtures/plugins/%s" % PLUGIN_FIXTURE_NAME),
+				},
+			]
+			prompt = "Hello from the live plugin parity smoke."
 		_:
 			options.max_turns = 1
 			prompt = "What is 2 + 2? Answer only with the number."
 
 	var summary := await _collect_stream_summary(mode, ClaudeQueryScript.query(prompt, options))
+	if mode == "plugins":
+		var init_command_names: Array[String] = summary.get("init_command_names", []) as Array[String]
+		var init_plugins: Array[String] = summary.get("init_plugins", []) as Array[String]
+		summary["plugin_fixture_path"] = str(options.plugins[0]["path"])
+		summary["plugin_detected_via_commands"] = init_command_names.has(PLUGIN_COMMAND_NAME)
+		summary["plugin_detected_via_plugins"] = init_plugins.has(PLUGIN_FIXTURE_NAME)
+		summary["plugin_detected"] = bool(summary.get("plugin_detected_via_commands", false)) \
+			or bool(summary.get("plugin_detected_via_plugins", false))
 	match mode:
 		"structured":
 			summary["ok"] = _summary_succeeded(summary) and bool(summary.get("structured_output_present", false))
@@ -143,6 +164,8 @@ func _run_query_smoke(mode: String, args: Dictionary) -> Dictionary:
 			summary["ok"] = _summary_succeeded(summary) and bool(summary.get("saw_stream_event", false))
 		"agents":
 			summary["ok"] = _summary_succeeded(summary) and _summary_has_agent(summary, SDK_AGENT_NAME)
+		"plugins":
+			summary["ok"] = _summary_succeeded(summary) and bool(summary.get("plugin_detected", false))
 		_:
 			summary["ok"] = _summary_succeeded(summary)
 	return summary
@@ -811,6 +834,9 @@ func _append_client_error(errors: Array[String], client: ClaudeSDKClient) -> voi
 func _collect_stream_summary(mode: String, stream) -> Dictionary:
 	var message_types: Array[String] = []
 	var init_agents: Array[String] = []
+	var init_commands: Array[String] = []
+	var init_command_names: Array[String] = []
+	var init_plugins: Array[String] = []
 	var saw_stream_event := false
 	var assistant_present := false
 	var init_present := false
@@ -827,6 +853,9 @@ func _collect_stream_summary(mode: String, stream) -> Dictionary:
 			var init_payload: Dictionary = message.raw_data if message.raw_data is Dictionary else {}
 			init_present = true
 			init_output_style = str(init_payload.get("output_style", ""))
+			init_commands = _extract_command_names(init_payload.get("commands", []))
+			init_command_names = _normalize_command_names(init_commands)
+			init_plugins = _extract_plugin_names(init_payload.get("plugins", []))
 			init_agents = _variant_to_string_array(init_payload.get("agents", []))
 		if message is ClaudeAssistantMessage:
 			assistant_present = true
@@ -841,6 +870,9 @@ func _collect_stream_summary(mode: String, stream) -> Dictionary:
 		"stream_error": stream.get_error(),
 		"saw_stream_event": saw_stream_event,
 		"init_present": init_present,
+		"init_commands": init_commands,
+		"init_command_names": init_command_names,
+		"init_plugins": init_plugins,
 		"init_agents": init_agents,
 		"init_output_style": init_output_style,
 		"assistant_present": assistant_present,
@@ -887,6 +919,9 @@ func _empty_summary(mode: String) -> Dictionary:
 		"stream_error": "",
 		"saw_stream_event": false,
 		"init_present": false,
+		"init_commands": [],
+		"init_command_names": [],
+		"init_plugins": [],
 		"init_agents": [],
 		"init_output_style": "",
 		"assistant_present": false,
@@ -936,8 +971,41 @@ func _empty_summary(mode: String) -> Dictionary:
 		"mcp_status_error": "",
 		"mcp_status_observed_status": "",
 		"mcp_status_tool_names": [],
+		"plugin_fixture_path": "",
+		"plugin_detected": false,
+		"plugin_detected_via_commands": false,
+		"plugin_detected_via_plugins": false,
 		"turn_summary": {},
 	}
+
+
+func _extract_command_names(value: Variant) -> Array[String]:
+	var names: Array[String] = []
+	if value is not Array:
+		return names
+	for entry in value:
+		if entry is Dictionary:
+			names.append(str((entry as Dictionary).get("name", "")))
+	return names
+
+
+func _normalize_command_names(value: Variant) -> Array[String]:
+	var names: Array[String] = []
+	if value is not Array:
+		return names
+	for entry in value:
+		names.append(str(entry).strip_edges().trim_prefix("/"))
+	return names
+
+
+func _extract_plugin_names(value: Variant) -> Array[String]:
+	var names: Array[String] = []
+	if value is not Array:
+		return names
+	for entry in value:
+		if entry is Dictionary:
+			names.append(str((entry as Dictionary).get("name", "")))
+	return names
 
 
 func _on_stderr_line(line: String) -> void:
