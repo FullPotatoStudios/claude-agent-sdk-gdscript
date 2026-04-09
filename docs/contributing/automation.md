@@ -28,6 +28,7 @@ This is the local-only authenticated runtime smoke. It now covers the original `
 It also now exercises bounded authenticated parity coverage for:
 
 - local plugin discovery through `ClaudeAgentOptions.plugins`, requiring init plugin metadata or command exposure from the demo fixture without overstating slash-command execution
+- transport-first `resume + fork_session=true` coverage by creating a real source session through the live CLI, resuming it with forking enabled, and requiring a new runtime session id plus a new saved-session file while preserving the source session file
 - same-user `ClaudeAgentOptions.user` coverage on POSIX shell-backed transports by resolving the host's current username, requiring a real `sudo -n -u <current-user> /usr/bin/true` preflight, and then validating both auth-probe and baseline-query relaunch through that same account
 - `stderr` diagnostics via `debug-to-stderr`
 - `PreToolUse` hook callbacks on real Bash tool use

@@ -120,6 +120,7 @@ Additional implemented modes:
 - `dynamic_interrupt`
 - `context_usage`
 - `mcp_status`
+- `fork_session_resume`
 - `external_mcp_reconnect`
 - `sdk_mcp_tool_execution`
 - `sdk_mcp_permission_enforcement`
@@ -135,6 +136,7 @@ Validated in this environment during authenticated live runs:
 - `filesystem_agent_project`: a temporary `.claude/agents/fs-test-agent.md` file was discovered when `setting_sources = ["project"]`; init listed `fs-test-agent`, and the session continued through assistant plus result messages instead of stopping at init-only
 - `user_current_user_auth`: the auth probe succeeded with `ClaudeAgentOptions.user` set to the host's resolved current username after a real `sudo -n -u <current-user> /usr/bin/true` preflight confirmed that same-user relaunch is available on this POSIX machine
 - `user_current_user_baseline`: a bounded baseline query succeeded with `ClaudeAgentOptions.user` set to the same resolved current username, continuing through init, assistant, and result messages without local transport or query errors
+- `fork_session_resume`: a first bounded live query created a real source session in a temp project cwd, then a second live query resumed that saved session with `fork_session = true` and returned a different runtime session id while the original saved-session file remained intact and a new saved-session file appeared for the forked run
 
 Implemented assertions for the new smoke modes:
 
@@ -149,6 +151,7 @@ Implemented assertions for the new smoke modes:
 - `dynamic_interrupt`: connects a real `ClaudeSDKClient`, starts a longer-running turn, sends `interrupt()`, and verifies the request does not surface a local client error while the response stream remains consumable without assuming a specific interrupted result shape
 - `context_usage`: connects a real `ClaudeSDKClient`, completes one real turn, then requires `get_context_usage()` to return a typed response with non-empty categories and non-negative total/max token counts without assuming the CLI always returns a model string
 - `mcp_status`: connects a real `ClaudeSDKClient` with an SDK MCP server, polls `get_mcp_status()` briefly for the configured server entry, and then requires concrete tool metadata for that SDK server without assuming a fixed live status string unless the CLI reports one deterministically
+- `fork_session_resume`: runs a first real one-shot query to create a CLI-authored source session for a unique temp project cwd, then runs a second real one-shot query with `resume = <source_session_id>` and `fork_session = true`; it requires the final result session id to differ from the source session id, the source saved-session file to remain present, and a new saved-session file for the new session id to exist in the same project storage dir without assuming deeper JSONL fork metadata
 - `external_mcp_reconnect`: connects a real `ClaudeSDKClient` with a repo-owned external Node `stdio` MCP fixture that uses the official MCP SDK resolved from the local Claude plugin cache, first requires an observed pre-reconnect server entry without the external tool while a sentinel exists, then removes that sentinel, calls `reconnect_mcp_server(server_name)`, polls until the external tool metadata returns, and finally requires real post-reconnect external tool execution through an invocation-log side effect
 - `sdk_mcp_tool_execution`: connects a real `ClaudeSDKClient`, exposes an in-process `echo` SDK MCP tool through `ClaudeMcp`, and requires that the local tool handler actually executes while the stream completes without local client or protocol errors
 - `sdk_mcp_permission_enforcement`: connects a real `ClaudeSDKClient`, exposes `greet` plus `echo` SDK MCP tools, allows only `greet`, explicitly disallows `echo`, and requires that the allowed handler executes while the disallowed handler never runs
@@ -170,8 +173,10 @@ Current local rerun status:
 - the new diagnostics-focused live modes were also re-validated directly on `2026-04-09` before the wrapper advanced past `tool_permission_bash_touch`:
   - `context_usage`
   - `mcp_status`
+- direct authenticated reruns on `2026-04-10` now also pass for `fork_session_resume`, validating the transport-first real-CLI `resume + fork_session=true` path through a CLI-authored source session, a distinct returned runtime session id for the forked run, preserved source session storage, and a new saved-session file for the fork
 - direct authenticated reruns on `2026-04-10` now also pass for `external_mcp_reconnect`, validating an observed pre-reconnect external `stdio` MCP server entry without tool availability, successful reconnect after removing the startup-failure sentinel, and real post-reconnect tool execution in the local GDScript runtime
 - the same repo-owned external Node fixture was validated first in the sibling Python SDK on `2026-04-10`, where healthy connection and failed-startup reconnect both pass against the same local Claude CLI environment
+- the same-environment sibling Python SDK also passes the same bounded `resume + fork_session=true` proof on `2026-04-10`, again returning a new runtime session id and writing a new saved-session file while preserving the source session
 - those direct SDK MCP reruns only passed after a transport parity fix made local `--mcp-config` emission match upstream by including SDK server metadata while stripping the runtime-only `instance`
 - deterministic runtime coverage now also proves `ClaudeSDKClient.reconnect_mcp_server()` and `toggle_mcp_server()` emit the same wire keys as upstream (`subtype = "mcp_reconnect"` / `"mcp_toggle"` with camelCase `serverName`), with direct adapter/node passthrough coverage on top
 - a same-environment `2026-04-10` repro against both the local GDScript runtime and the sibling pinned Python SDK showed that the explored Bash-based live `rewind_files()` flow is not yet a passing parity proof at `v0.1.54`: rewinding to the plain-string replayed `UserMessage.uuid` resolves but leaves the edited file unchanged, while rewinding to the replayed top-level `tool_result` `UserMessage.uuid` returns `No file checkpoint found for this message.`
@@ -181,6 +186,7 @@ Current local rerun status:
 Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
+- the live `fork_session_resume` mode intentionally proves only the externally observable transport behavior of `ClaudeAgentOptions.fork_session` on resumed sessions; it does not claim that the CLI-authored saved-session file matches the deeper deterministic JSONL structure produced by local `ClaudeSessions.fork_session()`
 - the new `user` live modes only prove the local POSIX same-user relaunch path for the host's current account; they do not prove arbitrary cross-user support, and Windows remains unsupported for `ClaudeAgentOptions.user` in the shell-backed runtime
 - live `rewind_files()` coverage remains future follow-up work even though deterministic `rewind_files(user_message_id)` parity is already delivered; the explored authenticated Bash edit flow currently reproduces the same non-restoring/no-checkpoint behavior in both local GDScript and the sibling pinned Python SDK
 - live `stop_task()` coverage remains future follow-up work

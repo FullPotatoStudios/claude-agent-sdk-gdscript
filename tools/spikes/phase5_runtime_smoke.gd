@@ -5,6 +5,7 @@ const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runt
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudeMcpScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_mcp.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
+const ClaudeSessionsScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_sessions.gd")
 const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_client.gd")
 const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.gd")
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
@@ -35,6 +36,7 @@ const SUPPORTED_MODES := [
 	"dynamic_interrupt",
 	"context_usage",
 	"mcp_status",
+	"fork_session_resume",
 	"external_mcp_reconnect",
 	"sdk_mcp_tool_execution",
 	"sdk_mcp_permission_enforcement",
@@ -92,6 +94,8 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_context_usage_smoke(args)
 		"mcp_status":
 			return await _run_mcp_status_smoke(args)
+		"fork_session_resume":
+			return await _run_fork_session_resume_smoke(args)
 		"external_mcp_reconnect":
 			return await _run_external_mcp_reconnect_smoke(args)
 		"sdk_mcp_tool_execution":
@@ -760,6 +764,75 @@ func _run_mcp_status_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_fork_session_resume_smoke(args: Dictionary) -> Dictionary:
+	var project_dir := _create_temp_project_dir("fork_session_resume")
+	var summary := _empty_summary("fork_session_resume")
+	summary["project_dir"] = project_dir
+
+	var source_options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"cwd": project_dir,
+		"max_turns": 1,
+		"effort": "low",
+	})
+	var source_prompt := "Reply with exactly: source fork ready"
+	var source_summary := await _collect_stream_summary(
+		"fork_session_resume_source",
+		ClaudeQueryScript.query(source_prompt, source_options)
+	)
+	var source_session_id := str(source_summary.get("result_session_id", ""))
+	var source_session_file := _session_storage_file_for_project(project_dir, source_session_id)
+
+	var fork_options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"cwd": project_dir,
+		"resume": source_session_id,
+		"fork_session": true,
+		"max_turns": 1,
+		"effort": "low",
+	})
+	var fork_prompt := "Reply with exactly: fork parity ok"
+	var fork_summary := _empty_summary("fork_session_resume_turn")
+	if _summary_succeeded(source_summary) and not source_session_id.is_empty() and FileAccess.file_exists(source_session_file):
+		fork_summary = await _collect_stream_summary(
+			"fork_session_resume_turn",
+			ClaudeQueryScript.query(fork_prompt, fork_options)
+		)
+	else:
+		fork_summary["stream_error"] = "Could not create a real source session before running fork-session resume."
+
+	var fork_session_id := str(fork_summary.get("result_session_id", ""))
+	var fork_session_file := _session_storage_file_for_project(project_dir, fork_session_id)
+	var source_exists := FileAccess.file_exists(source_session_file)
+	var fork_exists := FileAccess.file_exists(fork_session_file)
+	var source_contents := FileAccess.get_file_as_string(source_session_file) if source_exists else ""
+	var fork_contents := FileAccess.get_file_as_string(fork_session_file) if fork_exists else ""
+
+	_merge_turn_summary(summary, fork_summary)
+	summary["source_session_id"] = source_session_id
+	summary["source_session_file"] = source_session_file
+	summary["source_session_file_exists"] = source_exists
+	summary["fork_session_source_summary"] = source_summary
+	summary["fork_session_id"] = fork_session_id
+	summary["fork_session_file"] = fork_session_file
+	summary["fork_session_file_exists"] = fork_exists
+	summary["fork_session_new_id"] = not fork_session_id.is_empty() and fork_session_id != source_session_id
+	summary["fork_session_source_preserved"] = source_exists
+	summary["fork_session_file_contains_new_id"] = fork_exists and fork_contents.contains('"sessionId":"%s"' % fork_session_id)
+	summary["fork_session_file_differs_from_source"] = source_exists and fork_exists and fork_contents != source_contents
+	summary["fork_session_file_contains_prompt"] = fork_exists and fork_contents.contains(fork_prompt)
+	summary["fork_session_file_contains_result_text"] = fork_exists and fork_contents.contains("fork parity ok")
+	summary["turn_summaries"] = [source_summary, fork_summary]
+	summary["ok"] = _summary_succeeded(source_summary) \
+		and _summary_succeeded(fork_summary) \
+		and bool(summary.get("fork_session_new_id", false)) \
+		and bool(summary.get("fork_session_source_preserved", false)) \
+		and bool(summary.get("fork_session_file_exists", false)) \
+		and bool(summary.get("fork_session_file_contains_new_id", false)) \
+		and bool(summary.get("fork_session_file_differs_from_source", false))
+	return summary
+
+
 func _run_external_mcp_reconnect_smoke(args: Dictionary) -> Dictionary:
 	var server_name := "externalreconnect"
 	var prepared := _prepare_external_mcp_fixture("external_mcp_reconnect", server_name, true)
@@ -866,6 +939,7 @@ func _run_sdk_mcp_client_smoke(mode: String, options: ClaudeAgentOptions, prompt
 		"result_subtype",
 		"result_errors",
 		"result_num_turns",
+		"result_session_id",
 		"structured_output_present",
 		"structured_output",
 		"result_text",
@@ -933,6 +1007,7 @@ func _merge_turn_summary(summary: Dictionary, turn_summary: Dictionary) -> void:
 		"result_subtype",
 		"result_errors",
 		"result_num_turns",
+		"result_session_id",
 		"structured_output_present",
 		"structured_output",
 		"result_text",
@@ -1008,6 +1083,7 @@ func _collect_stream_summary(mode: String, stream) -> Dictionary:
 		"result_subtype": "",
 		"result_errors": [],
 		"result_num_turns": 0,
+		"result_session_id": "",
 		"structured_output_present": false,
 		"structured_output": null,
 		"result_text": "",
@@ -1017,6 +1093,7 @@ func _collect_stream_summary(mode: String, stream) -> Dictionary:
 		summary["result_subtype"] = str(result_message.subtype)
 		summary["result_errors"] = result_message.errors.duplicate(true)
 		summary["result_num_turns"] = int(result_message.num_turns)
+		summary["result_session_id"] = str(result_message.session_id)
 		summary["structured_output_present"] = result_message.structured_output != null
 		summary["structured_output"] = result_message.structured_output
 		summary["result_text"] = str(result_message.result)
@@ -1316,6 +1393,16 @@ func _read_external_mcp_invocations(path: String) -> Array[Dictionary]:
 	return entries
 
 
+func _session_storage_file_for_project(project_path: String, session_id: String) -> String:
+	if project_path.is_empty() or session_id.is_empty():
+		return ""
+	var resolved_project := ClaudeSessionsScript._resolve_absolute_path(project_path)
+	var projects_dir := ClaudeSessionsScript._get_projects_dir()
+	if resolved_project.is_empty() or projects_dir.is_empty():
+		return ""
+	return projects_dir.path_join(ClaudeSessionsScript._sanitize_path(resolved_project)).path_join("%s.jsonl" % session_id)
+
+
 func _empty_summary(mode: String) -> Dictionary:
 	return {
 		"mode": mode,
@@ -1335,6 +1422,7 @@ func _empty_summary(mode: String) -> Dictionary:
 		"result_subtype": "",
 		"result_errors": [],
 		"result_num_turns": 0,
+		"result_session_id": "",
 		"structured_output_present": false,
 		"structured_output": null,
 		"result_text": "",
@@ -1398,6 +1486,19 @@ func _empty_summary(mode: String) -> Dictionary:
 		"auth_status": {},
 		"auth_status_logged_in": false,
 		"turn_summary": {},
+		"source_session_id": "",
+		"source_session_file": "",
+		"source_session_file_exists": false,
+		"fork_session_source_summary": {},
+		"fork_session_id": "",
+		"fork_session_file": "",
+		"fork_session_file_exists": false,
+		"fork_session_new_id": false,
+		"fork_session_source_preserved": false,
+		"fork_session_file_contains_new_id": false,
+		"fork_session_file_differs_from_source": false,
+		"fork_session_file_contains_prompt": false,
+		"fork_session_file_contains_result_text": false,
 	}
 
 
