@@ -1042,6 +1042,105 @@ func test_control_cancel_request_exposes_permission_abort_signal() -> void:
 	assert_int(transport.writes.size()).is_equal(writes_before)
 
 
+func test_control_cancel_request_for_unknown_request_id_is_noop() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var writes_before: int = transport.writes.size()
+
+	transport.emit_stdout_message({
+		"type": "control_cancel_request",
+		"request_id": "unknown-request-id",
+	})
+	await get_tree().process_frame
+
+	assert_int(transport.writes.size()).is_equal(writes_before)
+	assert_str(session.get_last_error()).is_equal("")
+
+
+func test_control_cancel_request_after_hook_completion_is_noop() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"hooks": {
+				"PreToolUse": [
+					ClaudeHookMatcherScript.new({
+						"matcher": "Bash",
+						"hooks": [Callable(self, "_async_hook_callback")],
+					}),
+				],
+			},
+		})
+	)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hook_callback_id := str((((initialize_request.get("request", {}) as Dictionary).get("hooks", {}) as Dictionary).get("PreToolUse", []) as Array)[0].get("hookCallbackIds", [])[0])
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "hook-completed",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"input": {"tool_name": "Bash"},
+		},
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var writes_after_response: int = transport.writes.size()
+
+	transport.emit_stdout_message({
+		"type": "control_cancel_request",
+		"request_id": "hook-completed",
+	})
+	await get_tree().process_frame
+
+	assert_bool(session._inflight_control_requests.has("hook-completed")).is_false()
+	assert_int(transport.writes.size()).is_equal(writes_after_response)
+
+
+func test_session_close_cancels_callback_abort_signal() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"hooks": {
+				"PreToolUse": [
+					ClaudeHookMatcherScript.new({
+						"matcher": "Bash",
+						"hooks": [Callable(self, "_cancelable_hook_callback")],
+					}),
+				],
+			},
+		})
+	)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hook_callback_id := str((((initialize_request.get("request", {}) as Dictionary).get("hooks", {}) as Dictionary).get("PreToolUse", []) as Array)[0].get("hookCallbackIds", [])[0])
+	var writes_before: int = transport.writes.size()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "hook-session-close",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"input": {"tool_name": "Bash"},
+		},
+	})
+	await get_tree().process_frame
+	session.close()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_bool(bool(_cancelable_hook_state.get("started", false))).is_true()
+	assert_bool(bool(_cancelable_hook_state.get("has_signal", false))).is_true()
+	assert_bool(bool(_cancelable_hook_state.get("canceled", false))).is_true()
+	assert_str(str(_cancelable_hook_state.get("reason", ""))).is_equal("session_closed")
+	assert_int(transport.writes.size()).is_equal(writes_before)
+
+
 func test_context_usage_rewind_and_mcp_controls_send_expected_control_requests() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
