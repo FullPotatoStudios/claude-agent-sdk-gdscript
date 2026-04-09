@@ -26,6 +26,8 @@ const SUPPORTED_MODES := [
 	"dynamic_permission_mode",
 	"dynamic_model",
 	"dynamic_interrupt",
+	"context_usage",
+	"mcp_status",
 	"sdk_mcp_tool_execution",
 	"sdk_mcp_permission_enforcement",
 	"sdk_mcp_multiple_tools",
@@ -74,6 +76,10 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_dynamic_model_smoke(args)
 		"dynamic_interrupt":
 			return await _run_dynamic_interrupt_smoke(args)
+		"context_usage":
+			return await _run_context_usage_smoke(args)
+		"mcp_status":
+			return await _run_mcp_status_smoke(args)
 		"sdk_mcp_tool_execution":
 			return await _run_sdk_mcp_tool_execution_smoke(args)
 		"sdk_mcp_permission_enforcement":
@@ -459,6 +465,60 @@ func _run_dynamic_interrupt_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_context_usage_smoke(args: Dictionary) -> Dictionary:
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 1,
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("context_usage", client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var turn_summary := await _run_connected_client_turn(
+		client,
+		"context_usage_turn",
+		"What is 2 + 2? Answer only with the number."
+	)
+	var usage = await client.get_context_usage()
+	var control_errors: Array[String] = []
+	_append_client_error(control_errors, client)
+	client.disconnect_client()
+
+	_merge_turn_summary(summary, turn_summary)
+	summary["control_errors"] = control_errors
+	summary["context_usage"] = _variant_to_dictionary(usage)
+	summary["context_usage_category_count"] = 0
+	summary["context_usage_model"] = ""
+	summary["context_usage_total_tokens"] = 0
+	summary["context_usage_max_tokens"] = 0
+	summary["context_usage_percentage"] = 0.0
+	summary["context_usage_error"] = control_errors[0] if not control_errors.is_empty() else ""
+
+	if usage is ClaudeContextUsageResponse:
+		var typed_usage := usage as ClaudeContextUsageResponse
+		summary["context_usage_category_count"] = typed_usage.categories.size()
+		summary["context_usage_model"] = typed_usage.model
+		summary["context_usage_total_tokens"] = typed_usage.total_tokens
+		summary["context_usage_max_tokens"] = typed_usage.max_tokens
+		summary["context_usage_percentage"] = typed_usage.percentage
+		summary["ok"] = bool(summary.get("init_present", false)) \
+			and _turn_summary_succeeded(turn_summary) \
+			and control_errors.is_empty() \
+			and not typed_usage.is_empty() \
+			and typed_usage.categories.size() > 0 \
+			and typed_usage.total_tokens >= 0 \
+			and typed_usage.max_tokens >= 0
+		return summary
+
+	summary["ok"] = false
+	return summary
+
+
 func _run_sdk_mcp_tool_execution_smoke(args: Dictionary) -> Dictionary:
 	var server_name := "sdktest"
 	var options = ClaudeAgentOptionsScript.new({
@@ -558,6 +618,50 @@ func _run_sdk_mcp_without_permissions_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_mcp_status_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "sdkstatus"
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"mcp_servers": {
+			server_name: _create_sdk_mcp_server(server_name, true, false),
+		},
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("mcp_status", client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var control_errors: Array[String] = []
+	var status = await _poll_mcp_status(client, server_name)
+	_append_client_error(control_errors, client)
+	client.disconnect_client()
+
+	var server_status := _find_mcp_server_status(status, server_name)
+	var tool_names: Array[String] = []
+	var observed_status := ""
+	if not server_status.is_empty():
+		tool_names = _dictionary_string_array(server_status.get("tools", []))
+		observed_status = str(server_status.get("status", ""))
+
+	summary["control_errors"] = control_errors
+	summary["mcp_status"] = _variant_to_dictionary(status)
+	summary["mcp_status_error"] = control_errors[0] if not control_errors.is_empty() else ""
+	summary["mcp_status_turn_summary"] = {}
+	summary["mcp_status_sdk_mcp_executions"] = []
+	summary["sdk_mcp_server_name"] = server_name
+	summary["mcp_status_observed_status"] = observed_status
+	summary["mcp_status_tool_names"] = tool_names
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and control_errors.is_empty() \
+		and not server_status.is_empty() \
+		and tool_names.has("echo")
+	return summary
+
+
 func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
@@ -633,6 +737,19 @@ func _wait_for_client_initialize(mode: String, client: ClaudeSDKClient, timeout_
 	return summary
 
 
+func _poll_mcp_status(client: ClaudeSDKClient, server_name: String, timeout_sec := 5.0):
+	var timeout_at_usec := Time.get_ticks_usec() + int(timeout_sec * 1000000.0)
+	var latest = null
+	while Time.get_ticks_usec() < timeout_at_usec:
+		latest = await client.get_mcp_status()
+		if not _find_mcp_server_status(latest, server_name).is_empty():
+			return latest
+		if not client.get_last_error().is_empty():
+			return latest
+		await create_timer(0.2).timeout
+	return latest
+
+
 func _run_connected_client_turn(client: ClaudeSDKClient, label: String, prompt: String) -> Dictionary:
 	client.query(prompt)
 	var query_error := client.get_last_error()
@@ -640,6 +757,27 @@ func _run_connected_client_turn(client: ClaudeSDKClient, label: String, prompt: 
 	summary["query_error"] = query_error
 	summary["ok"] = query_error.is_empty() and _turn_summary_succeeded(summary)
 	return summary
+
+
+func _merge_turn_summary(summary: Dictionary, turn_summary: Dictionary) -> void:
+	for key in [
+		"message_types",
+		"saw_stream_event",
+		"assistant_present",
+		"result_present",
+		"result_is_error",
+		"result_subtype",
+		"result_errors",
+		"result_num_turns",
+		"structured_output_present",
+		"structured_output",
+		"result_text",
+		"query_error",
+		"stream_error",
+	]:
+		summary[key] = turn_summary.get(key, summary.get(key))
+	summary["turn_summary"] = turn_summary
+	summary["turn_summaries"] = [turn_summary]
 
 
 func _turn_summary_succeeded(summary: Dictionary) -> bool:
@@ -771,6 +909,19 @@ func _empty_summary(mode: String) -> Dictionary:
 		"sdk_mcp_server_name": "",
 		"sdk_mcp_expected_executed": [],
 		"sdk_mcp_expected_not_executed": [],
+		"context_usage": {},
+		"context_usage_category_count": 0,
+		"context_usage_model": "",
+		"context_usage_total_tokens": 0,
+		"context_usage_max_tokens": 0,
+		"context_usage_percentage": 0.0,
+		"context_usage_error": "",
+		"mcp_status": {},
+		"mcp_status_error": "",
+		"mcp_status_observed_status": "",
+		"mcp_status_tool_names": [],
+		"mcp_status_turn_summary": {},
+		"mcp_status_sdk_mcp_executions": [],
 		"turn_summary": {},
 	}
 
@@ -882,6 +1033,40 @@ func _variant_to_string_array(value: Variant) -> Array[String]:
 		return result
 	for item in value:
 		result.append(str(item))
+	return result
+
+
+func _variant_to_dictionary(value: Variant) -> Dictionary:
+	if value is Dictionary:
+		return (value as Dictionary).duplicate(true)
+	if value is Object and value.has_method("to_dict"):
+		var serialized: Variant = value.call("to_dict")
+		if serialized is Dictionary:
+			return (serialized as Dictionary).duplicate(true)
+	return {}
+
+
+func _find_mcp_server_status(status_response: Variant, server_name: String) -> Dictionary:
+	var response_dict := _variant_to_dictionary(status_response)
+	var servers: Variant = response_dict.get("mcpServers", response_dict.get("mcp_servers", []))
+	if servers is not Array:
+		return {}
+	for server in servers:
+		if server is not Dictionary:
+			continue
+		var server_dict := server as Dictionary
+		if str(server_dict.get("name", "")) == server_name:
+			return server_dict.duplicate(true)
+	return {}
+
+
+func _dictionary_string_array(values: Variant) -> Array[String]:
+	var result: Array[String] = []
+	if values is not Array:
+		return result
+	for value in values:
+		if value is Dictionary:
+			result.append(str((value as Dictionary).get("name", "")))
 	return result
 
 
