@@ -500,6 +500,7 @@ theme_override_constants/margin_bottom = 14
 
 [node name="SessionBody" type="VBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin" unique_id=106367532]
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_constants/separation = 12
 
 [node name="SessionHeader" type="HBoxContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=188415572]
@@ -534,12 +535,18 @@ text = "Refresh"
 layout_mode = 2
 text = "New chat"
 
-[node name="SessionList" type="ItemList" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=708564280]
+[node name="SessionListScroll" type="ScrollContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=152380001]
 custom_minimum_size = Vector2(0, 240)
 layout_mode = 2
 size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="SessionList" type="ItemList" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionListScroll" unique_id=708564280]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 allow_reselect = true
-auto_height = true
+auto_height = false
 
 [node name="SelectedSessionCard" type="PanelContainer" parent="Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody" unique_id=171704247]
 layout_mode = 2

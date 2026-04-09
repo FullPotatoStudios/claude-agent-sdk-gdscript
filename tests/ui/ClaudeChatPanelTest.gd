@@ -3289,6 +3289,23 @@ func test_panel_default_split_favors_chat_column() -> void:
 	await _cleanup_panel(panel)
 
 
+func test_panel_session_list_is_bounded_inside_scroll_container() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	var session_list := _session_list(panel)
+	var session_list_scroll := _control(panel, "SessionListScroll") as ScrollContainer
+	assert_object(session_list).is_not_null()
+	assert_object(session_list_scroll).is_not_null()
+	assert_object(session_list.get_parent()).is_same(session_list_scroll)
+	assert_bool(session_list.auto_height).is_false()
+	assert_int(session_list_scroll.size_flags_vertical).is_equal(Control.SIZE_EXPAND_FILL)
+
+	await _cleanup_panel(panel)
+
+
 func _connected_panel(transport, options = null):
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(options if options != null else ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
