@@ -28,6 +28,7 @@ This is the local-only authenticated runtime smoke. It now covers the original `
 It also now exercises bounded authenticated parity coverage for:
 
 - local plugin discovery through `ClaudeAgentOptions.plugins`, requiring init plugin metadata or command exposure from the demo fixture without overstating slash-command execution
+- same-user `ClaudeAgentOptions.user` coverage on POSIX shell-backed transports by resolving the host's current username, requiring a real `sudo -n -u <current-user> /usr/bin/true` preflight, and then validating both auth-probe and baseline-query relaunch through that same account
 - `stderr` diagnostics via `debug-to-stderr`
 - `PreToolUse` hook callbacks on real Bash tool use
 - `can_use_tool` permission callbacks on an interactive Bash `touch` prompt, using a temp target outside the project cwd
@@ -37,6 +38,8 @@ It also now exercises bounded authenticated parity coverage for:
 - SDK-hosted MCP tool execution, permission enforcement, multi-tool sequencing, and no-permission non-execution coverage on a connected `ClaudeSDKClient`
 
 Deterministic runtime coverage also now includes `reconnect_mcp_server()` and `toggle_mcp_server()` request-shape parity on the client, adapter, and node surfaces. Live SDK-hosted toggle/reconnect coverage is intentionally not in the passing wrapper at the pinned upstream baseline because the sibling Python SDK reproduces the same Claude CLI limitation: SDK-server `toggle_mcp_server()` can report `tools: []` while the tool still executes, and re-enable currently raises `SDK servers should be handled in print.ts`.
+
+The `user` live modes are intentionally narrow. They validate the local POSIX same-user `sudo -n -u` wrapper path used by this runtime and confirm that `ClaudeAgentOptions.user` stays transport-only, but they do not claim arbitrary cross-user support. Windows remains unsupported for this option in the current shell-backed transport.
 
 ### Release prep
 

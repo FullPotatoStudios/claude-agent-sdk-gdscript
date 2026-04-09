@@ -7,6 +7,7 @@ const ClaudeMcpScript := preload("res://addons/claude_agent_sdk/runtime/mcp/clau
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_client.gd")
 const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.gd")
+const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
 
 const DEFAULT_OUTPUT_STYLE := "local-test-style"
 const FILESYSTEM_AGENT_NAME := "fs-test-agent"
@@ -25,6 +26,8 @@ const SUPPORTED_MODES := [
 	"stderr_debug",
 	"hook_pre_tool_use",
 	"tool_permission_bash_touch",
+	"user_current_user_auth",
+	"user_current_user_baseline",
 	"dynamic_permission_mode",
 	"dynamic_model",
 	"dynamic_interrupt",
@@ -72,6 +75,10 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_hook_pre_tool_use_smoke(args)
 		"tool_permission_bash_touch":
 			return await _run_tool_permission_bash_touch_smoke(args)
+		"user_current_user_auth":
+			return await _run_user_current_user_auth_smoke(args)
+		"user_current_user_baseline":
+			return await _run_user_current_user_baseline_smoke(args)
 		"dynamic_permission_mode":
 			return await _run_dynamic_permission_mode_smoke(args)
 		"dynamic_model":
@@ -361,6 +368,56 @@ func _run_tool_permission_bash_touch_smoke(args: Dictionary) -> Dictionary:
 		and bool(summary.get("permission_bash_seen", false)) \
 		and bool(summary.get("permission_tool_use_id_present", false)) \
 		and bool(summary.get("touched_file_exists", false))
+	return summary
+
+
+func _run_user_current_user_auth_smoke(args: Dictionary) -> Dictionary:
+	var prepared := _prepare_current_user_relaunch("user_current_user_auth")
+	var summary: Dictionary = prepared.get("summary", _empty_summary("user_current_user_auth"))
+	if not bool(prepared.get("ok", false)):
+		return summary
+
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"user": str(prepared.get("user_name", "")),
+	})
+	var transport = ClaudeSubprocessCLITransportScript.new(options)
+	var auth_status := transport.probe_auth_status()
+	summary["auth_status"] = _variant_to_dictionary(auth_status)
+	summary["auth_status_logged_in"] = bool(auth_status.get("logged_in", false))
+	summary["stream_error"] = str(auth_status.get("error_message", ""))
+	summary["ok"] = bool(auth_status.get("ok", false)) \
+		and bool(summary.get("user_relaunch_preflight_ok", false)) \
+		and bool(summary.get("auth_status_logged_in", false)) \
+		and str(summary.get("stream_error", "")).is_empty()
+	return summary
+
+
+func _run_user_current_user_baseline_smoke(args: Dictionary) -> Dictionary:
+	var prepared := _prepare_current_user_relaunch("user_current_user_baseline")
+	var summary: Dictionary = prepared.get("summary", _empty_summary("user_current_user_baseline"))
+	if not bool(prepared.get("ok", false)):
+		return summary
+
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"user": str(prepared.get("user_name", "")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 1,
+	})
+	var turn_summary := await _run_client_smoke(
+		"user_current_user_baseline",
+		options,
+		"What is 2 + 2? Answer only with the number."
+	)
+	for key in turn_summary.keys():
+		summary[key] = turn_summary[key]
+	summary["user_resolved_name"] = str(prepared.get("user_name", ""))
+	summary["user_resolution_source"] = str(prepared.get("user_resolution_source", ""))
+	summary["user_relaunch_preflight_ok"] = bool(prepared.get("user_relaunch_preflight_ok", false))
+	summary["user_relaunch_preflight_error"] = str(prepared.get("user_relaunch_preflight_error", ""))
+	summary["ok"] = bool(summary.get("user_relaunch_preflight_ok", false)) and _summary_succeeded(summary)
 	return summary
 
 
@@ -911,6 +968,131 @@ func _summary_has_agent(summary: Dictionary, agent_name: String) -> bool:
 	return agents.has(agent_name)
 
 
+func _prepare_current_user_relaunch(mode: String) -> Dictionary:
+	var summary := _empty_summary(mode)
+	if OS.get_name() == "Windows":
+		summary["stream_error"] = "ClaudeAgentOptions.user live validation is unsupported on Windows; this smoke only validates the local POSIX sudo -n -u relaunch path."
+		summary["user_resolution_source"] = "windows_unsupported"
+		return {
+			"ok": false,
+			"summary": summary,
+		}
+
+	var resolved_user := _resolve_current_user_name()
+	summary["user_resolved_name"] = str(resolved_user.get("user_name", ""))
+	summary["user_resolution_source"] = str(resolved_user.get("source", ""))
+	if not bool(resolved_user.get("ok", false)):
+		summary["stream_error"] = str(resolved_user.get("error", "Could not resolve current user name"))
+		return {
+			"ok": false,
+			"summary": summary,
+		}
+
+	var preflight := _preflight_same_user_relaunch(str(resolved_user.get("user_name", "")))
+	summary["user_relaunch_preflight_ok"] = bool(preflight.get("ok", false))
+	summary["user_relaunch_preflight_error"] = str(preflight.get("error", ""))
+	if not bool(preflight.get("ok", false)):
+		summary["stream_error"] = str(preflight.get("error", "Same-user sudo relaunch is unavailable"))
+		return {
+			"ok": false,
+			"summary": summary,
+		}
+
+	return {
+		"ok": true,
+		"summary": summary,
+		"user_name": str(resolved_user.get("user_name", "")),
+		"user_resolution_source": str(resolved_user.get("source", "")),
+		"user_relaunch_preflight_ok": true,
+		"user_relaunch_preflight_error": "",
+	}
+
+
+func _resolve_current_user_name() -> Dictionary:
+	if OS.get_name() == "Windows":
+		return {
+			"ok": false,
+			"user_name": "",
+			"source": "windows_unsupported",
+			"error": "Current-user resolution for ClaudeAgentOptions.user live validation is unsupported on Windows.",
+		}
+
+	var command_sources := [
+		{
+			"path": "id",
+			"args": PackedStringArray(["-un"]),
+			"source": "id_un",
+		},
+		{
+			"path": "whoami",
+			"args": PackedStringArray(),
+			"source": "whoami",
+		},
+	]
+	for command_source in command_sources:
+		var command_result := _run_command_capture(
+			str(command_source.get("path", "")),
+			command_source.get("args", PackedStringArray()) as PackedStringArray
+		)
+		var output := str(command_result.get("output", "")).strip_edges()
+		if int(command_result.get("exit_code", -1)) == 0 and not output.is_empty():
+			return {
+				"ok": true,
+				"user_name": output,
+				"source": str(command_source.get("source", "")),
+				"error": "",
+			}
+
+	for env_name in ["USER", "LOGNAME", "USERNAME"]:
+		if OS.has_environment(env_name):
+			var env_value := OS.get_environment(env_name).strip_edges()
+			if not env_value.is_empty():
+				return {
+					"ok": true,
+					"user_name": env_value,
+					"source": "env_%s" % env_name.to_lower(),
+					"error": "",
+				}
+	return {
+		"ok": false,
+		"user_name": "",
+		"source": "unresolved",
+		"error": "Could not resolve the current user name with id -un, whoami, or USER/LOGNAME/USERNAME.",
+	}
+
+
+func _preflight_same_user_relaunch(user_name: String) -> Dictionary:
+	if user_name.is_empty():
+		return {
+			"ok": false,
+			"error": "Cannot preflight same-user sudo relaunch without a resolved user name.",
+		}
+	var command_result := _run_command_capture(
+		"sudo",
+		PackedStringArray(["-n", "-u", user_name, "--", "/usr/bin/true"])
+	)
+	if int(command_result.get("exit_code", -1)) == 0:
+		return {
+			"ok": true,
+			"error": "",
+		}
+	var output := str(command_result.get("output", "")).strip_edges()
+	var detail := ": %s" % output if not output.is_empty() else ""
+	return {
+		"ok": false,
+		"error": "Local same-user sudo -n -u relaunch is unavailable for `%s`%s" % [user_name, detail],
+	}
+
+
+func _run_command_capture(path: String, args: PackedStringArray) -> Dictionary:
+	var output: Array[String] = []
+	var exit_code := OS.execute(path, args, output, true)
+	return {
+		"exit_code": exit_code,
+		"output": "\n".join(output).strip_edges(),
+	}
+
+
 func _empty_summary(mode: String) -> Dictionary:
 	return {
 		"mode": mode,
@@ -975,6 +1157,12 @@ func _empty_summary(mode: String) -> Dictionary:
 		"plugin_detected": false,
 		"plugin_detected_via_commands": false,
 		"plugin_detected_via_plugins": false,
+		"user_resolved_name": "",
+		"user_resolution_source": "",
+		"user_relaunch_preflight_ok": false,
+		"user_relaunch_preflight_error": "",
+		"auth_status": {},
+		"auth_status_logged_in": false,
 		"turn_summary": {},
 	}
 

@@ -113,6 +113,8 @@ Additional implemented modes:
 - `stderr_debug`
 - `hook_pre_tool_use`
 - `tool_permission_bash_touch`
+- `user_current_user_auth`
+- `user_current_user_baseline`
 - `dynamic_permission_mode`
 - `dynamic_model`
 - `dynamic_interrupt`
@@ -130,12 +132,16 @@ Validated in this environment during authenticated live runs:
 - `setting_sources_default`: a temporary project-local `.claude/settings.local.json` was loaded when `setting_sources` was left unset, and init reported `output_style = "local-test-style"`
 - `setting_sources_project_included`: the same local settings file was loaded when `setting_sources = ["user", "project", "local"]`, again surfacing `output_style = "local-test-style"` in init
 - `filesystem_agent_project`: a temporary `.claude/agents/fs-test-agent.md` file was discovered when `setting_sources = ["project"]`; init listed `fs-test-agent`, and the session continued through assistant plus result messages instead of stopping at init-only
+- `user_current_user_auth`: the auth probe succeeded with `ClaudeAgentOptions.user` set to the host's resolved current username after a real `sudo -n -u <current-user> /usr/bin/true` preflight confirmed that same-user relaunch is available on this POSIX machine
+- `user_current_user_baseline`: a bounded baseline query succeeded with `ClaudeAgentOptions.user` set to the same resolved current username, continuing through init, assistant, and result messages without local transport or query errors
 
 Implemented assertions for the new smoke modes:
 
 - `stderr_debug`: requires the runtime `stderr` callback to capture at least one real Claude CLI `[DEBUG]` line when `extra_args = {"debug-to-stderr": null}`
 - `hook_pre_tool_use`: requires a `PreToolUse` hook to match a real Bash invocation, see a non-empty `tool_use_id`, and allow the request through `hookSpecificOutput.permissionDecision = "allow"`
 - `tool_permission_bash_touch`: connects a real `ClaudeSDKClient`, sends an interactive string `query("Run the command: touch ...")`, then requires a real Bash permission callback, a non-empty `tool_use_id`, and the prompted temp file created via `touch` outside the project cwd
+- `user_current_user_auth`: resolves the current username with `id -un`, then `whoami`, then `USER` / `LOGNAME` / `USERNAME`; on POSIX it requires a real `sudo -n -u <current-user> /usr/bin/true` preflight before running the transport auth probe with `ClaudeAgentOptions.user = <current-user>` and requiring `logged_in = true`
+- `user_current_user_baseline`: reuses the same username resolution plus preflight, then runs a bounded baseline query with `ClaudeAgentOptions.user = <current-user>` and requires init, assistant, and result messages without local query or stream failures
 - `plugins`: runs a one-shot query with `cwd = res://` plus `plugins = [{"type": "local", "path": "<absolute demo fixture>"}]`, then requires either `init.plugins` to list `demo-plugin` or `init.commands` to expose `greet`; a metadata-only pass is documented as plugin discovery/configuration evidence rather than proof that the slash command executed end-to-end
 - `dynamic_permission_mode`: connects a real `ClaudeSDKClient`, waits for initialize completion, switches from the default permission mode to `acceptEdits`, completes a first turn, switches back to `default`, and completes a second turn without control or stream errors
 - `dynamic_model`: connects a real `ClaudeSDKClient`, completes one turn on the initial model, switches to `haiku`, completes another turn, then resets to the default model through local `set_model(null)` parity with upstream `set_model(None)` before attempting a third turn
@@ -151,6 +157,7 @@ Current local rerun status:
 
 - a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` now succeeds through the full current bounded wrapper, including `tool_permission_bash_touch`, `dynamic_model`, `dynamic_interrupt`, `context_usage`, `mcp_status`, and the SDK MCP live modes
 - direct authenticated reruns on `2026-04-09` now also pass for the new `plugins` mode, with this environment surfacing `demo-plugin` in init plugin metadata even when slash-command execution is not separately proven
+- direct authenticated reruns on `2026-04-10` also pass for `user_current_user_auth` and `user_current_user_baseline`, validating the local POSIX same-user `sudo -n -u` relaunch path for `ClaudeAgentOptions.user` in this machine's real logged-in Claude environment
 - the same authenticated environment also passes upstream Python `e2e-tests/test_tool_permissions.py`, confirming the local smoke now matches the pinned `v0.1.54` callback path instead of relying on the earlier in-project workaround
 - the `dynamic_model` reset leg now passes after the local runtime widened `set_model()` to nullable/default-null control requests, so the wire payload mirrors upstream `{"subtype": "set_model", "model": null}` semantics instead of sending an empty string
 - the new SDK MCP modes were re-validated directly on `2026-04-09` through authenticated `tools/spikes/phase5_runtime_smoke.gd` invocations:
@@ -168,6 +175,7 @@ Current local rerun status:
 Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
-- session-forking, rewind/task, and host-sensitive `user` coverage remain future follow-up work
+- the new `user` live modes only prove the local POSIX same-user relaunch path for the host's current account; they do not prove arbitrary cross-user support, and Windows remains unsupported for `ClaudeAgentOptions.user` in the shell-backed runtime
+- session-forking and rewind/task coverage remain future follow-up work
 - live SDK-hosted `toggle_mcp_server()` / `reconnect_mcp_server()` coverage is not in the passing wrapper because the pinned upstream Python SDK reproduces the same runtime limitation; any future live toggle/reconnect slice should target an external MCP server or another harness that can create a genuine disabled/disconnected state truthfully
 - `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run while new parity slices are being developed or debugged
