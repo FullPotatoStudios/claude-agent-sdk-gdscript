@@ -896,7 +896,7 @@ func test_subprocess_transport_rejects_explicit_permission_prompt_when_can_use_t
 	assert_str(transport.get_last_error()).contains("cannot be used with permission_prompt_tool_name")
 
 
-func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:
+func test_subprocess_transport_includes_sdk_servers_in_mcp_config_without_runtime_instance() -> void:
 	var sdk_server := ClaudeMcp.create_sdk_server(
 		"tools",
 		"1.0.0",
@@ -920,6 +920,10 @@ func test_subprocess_transport_omits_sdk_servers_from_mcp_config() -> void:
 
 	assert_dict(mcp_config).is_equal({
 		"mcpServers": {
+			"sdk_tools": {
+				"type": "sdk",
+				"name": "tools",
+			},
 			"filesystem": {
 				"command": "mcp-server",
 				"args": ["stdio"],

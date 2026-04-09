@@ -3,6 +3,7 @@ extends SceneTree
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
+const ClaudeMcpScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_mcp.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_client.gd")
@@ -25,11 +26,16 @@ const SUPPORTED_MODES := [
 	"dynamic_permission_mode",
 	"dynamic_model",
 	"dynamic_interrupt",
+	"sdk_mcp_tool_execution",
+	"sdk_mcp_permission_enforcement",
+	"sdk_mcp_multiple_tools",
+	"sdk_mcp_without_permissions",
 ]
 
 var _stderr_lines: Array[String] = []
 var _hook_invocations: Array[Dictionary] = []
 var _permission_invocations: Array[Dictionary] = []
+var _sdk_mcp_executions: Array[String] = []
 
 
 func _init() -> void:
@@ -68,6 +74,14 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_dynamic_model_smoke(args)
 		"dynamic_interrupt":
 			return await _run_dynamic_interrupt_smoke(args)
+		"sdk_mcp_tool_execution":
+			return await _run_sdk_mcp_tool_execution_smoke(args)
+		"sdk_mcp_permission_enforcement":
+			return await _run_sdk_mcp_permission_enforcement_smoke(args)
+		"sdk_mcp_multiple_tools":
+			return await _run_sdk_mcp_multiple_tools_smoke(args)
+		"sdk_mcp_without_permissions":
+			return await _run_sdk_mcp_without_permissions_smoke(args)
 		_:
 			var failed := _empty_summary(mode)
 			failed["stream_error"] = "Unknown smoke mode"
@@ -445,6 +459,105 @@ func _run_dynamic_interrupt_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_sdk_mcp_tool_execution_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "sdktest"
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 2,
+		"mcp_servers": {
+			server_name: _create_sdk_mcp_server(server_name, true, false),
+		},
+		"allowed_tools": ["mcp__%s__echo" % server_name],
+	})
+	var prompt := "Use the mcp__%s__echo tool exactly once with text 'parity'. Then answer only with done." % server_name
+	var summary := await _run_sdk_mcp_client_smoke("sdk_mcp_tool_execution", options, prompt)
+	var executions := _variant_to_string_array(summary.get("sdk_mcp_executions", []))
+	summary["sdk_mcp_server_name"] = server_name
+	summary["sdk_mcp_expected_executed"] = ["echo"]
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and _turn_summary_succeeded(summary.get("turn_summary", {})) \
+		and executions.has("echo")
+	return summary
+
+
+func _run_sdk_mcp_permission_enforcement_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "sdkperm"
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 3,
+		"mcp_servers": {
+			server_name: _create_sdk_mcp_server(server_name, true, true),
+		},
+		"allowed_tools": ["mcp__%s__greet" % server_name],
+		"disallowed_tools": ["mcp__%s__echo" % server_name],
+	})
+	var prompt := "First use the mcp__%s__greet tool to greet Alice. After that completes, try to use the mcp__%s__echo tool with text 'test'. Do these one at a time, not in parallel." % [server_name, server_name]
+	var summary := await _run_sdk_mcp_client_smoke("sdk_mcp_permission_enforcement", options, prompt)
+	var executions := _variant_to_string_array(summary.get("sdk_mcp_executions", []))
+	summary["sdk_mcp_server_name"] = server_name
+	summary["sdk_mcp_expected_executed"] = ["greet"]
+	summary["sdk_mcp_expected_not_executed"] = ["echo"]
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and _turn_summary_succeeded(summary.get("turn_summary", {})) \
+		and executions.has("greet") \
+		and not executions.has("echo")
+	return summary
+
+
+func _run_sdk_mcp_multiple_tools_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "sdkmulti"
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 3,
+		"mcp_servers": {
+			server_name: _create_sdk_mcp_server(server_name, true, true),
+		},
+		"allowed_tools": [
+			"mcp__%s__echo" % server_name,
+			"mcp__%s__greet" % server_name,
+		],
+	})
+	var prompt := "Use the mcp__%s__echo tool with text 'test' and the mcp__%s__greet tool with name 'Bob'. Do them one at a time, not in parallel. Then answer only with done." % [server_name, server_name]
+	var summary := await _run_sdk_mcp_client_smoke("sdk_mcp_multiple_tools", options, prompt)
+	var executions := _variant_to_string_array(summary.get("sdk_mcp_executions", []))
+	summary["sdk_mcp_server_name"] = server_name
+	summary["sdk_mcp_expected_executed"] = ["echo", "greet"]
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and _turn_summary_succeeded(summary.get("turn_summary", {})) \
+		and executions.has("echo") \
+		and executions.has("greet")
+	return summary
+
+
+func _run_sdk_mcp_without_permissions_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "sdknoperm"
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 2,
+		"mcp_servers": {
+			server_name: _create_sdk_mcp_server(server_name, true, false),
+		},
+	})
+	var prompt := "Call the mcp__%s__echo tool with text 'parity'." % server_name
+	var summary := await _run_sdk_mcp_client_smoke("sdk_mcp_without_permissions", options, prompt)
+	var executions := _variant_to_string_array(summary.get("sdk_mcp_executions", []))
+	summary["sdk_mcp_server_name"] = server_name
+	summary["sdk_mcp_expected_not_executed"] = ["echo"]
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and str((summary.get("turn_summary", {}) as Dictionary).get("query_error", "")).is_empty() \
+		and str((summary.get("turn_summary", {}) as Dictionary).get("stream_error", "")).is_empty() \
+		and not executions.has("echo")
+	return summary
+
+
 func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
@@ -461,6 +574,42 @@ func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String
 		return failed
 	var summary := await _collect_stream_summary(mode, client.receive_response())
 	client.disconnect_client()
+	return summary
+
+
+func _run_sdk_mcp_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
+	_sdk_mcp_executions.clear()
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize(mode, client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		summary["sdk_mcp_executions"] = _sdk_mcp_executions.duplicate()
+		return summary
+
+	var turn_summary := await _run_connected_client_turn(client, mode, prompt)
+	client.disconnect_client()
+
+	for key in [
+		"message_types",
+		"saw_stream_event",
+		"assistant_present",
+		"result_present",
+		"result_is_error",
+		"result_subtype",
+		"result_errors",
+		"result_num_turns",
+		"structured_output_present",
+		"structured_output",
+		"result_text",
+		"query_error",
+		"stream_error",
+	]:
+		summary[key] = turn_summary.get(key, summary.get(key))
+	summary["control_errors"] = []
+	summary["sdk_mcp_executions"] = _sdk_mcp_executions.duplicate()
+	summary["turn_summary"] = turn_summary
+	summary["turn_summaries"] = [turn_summary]
 	return summary
 
 
@@ -618,6 +767,11 @@ func _empty_summary(mode: String) -> Dictionary:
 		"interrupt_stream_summary": {},
 		"model_switch_value": "",
 		"model_reset_value": "",
+		"sdk_mcp_executions": [],
+		"sdk_mcp_server_name": "",
+		"sdk_mcp_expected_executed": [],
+		"sdk_mcp_expected_not_executed": [],
+		"turn_summary": {},
 	}
 
 
@@ -648,6 +802,53 @@ func _smoke_permission_callback(tool_name: String, input_data: Dictionary, conte
 		"input": input_data.duplicate(true),
 	})
 	return ClaudePermissionResultAllowScript.new()
+
+
+func _create_sdk_mcp_server(server_name: String, include_echo: bool, include_greet: bool):
+	var tools: Array = []
+	if include_echo:
+		tools.append(ClaudeMcpScript.tool(
+			"echo",
+			"Echo back the input text.",
+			ClaudeMcpScript.schema_object({
+				"text": ClaudeMcpScript.schema_scalar("string", "Text to echo"),
+			}, ["text"]),
+			Callable(self, "_sdk_mcp_echo_tool")
+		))
+	if include_greet:
+		tools.append(ClaudeMcpScript.tool(
+			"greet",
+			"Greet a person by name.",
+			ClaudeMcpScript.schema_object({
+				"name": ClaudeMcpScript.schema_scalar("string", "Name to greet"),
+			}, ["name"]),
+			Callable(self, "_sdk_mcp_greet_tool")
+		))
+	return ClaudeMcpScript.create_sdk_server(server_name, "1.0.0", tools)
+
+
+func _sdk_mcp_echo_tool(arguments: Dictionary) -> Dictionary:
+	_sdk_mcp_executions.append("echo")
+	return {
+		"content": [
+			{
+				"type": "text",
+				"text": "Echo: %s" % str(arguments.get("text", "")),
+			},
+		],
+	}
+
+
+func _sdk_mcp_greet_tool(arguments: Dictionary) -> Dictionary:
+	_sdk_mcp_executions.append("greet")
+	return {
+		"content": [
+			{
+				"type": "text",
+				"text": "Hello, %s!" % str(arguments.get("name", "")),
+			},
+		],
+	}
 
 
 func _collect_string_field(entries: Array[Dictionary], key: String) -> Array[String]:

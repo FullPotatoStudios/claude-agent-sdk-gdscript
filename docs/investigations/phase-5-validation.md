@@ -115,8 +115,12 @@ Additional implemented modes:
 - `dynamic_permission_mode`
 - `dynamic_model`
 - `dynamic_interrupt`
+- `sdk_mcp_tool_execution`
+- `sdk_mcp_permission_enforcement`
+- `sdk_mcp_multiple_tools`
+- `sdk_mcp_without_permissions`
 
-Historically validated in this environment before the current auth regression:
+Validated in this environment during authenticated live runs:
 
 - `agents`: `ClaudeAgentOptions.agents` appeared in the init `SystemMessage` and the query still completed with assistant plus result messages
 - `setting_sources_default`: a temporary project-local `.claude/settings.local.json` was loaded when `setting_sources` was left unset, and init reported `output_style = "local-test-style"`
@@ -131,13 +135,23 @@ Implemented assertions for the new smoke modes:
 - `dynamic_permission_mode`: connects a real `ClaudeSDKClient`, waits for initialize completion, switches from the default permission mode to `acceptEdits`, completes a first turn, switches back to `default`, and completes a second turn without control or stream errors
 - `dynamic_model`: connects a real `ClaudeSDKClient`, completes one turn on the initial model, switches to `haiku`, completes another turn, then resets the live model with the local `set_model("")` equivalent of upstream `set_model(None)` and completes a third turn
 - `dynamic_interrupt`: connects a real `ClaudeSDKClient`, starts a longer-running turn, sends `interrupt()`, and verifies the request does not surface a local client error while the response stream remains consumable without assuming a specific interrupted result shape
+- `sdk_mcp_tool_execution`: connects a real `ClaudeSDKClient`, exposes an in-process `echo` SDK MCP tool through `ClaudeMcp`, and requires that the local tool handler actually executes while the stream completes without local client or protocol errors
+- `sdk_mcp_permission_enforcement`: connects a real `ClaudeSDKClient`, exposes `greet` plus `echo` SDK MCP tools, allows only `greet`, explicitly disallows `echo`, and requires that the allowed handler executes while the disallowed handler never runs
+- `sdk_mcp_multiple_tools`: connects a real `ClaudeSDKClient`, exposes `echo` plus `greet` SDK MCP tools, allows both, and requires that both local handlers execute during the same bounded turn budget
+- `sdk_mcp_without_permissions`: connects a real `ClaudeSDKClient`, exposes an `echo` SDK MCP tool without `allowed_tools`, and requires that no local SDK MCP handler executes while the turn avoids local query or stream failures
 
 Current local rerun status:
 
-- a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` is currently blocked at the first `baseline` prompt because the live Claude API returns `401 Invalid authentication credentials`, even though `claude auth status --json` still reports the CLI as logged in
-- because the run stops at `baseline`, the widened `stderr_debug`, `hook_pre_tool_use`, `tool_permission_bash_touch`, `dynamic_permission_mode`, `dynamic_model`, and `dynamic_interrupt` modes were implemented but not re-validated end to end during this run
+- a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` now succeeds through `hook_pre_tool_use`, then stops at `tool_permission_bash_touch` because the real Bash `touch` completed without invoking the streamed `can_use_tool` callback in this environment
+- because the wrapper currently exits on that earlier failure, the later `dynamic_permission_mode`, `dynamic_model`, and `dynamic_interrupt` modes were not re-run end to end in the same wrapper pass
+- the new SDK MCP modes were re-validated directly on `2026-04-09` through authenticated `tools/spikes/phase5_runtime_smoke.gd` invocations:
+  - `sdk_mcp_tool_execution`
+  - `sdk_mcp_permission_enforcement`
+  - `sdk_mcp_multiple_tools`
+  - `sdk_mcp_without_permissions`
+- those direct SDK MCP reruns only passed after a transport parity fix made local `--mcp-config` emission match upstream by including SDK server metadata while stripping the runtime-only `instance`
 
 Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
-- SDK MCP, session-forking, rewind/task, context/MCP diagnostics, and `plugins` / `user` coverage remain future follow-up work
+- session-forking, rewind/task, context/MCP diagnostics, and `plugins` / `user` coverage remain future follow-up work

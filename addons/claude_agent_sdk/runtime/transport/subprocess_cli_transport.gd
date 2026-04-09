@@ -676,16 +676,22 @@ func _build_json_schema_argument() -> String:
 
 func _build_mcp_config_argument() -> String:
 	if _options.mcp_servers is Dictionary and not _options.mcp_servers.is_empty():
-		var external_servers: Dictionary = {}
+		var servers_for_cli: Dictionary = {}
 		for server_name_variant in (_options.mcp_servers as Dictionary).keys():
 			var server_config: Variant = (_options.mcp_servers as Dictionary)[server_name_variant]
 			if server_config is Dictionary and str((server_config as Dictionary).get("type", "")) == "sdk":
+				var sdk_config: Dictionary = {}
+				for key_variant in (server_config as Dictionary).keys():
+					if str(key_variant) == "instance":
+						continue
+					sdk_config[str(key_variant)] = (server_config as Dictionary)[key_variant]
+				servers_for_cli[str(server_name_variant)] = sdk_config
 				continue
-			external_servers[str(server_name_variant)] = server_config
-		if external_servers.is_empty():
+			servers_for_cli[str(server_name_variant)] = server_config
+		if servers_for_cli.is_empty():
 			return ""
 		return JSON.stringify({
-			"mcpServers": external_servers,
+			"mcpServers": servers_for_cli,
 		})
 	if _options.mcp_servers is String and not str(_options.mcp_servers).is_empty():
 		return str(_options.mcp_servers)
