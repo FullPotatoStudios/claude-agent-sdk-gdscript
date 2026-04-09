@@ -5,7 +5,6 @@ const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runt
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudeMcpScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_mcp.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
-const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_client.gd")
 const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.gd")
 
@@ -300,30 +299,33 @@ func _run_hook_pre_tool_use_smoke(args: Dictionary) -> Dictionary:
 func _run_tool_permission_bash_touch_smoke(args: Dictionary) -> Dictionary:
 	_permission_invocations.clear()
 	var project_dir := _create_temp_project_dir("tool-permission-bash-touch")
-	var touch_target := project_dir.path_join("permission-smoke-%d.txt" % Time.get_ticks_usec())
+	var temp_root := OS.get_environment("TMPDIR").strip_edges()
+	if temp_root.is_empty():
+		temp_root = "/tmp"
+	var touch_target := temp_root.path_join("permission-smoke-%d.txt" % Time.get_ticks_usec())
 	var options = ClaudeAgentOptionsScript.new({
 		"cli_path": str(args.get("claude_path", "claude")),
 		"model": "haiku",
 		"effort": "low",
 		"cwd": project_dir,
 		"max_turns": 2,
-		"allowed_tools": ["Bash"],
 		"can_use_tool": Callable(self, "_smoke_permission_callback"),
 	})
-	var prompt_stream = ClaudePromptStreamScript.new()
-	prompt_stream.push_message({
-		"type": "user",
-		"message": {
-			"role": "user",
-			"content": "Use Bash to run: touch %s. Then answer only with done." % _shell_single_quote(touch_target),
-		},
-		"parent_tool_use_id": null,
-	})
-	prompt_stream.finish()
-	var summary := await _collect_stream_summary(
-		"tool_permission_bash_touch",
-		ClaudeQueryScript.query(prompt_stream, options)
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("tool_permission_bash_touch", client)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var turn_summary := await _run_connected_client_turn(
+		client,
+		"tool_permission_bash_touch_turn",
+		"Run the command: touch %s" % _shell_single_quote(touch_target)
 	)
+	client.disconnect_client()
+
+	_merge_turn_summary(summary, turn_summary)
 	summary["permission_invocation_count"] = _permission_invocations.size()
 	summary["permission_tools"] = _collect_string_field(_permission_invocations, "tool_name")
 	summary["permission_tool_use_ids"] = _collect_string_field(_permission_invocations, "tool_use_id")

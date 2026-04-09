@@ -52,12 +52,6 @@ func query(prompt, session_id: String = "default", backfill_session_id := true) 
 	if not (prompt is String or prompt is ClaudePromptStreamScript):
 		_emit_error("prompt must be either a String or ClaudePromptStream")
 		return
-	if options != null and options.can_use_tool.is_valid() and prompt is String:
-		_emit_error(
-			"can_use_tool callback requires streamed prompt input. " +
-			"Please provide prompt as a ClaudePromptStream instead of a String."
-		)
-		return
 	if prompt is ClaudePromptStreamScript:
 		_session.send_prompt_stream(prompt, session_id, backfill_session_id)
 	else:

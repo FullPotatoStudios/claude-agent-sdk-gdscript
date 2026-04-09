@@ -875,17 +875,32 @@ func test_client_query_with_prompt_stream_backfills_missing_session_id() -> void
 	assert_that(await response_stream.next_message()).is_null()
 
 
-func test_client_query_rejects_string_prompt_when_can_use_tool_is_configured() -> void:
+func test_client_query_accepts_string_prompt_when_can_use_tool_is_configured() -> void:
 	var permission_callback := func(_tool_name: String, _input_data: Dictionary, _context):
 		return ClaudePermissionResultAllowScript.new()
+	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new({
 		"can_use_tool": permission_callback,
-	}), FakeTransportScript.new())
+	}), transport)
 
 	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
 	client.query("Hi")
 
-	assert_str(client.get_last_error()).contains("requires streamed prompt input")
+	assert_str(client.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(2)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("type", ""))).is_equal("user")
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_str(str(((prompt_payload.get("message", {}) as Dictionary).get("content", "")))).is_equal("Hi")
 
 
 func test_one_shot_query_fails_when_initialize_fails() -> void:

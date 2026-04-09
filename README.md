@@ -195,7 +195,7 @@ Use these as the canonical sources of truth for compatibility and parity status:
 - SDK-hosted MCP tool handlers should return `{ "content": [...], "is_error": true }` for tool-level failures; uncaught GDScript runtime faults still surface as normal Godot errors.
 - advanced CLI transport options stay transport-only in this slice; they do not appear in initialize payloads.
 - `permission_prompt_tool_name` cannot be combined with `can_use_tool`; the existing `can_use_tool` path still auto-configures the CLI permission prompt tool as `stdio`.
-- `can_use_tool` now follows upstream query-surface behavior: string prompts are rejected and you must provide a `ClaudePromptStream`.
+- when `can_use_tool` is configured, interactive `ClaudeSDKClient.query(String)` remains allowed, but `connect_client(prompt=String)` and one-shot `ClaudeQuery.query(String)` still require `ClaudePromptStream`.
 - `thinking` now takes precedence over the deprecated `max_thinking_tokens` field when both are configured.
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path.
 - `sandbox` is transport-only in the current slice and is implemented by building a `--settings` value; it does not add new initialize payload fields.
