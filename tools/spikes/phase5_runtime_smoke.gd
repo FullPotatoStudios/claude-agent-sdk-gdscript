@@ -10,6 +10,8 @@ const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
 
 const DEFAULT_OUTPUT_STYLE := "local-test-style"
+const EXTERNAL_MCP_FIXTURE_SCRIPT := "res://tools/examples/fixtures/mcp/external_echo_server.js"
+const EXTERNAL_MCP_TOOL_NAME := "echo"
 const FILESYSTEM_AGENT_NAME := "fs-test-agent"
 const PLUGIN_COMMAND_NAME := "greet"
 const PLUGIN_FIXTURE_NAME := "demo-plugin"
@@ -33,6 +35,7 @@ const SUPPORTED_MODES := [
 	"dynamic_interrupt",
 	"context_usage",
 	"mcp_status",
+	"external_mcp_reconnect",
 	"sdk_mcp_tool_execution",
 	"sdk_mcp_permission_enforcement",
 	"sdk_mcp_multiple_tools",
@@ -89,6 +92,8 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_context_usage_smoke(args)
 		"mcp_status":
 			return await _run_mcp_status_smoke(args)
+		"external_mcp_reconnect":
+			return await _run_external_mcp_reconnect_smoke(args)
 		"sdk_mcp_tool_execution":
 			return await _run_sdk_mcp_tool_execution_smoke(args)
 		"sdk_mcp_permission_enforcement":
@@ -755,6 +760,71 @@ func _run_mcp_status_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_external_mcp_reconnect_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "externalreconnect"
+	var prepared := _prepare_external_mcp_fixture("external_mcp_reconnect", server_name, true)
+	var summary: Dictionary = prepared.get("summary", _empty_summary("external_mcp_reconnect"))
+	if not bool(prepared.get("ok", false)):
+		return summary
+
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"cwd": str(prepared.get("project_dir", "")),
+		"max_turns": 2,
+		"mcp_servers": {
+			server_name: prepared.get("server_config", {}),
+		},
+		"allowed_tools": ["mcp__%s__%s" % [server_name, EXTERNAL_MCP_TOOL_NAME]],
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	summary = await _wait_for_client_initialize("external_mcp_reconnect", client)
+	_merge_external_mcp_prepared_summary(summary, prepared)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var control_errors: Array[String] = []
+	var pre_reconnect_status := await _poll_mcp_tool_availability(client, server_name, false, true)
+	_append_client_error(control_errors, client)
+	var sentinel_path := str(prepared.get("fail_sentinel_path", ""))
+	if not sentinel_path.is_empty() and FileAccess.file_exists(sentinel_path):
+		DirAccess.remove_absolute(sentinel_path)
+	await process_frame
+
+	client.reconnect_mcp_server(server_name)
+	await process_frame
+	_append_client_error(control_errors, client)
+	var post_reconnect_status := await _poll_mcp_tool_availability(client, server_name, true)
+	_append_client_error(control_errors, client)
+	var reconnect_log_count_before := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+	var reconnect_turn := await _run_connected_client_turn(
+		client,
+		"external_mcp_reconnect_turn",
+		"If the mcp__%s__%s tool is available, use it exactly once with text 'reconnect-success'. Otherwise answer only with unavailable." % [server_name, EXTERNAL_MCP_TOOL_NAME]
+	)
+	var reconnect_log_count_after := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+	client.disconnect_client()
+
+	summary["control_errors"] = control_errors
+	summary["turn_summaries"] = [reconnect_turn]
+	summary["external_mcp_pre_reconnect_status"] = pre_reconnect_status
+	summary["external_mcp_post_reconnect_status"] = post_reconnect_status
+	summary["external_mcp_reconnect_log_count_before"] = reconnect_log_count_before
+	summary["external_mcp_reconnect_log_count_after"] = reconnect_log_count_after
+	summary["external_mcp_fail_sentinel_removed"] = not FileAccess.file_exists(sentinel_path)
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and control_errors.is_empty() \
+		and not bool(pre_reconnect_status.get("tool_available", true)) \
+		and bool(post_reconnect_status.get("tool_available", false)) \
+		and bool(summary.get("external_mcp_fail_sentinel_removed", false)) \
+		and _turn_summary_succeeded(reconnect_turn) \
+		and reconnect_log_count_after > reconnect_log_count_before
+	return summary
+
+
 func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
@@ -1093,6 +1163,159 @@ func _run_command_capture(path: String, args: PackedStringArray) -> Dictionary:
 	}
 
 
+func _resolve_node_command() -> Dictionary:
+	for candidate in ["node"]:
+		var result := _run_command_capture(candidate, PackedStringArray(["--version"]))
+		if int(result.get("exit_code", -1)) == 0:
+			return {
+				"ok": true,
+				"command": candidate,
+				"error": "",
+			}
+	return {
+		"ok": false,
+		"command": "",
+		"error": "Could not resolve a Node.js runtime with `node --version`.",
+	}
+
+
+func _prepare_external_mcp_fixture(mode: String, server_name: String, fail_at_startup: bool) -> Dictionary:
+	var summary := _empty_summary(mode)
+	var fixture_path := ProjectSettings.globalize_path(EXTERNAL_MCP_FIXTURE_SCRIPT)
+	summary["external_mcp_fixture_path"] = fixture_path
+	summary["sdk_mcp_server_name"] = server_name
+	if not FileAccess.file_exists(fixture_path):
+		summary["stream_error"] = "External MCP fixture script not found at %s" % fixture_path
+		return {
+			"ok": false,
+			"summary": summary,
+		}
+
+	var node_command := _resolve_node_command()
+	summary["external_mcp_command"] = str(node_command.get("command", ""))
+	if not bool(node_command.get("ok", false)):
+		summary["stream_error"] = str(node_command.get("error", ""))
+		return {
+			"ok": false,
+			"summary": summary,
+		}
+
+	var project_dir := _create_temp_project_dir(mode)
+	var log_path := project_dir.path_join("%s-invocations.jsonl" % server_name)
+	var trace_path := project_dir.path_join("%s-trace.jsonl" % server_name)
+	var fail_sentinel_path := project_dir.path_join("%s.fail" % server_name)
+	if fail_at_startup:
+		if not _write_text_file(fail_sentinel_path, "fail"):
+			summary["stream_error"] = "Could not create external MCP fail sentinel"
+			return {
+				"ok": false,
+				"summary": summary,
+			}
+	elif FileAccess.file_exists(fail_sentinel_path):
+		DirAccess.remove_absolute(fail_sentinel_path)
+
+	summary["external_mcp_log_path"] = log_path
+	summary["external_mcp_trace_path"] = trace_path
+	summary["external_mcp_fail_sentinel_path"] = fail_sentinel_path
+	summary["external_mcp_fail_sentinel_present"] = FileAccess.file_exists(fail_sentinel_path)
+	return {
+		"ok": true,
+		"summary": summary,
+		"project_dir": project_dir,
+		"log_path": log_path,
+		"fail_sentinel_path": fail_sentinel_path,
+		"server_config": {
+			"type": "stdio",
+			"command": str(node_command.get("command", "")),
+			"args": [
+				fixture_path,
+				"--log-file",
+				log_path,
+				"--trace-file",
+				trace_path,
+				"--server-name",
+				server_name,
+				"--fail-sentinel",
+				fail_sentinel_path,
+			],
+			"env": {
+				"NODE_NO_WARNINGS": "1",
+			},
+		},
+	}
+
+
+func _merge_external_mcp_prepared_summary(summary: Dictionary, prepared: Dictionary) -> void:
+	var prepared_summary: Dictionary = prepared.get("summary", {})
+	for key in [
+		"external_mcp_fixture_path",
+		"external_mcp_log_path",
+		"external_mcp_trace_path",
+		"external_mcp_fail_sentinel_path",
+		"external_mcp_fail_sentinel_present",
+		"external_mcp_command",
+	]:
+		summary[key] = prepared_summary.get(key, summary.get(key))
+
+
+func _poll_mcp_tool_availability(client: ClaudeSDKClient, server_name: String, expect_available: bool, require_server_seen := false, timeout_sec := 8.0) -> Dictionary:
+	var timeout_at_usec := Time.get_ticks_usec() + int(timeout_sec * 1000000.0)
+	var latest: Variant = null
+	var latest_status := {}
+	while Time.get_ticks_usec() < timeout_at_usec:
+		latest = await client.get_mcp_status()
+		latest_status = _find_mcp_server_status(latest, server_name)
+		var tool_names := _dictionary_string_array(latest_status.get("tools", []))
+		var tool_available := tool_names.has(EXTERNAL_MCP_TOOL_NAME)
+		var server_seen := not latest_status.is_empty()
+		if expect_available and server_seen and tool_available:
+			return {
+				"status_response": _variant_to_dictionary(latest),
+				"server_status": latest_status,
+				"server_seen": true,
+				"tool_available": true,
+				"tool_names": tool_names,
+			}
+		if not expect_available and server_seen == require_server_seen and not tool_available:
+			return {
+				"status_response": _variant_to_dictionary(latest),
+				"server_status": latest_status,
+				"server_seen": server_seen,
+				"tool_available": tool_available,
+				"tool_names": tool_names,
+			}
+		if not client.get_last_error().is_empty():
+			break
+		await create_timer(0.2).timeout
+
+	var fallback_tool_names := _dictionary_string_array(latest_status.get("tools", []))
+	return {
+		"status_response": _variant_to_dictionary(latest),
+		"server_status": latest_status,
+		"server_seen": not latest_status.is_empty(),
+		"tool_available": fallback_tool_names.has(EXTERNAL_MCP_TOOL_NAME),
+		"tool_names": fallback_tool_names,
+	}
+
+
+func _read_external_mcp_invocations(path: String) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return entries
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return entries
+	while not file.eof_reached():
+		var line := file.get_line().strip_edges()
+		if line.is_empty():
+			continue
+		var parsed: Variant = JSON.parse_string(line)
+		if parsed is Dictionary:
+			entries.append((parsed as Dictionary).duplicate(true))
+	file.close()
+	return entries
+
+
 func _empty_summary(mode: String) -> Dictionary:
 	return {
 		"mode": mode,
@@ -1153,6 +1376,17 @@ func _empty_summary(mode: String) -> Dictionary:
 		"mcp_status_error": "",
 		"mcp_status_observed_status": "",
 		"mcp_status_tool_names": [],
+		"external_mcp_fixture_path": "",
+		"external_mcp_log_path": "",
+		"external_mcp_trace_path": "",
+		"external_mcp_fail_sentinel_path": "",
+		"external_mcp_fail_sentinel_present": false,
+		"external_mcp_command": "",
+		"external_mcp_pre_reconnect_status": {},
+		"external_mcp_post_reconnect_status": {},
+		"external_mcp_reconnect_log_count_before": 0,
+		"external_mcp_reconnect_log_count_after": 0,
+		"external_mcp_fail_sentinel_removed": false,
 		"plugin_fixture_path": "",
 		"plugin_detected": false,
 		"plugin_detected_via_commands": false,
