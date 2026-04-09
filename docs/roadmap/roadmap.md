@@ -259,6 +259,11 @@ Delivered in Phase 10P:
 - shared transport/auth-probe launch coverage proving `user` stays transport-only rather than entering initialize payloads
 - documented Windows caveat for the shell-backed runtime, where `ClaudeAgentOptions.user` remains unsupported
 
+Delivered in Phase 10Q:
+- upstream-style CLI discovery fallback parity for the default `cli_path`
+- launch-time/auth-probe search through `PATH` plus the same common local install locations used by the Python SDK
+- coverage that keeps public process-spec inspection stable while launch paths resolve lazily
+
 Delivered in Phase 10AA:
 - upstream-style initialize-timeout handling in `ClaudeQuerySession`, sourced from `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` with the same 60-second floor used by upstream
 - failed initialize/resume flows now clear `Connecting`, close the stalled transport cleanly, and surface concrete diagnostics instead of hanging indefinitely

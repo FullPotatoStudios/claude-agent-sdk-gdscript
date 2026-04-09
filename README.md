@@ -29,7 +29,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 ## Requirements
 
 - Godot `4.6`
-- A user-installed `claude` CLI, either available on `PATH` or configured through `cli_path`
+- A user-installed `claude` CLI, either available on `PATH`, discoverable in the common local install locations mirrored from upstream, or configured through `cli_path`
 - Existing Claude auth handled by the local CLI
 
 ## Compatibility

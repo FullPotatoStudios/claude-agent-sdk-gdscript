@@ -38,12 +38,124 @@ class CloseBehaviorTransport extends ClaudeSubprocessCLITransport:
 		kill_calls += 1
 
 
+class CliDiscoveryTransport extends ClaudeSubprocessCLITransport:
+	var mocked_path_env := ""
+	var mocked_home := ""
+	var existing_paths: Dictionary = {}
+	var last_execute_path := ""
+	var last_execute_args := PackedStringArray()
+
+	func _init(config: Dictionary = {}, path_env: String = "", home: String = "", paths: Array[String] = []) -> void:
+		mocked_path_env = path_env
+		mocked_home = home
+		for path in paths:
+			existing_paths[path] = true
+		super(ClaudeAgentOptions.new(config))
+
+	func _get_cli_search_path_env() -> String:
+		return mocked_path_env
+
+	func _get_home_directory() -> String:
+		return mocked_home
+
+	func _path_is_file(path: String) -> bool:
+		return existing_paths.has(path)
+
+	func _execute_with_pipe(path: String, args: PackedStringArray) -> Dictionary:
+		last_execute_path = path
+		last_execute_args = args.duplicate()
+		return {}
+
+
 func _make_transport(config: Dictionary = {}) -> ClaudeSubprocessCLITransport:
 	return ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new(config))
 
 
 func _messages_from_result(result: Dictionary) -> Array[String]:
 	return result.get("messages", []) if result.get("messages", []) is Array else []
+
+
+func test_resolve_cli_path_prefers_effective_path_before_upstream_fallback_locations() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var transport := CliDiscoveryTransport.new(
+		{},
+		"/custom/bin:/unused/bin",
+		"/Users/tester",
+		[
+			"/custom/bin/claude",
+			"/Users/tester/.npm-global/bin/claude",
+		]
+	)
+
+	var resolved_path := transport._resolve_cli_path_for_launch()
+
+	assert_str(resolved_path).is_equal("/custom/bin/claude")
+
+
+func test_resolve_cli_path_uses_upstream_fallback_locations_when_path_lookup_misses() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var transport := CliDiscoveryTransport.new(
+		{},
+		"",
+		"/Users/tester",
+		[
+			"/usr/local/bin/claude",
+			"/Users/tester/.local/bin/claude",
+		]
+	)
+
+	var resolved_path := transport._resolve_cli_path_for_launch()
+
+	assert_str(resolved_path).is_equal("/usr/local/bin/claude")
+
+
+func test_resolve_cli_path_preserves_explicit_custom_override() -> void:
+	var explicit_path := "/tmp/custom/claude"
+	var transport := CliDiscoveryTransport.new(
+		{"cli_path": explicit_path},
+		"/custom/bin",
+		"/Users/tester",
+		[
+			"/custom/bin/claude",
+		]
+	)
+
+	var resolved_path := transport._resolve_cli_path_for_launch()
+
+	assert_str(resolved_path).is_equal(explicit_path)
+
+
+func test_probe_auth_status_uses_resolved_cli_path_without_changing_public_logical_spec() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var discovered_path := "/Users/tester/.npm-global/bin/claude"
+	var transport := CliDiscoveryTransport.new(
+		{},
+		"",
+		"/Users/tester",
+		[
+			discovered_path,
+		]
+	)
+
+	var preview_spec := transport.build_process_spec()
+	var probe_result := transport.probe_auth_status()
+
+	assert_str(str(preview_spec.get("logical_path", ""))).is_equal("claude")
+	assert_str(transport.last_execute_path).is_equal("/bin/sh")
+	assert_bool(str((transport.last_execute_args[1] if transport.last_execute_args.size() > 1 else "")).contains(discovered_path)).is_true()
+	assert_str(str(probe_result.get("error_code", ""))).is_equal("command_failed")
+
+
+func test_probe_auth_status_reports_binary_not_found_when_cli_lookup_fails() -> void:
+	var transport := CliDiscoveryTransport.new()
+
+	var result := transport.probe_auth_status()
+
+	assert_str(str(result.get("error_code", ""))).is_equal("binary_not_found")
+	assert_str(str(result.get("error_message", ""))).contains("Claude Code not found")
 
 
 func test_consume_stdout_chunk_parses_multiple_json_objects_in_one_chunk() -> void:

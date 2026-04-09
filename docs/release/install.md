@@ -31,7 +31,7 @@ The expected installed result is identical to the GitHub ZIP path:
 
 ## Known limitations
 
-- requires a user-installed `claude` CLI available on `PATH`, or a configured `cli_path`
+- requires a user-installed `claude` CLI available on `PATH`, discoverable in the common local install locations mirrored from upstream, or a configured `cli_path`
 - reuses the caller's existing Claude auth and settings state
 - mobile, web, and App Store-sandboxed macOS workflows remain out of scope
 

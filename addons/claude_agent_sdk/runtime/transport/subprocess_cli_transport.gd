@@ -6,6 +6,7 @@ const POLL_INTERVAL_MSEC := 20
 const PROCESS_EXIT_GRACE_MSEC := 5000
 const SDK_ENTRYPOINT := "sdk-gd"
 const DEFAULT_MAX_BUFFER_SIZE := 1024 * 1024
+const DEFAULT_CLI_NAME := "claude"
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeSDKVersionScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_version.gd")
 
@@ -167,6 +168,97 @@ func build_process_spec() -> Dictionary:
 	return _build_process_spec_for_args(logical_args)
 
 
+func _resolve_cli_path_for_launch() -> String:
+	var configured_path: String = _options.cli_path.strip_edges()
+	if not _should_search_default_cli_path(configured_path):
+		return configured_path
+
+	var discovered_path: String = _find_cli_on_path()
+	if discovered_path.is_empty():
+		discovered_path = _find_cli_in_fallback_locations()
+	if not discovered_path.is_empty():
+		return discovered_path
+
+	_set_last_error(_build_cli_not_found_message())
+	return ""
+
+
+func _should_search_default_cli_path(path: String) -> bool:
+	return path.is_empty() or path == DEFAULT_CLI_NAME
+
+
+func _find_cli_on_path() -> String:
+	var path_env := _get_cli_search_path_env().strip_edges()
+	if path_env.is_empty():
+		return ""
+	var separator := ";" if OS.get_name() == "Windows" else ":"
+	for directory_variant in path_env.split(separator, false):
+		var directory := str(directory_variant).strip_edges()
+		if directory.is_empty():
+			continue
+		for candidate_name in _candidate_cli_names():
+			var candidate_path := directory.path_join(candidate_name)
+			if _path_is_file(candidate_path):
+				return candidate_path
+	return ""
+
+
+func _find_cli_in_fallback_locations() -> String:
+	for candidate_path in _fallback_cli_locations():
+		if _path_is_file(candidate_path):
+			return candidate_path
+	return ""
+
+
+func _candidate_cli_names() -> PackedStringArray:
+	if OS.get_name() == "Windows":
+		return PackedStringArray(["claude.exe", "claude.cmd", "claude.bat", DEFAULT_CLI_NAME])
+	return PackedStringArray([DEFAULT_CLI_NAME])
+
+
+func _fallback_cli_locations() -> PackedStringArray:
+	var locations := PackedStringArray()
+	if OS.get_name() == "Windows":
+		return locations
+	var home := _get_home_directory()
+	if not home.is_empty():
+		locations.append(home.path_join(".npm-global/bin/%s" % DEFAULT_CLI_NAME))
+	locations.append("/usr/local/bin/%s" % DEFAULT_CLI_NAME)
+	if not home.is_empty():
+		locations.append(home.path_join(".local/bin/%s" % DEFAULT_CLI_NAME))
+		locations.append(home.path_join("node_modules/.bin/%s" % DEFAULT_CLI_NAME))
+		locations.append(home.path_join(".yarn/bin/%s" % DEFAULT_CLI_NAME))
+		locations.append(home.path_join(".claude/local/%s" % DEFAULT_CLI_NAME))
+	return locations
+
+
+func _get_cli_search_path_env() -> String:
+	if _options.env.has("PATH"):
+		return str(_options.env["PATH"])
+	if OS.has_environment("PATH"):
+		return OS.get_environment("PATH")
+	return ""
+
+
+func _get_home_directory() -> String:
+	if OS.has_environment("HOME"):
+		return OS.get_environment("HOME")
+	return ""
+
+
+func _path_is_file(path: String) -> bool:
+	return FileAccess.file_exists(path)
+
+
+func _build_cli_not_found_message() -> String:
+	return "Claude Code not found. Install with:\n" + \
+		"  npm install -g @anthropic-ai/claude-code\n" + \
+		"\nIf already installed locally, try:\n" + \
+		"  export PATH=\"$HOME/node_modules/.bin:$PATH\"\n" + \
+		"\nOr provide the path via ClaudeAgentOptions:\n" + \
+		"  ClaudeAgentOptions.new({\"cli_path\": \"/path/to/claude\"})"
+
+
 func build_environment_overrides() -> Dictionary:
 	var overrides := {
 		"CLAUDE_CODE_ENTRYPOINT": SDK_ENTRYPOINT,
@@ -188,9 +280,12 @@ func filters_inherited_claudecode() -> bool:
 func probe_auth_status() -> Dictionary:
 	if not _validate_supported_options():
 		return _build_auth_status_error_result("command_failed", _last_error, -1, "", "")
+	var resolved_cli_path := _resolve_cli_path_for_launch()
+	if resolved_cli_path.is_empty():
+		return _build_auth_status_error_result("binary_not_found", _last_error, -1, "", "")
 
-	var spec := _build_process_spec_for_args(PackedStringArray(["auth", "status"]))
-	var process := OS.execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()), false)
+	var spec := _build_process_spec_for_args(PackedStringArray(["auth", "status"]), resolved_cli_path)
+	var process := _execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()))
 	if process.is_empty():
 		return _build_auth_status_error_result("command_failed", "Failed to launch Claude auth status command", -1, "", "")
 
@@ -272,15 +367,16 @@ func probe_auth_status() -> Dictionary:
 	)
 
 
-func _build_process_spec_for_args(logical_args: PackedStringArray) -> Dictionary:
+func _build_process_spec_for_args(logical_args: PackedStringArray, cli_path_override: String = "") -> Dictionary:
+	var cli_path: String = cli_path_override if not cli_path_override.is_empty() else _options.cli_path
 	if OS.get_name() == "Windows":
 		return {
 			"path": "cmd.exe",
-			"args": PackedStringArray(["/C", _build_windows_shell_script(logical_args)]),
+			"args": PackedStringArray(["/C", _build_windows_shell_script(logical_args, cli_path)]),
 			"logical_path": _options.cli_path,
 			"logical_args": logical_args,
 		}
-	var shell_script := _build_posix_shell_script(logical_args)
+	var shell_script := _build_posix_shell_script(logical_args, cli_path)
 	var requested_user := _requested_user()
 	if not requested_user.is_empty():
 		return {
@@ -306,6 +402,9 @@ func open_transport() -> bool:
 		return false
 	if not _validate_supported_options():
 		return false
+	var resolved_cli_path := _resolve_cli_path_for_launch()
+	if resolved_cli_path.is_empty():
+		return false
 
 	_stop_requested = false
 	_close_emitted = false
@@ -316,8 +415,8 @@ func open_transport() -> bool:
 	_pending_errors.clear()
 	_stdout_json_buffer = ""
 
-	var spec := build_process_spec()
-	_process = OS.execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()), false)
+	var spec := _build_process_spec_for_args(build_command_args(), resolved_cli_path)
+	_process = _execute_with_pipe(str(spec.get("path", "")), spec.get("args", PackedStringArray()))
 	if _process.is_empty():
 		_report_transport_error("Failed to launch Claude CLI process", true, false)
 		return false
@@ -372,7 +471,7 @@ func get_last_error() -> String:
 	return _last_error
 
 
-func _build_posix_shell_script(logical_args: PackedStringArray) -> String:
+func _build_posix_shell_script(logical_args: PackedStringArray, cli_path: String) -> String:
 	var parts: Array[String] = []
 	if not _options.cwd.is_empty():
 		parts.append("cd %s &&" % _quote_posix(_options.cwd))
@@ -386,13 +485,13 @@ func _build_posix_shell_script(logical_args: PackedStringArray) -> String:
 		for key_variant in env_overrides.keys():
 			var key := str(key_variant)
 			parts.append("%s=%s" % [key, _quote_posix(str(env_overrides[key_variant]))])
-	parts.append(_quote_posix(_options.cli_path))
+	parts.append(_quote_posix(cli_path))
 	for argument in logical_args:
 		parts.append(_quote_posix(argument))
 	return " ".join(parts)
 
 
-func _build_windows_shell_script(logical_args: PackedStringArray) -> String:
+func _build_windows_shell_script(logical_args: PackedStringArray, cli_path: String) -> String:
 	var commands: Array[String] = []
 	if not _options.cwd.is_empty():
 		commands.append("cd /d %s" % _quote_windows(_options.cwd))
@@ -402,11 +501,15 @@ func _build_windows_shell_script(logical_args: PackedStringArray) -> String:
 	for key_variant in env_overrides.keys():
 		var key := str(key_variant)
 		commands.append("set %s=%s" % [_quote_windows_assignment(key), _quote_windows_assignment(str(env_overrides[key_variant]))])
-	var command_parts: Array[String] = [_quote_windows(_options.cli_path)]
+	var command_parts: Array[String] = [_quote_windows(cli_path)]
 	for argument in logical_args:
 		command_parts.append(_quote_windows(argument))
 	commands.append(" ".join(command_parts))
 	return " && ".join(commands)
+
+
+func _execute_with_pipe(path: String, args: PackedStringArray) -> Dictionary:
+	return OS.execute_with_pipe(path, args, false)
 
 
 func _quote_posix(value: String) -> String:

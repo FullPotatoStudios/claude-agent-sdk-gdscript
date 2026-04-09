@@ -42,6 +42,7 @@ For v1:
 
 - require a user-installed Claude CLI
 - default to resolving `claude` from `PATH`
+- fall back to the same common local install locations tracked by upstream when `PATH` does not expose `claude`
 - allow an explicit override path in addon configuration
 - do not plan around bundling the CLI yet
 
@@ -57,6 +58,7 @@ The canonical v1 shape should follow the Phase 2 scope docs and use:
 Recommended behavior:
 
 - resolve the CLI from `PATH` by default
+- if `PATH` lookup misses, try the upstream-style fallback locations before failing
 - allow an absolute override path when needed
 - inherit the host process environment by default so existing Claude CLI auth and shell configuration can flow through
 - treat `env` as additive overrides layered on top of the inherited environment
