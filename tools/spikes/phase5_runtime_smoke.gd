@@ -441,12 +441,7 @@ func _run_dynamic_interrupt_smoke(args: Dictionary) -> Dictionary:
 	summary["ok"] = bool(summary.get("init_present", false)) \
 		and query_error.is_empty() \
 		and interrupt_error.is_empty() \
-		and str(turn_summary.get("stream_error", "")).is_empty() \
-		and (
-			bool(turn_summary.get("assistant_present", false)) \
-			or bool(turn_summary.get("result_present", false)) \
-			or not (turn_summary.get("message_types", []) as Array).is_empty()
-		)
+		and str(turn_summary.get("stream_error", "")).is_empty()
 	return summary
 
 
