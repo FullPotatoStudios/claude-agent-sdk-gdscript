@@ -349,7 +349,19 @@ func _active_turn_session_key_for_message(message: Variant) -> String:
 func _can_promote_default_turn_to_session(session_id: String) -> bool:
 	if session_id.is_empty() or session_id == "default":
 		return false
-	# The shared CLI stream does not expose a stronger turn correlation before the
-	# runtime session UUID appears, so we only bind when this adapter owns the
-	# connection's sole active unresolved turn.
-	return _active_turns_by_session.size() == 1 and _active_turns_by_session.has("default")
+	if not _active_turns_by_session.has("default"):
+		return false
+	return not _is_session_claimed_by_non_default_turn(session_id)
+
+
+func _is_session_claimed_by_non_default_turn(session_id: String) -> bool:
+	for active_session_id_variant in _active_turns_by_session.keys():
+		var active_session_id := str(active_session_id_variant)
+		if active_session_id == "default":
+			continue
+		if active_session_id == session_id:
+			return true
+		var active_turn_state: Dictionary = _active_turns_by_session.get(active_session_id, {}) if _active_turns_by_session.get(active_session_id, {}) is Dictionary else {}
+		if str(active_turn_state.get("promoted_session_id", "")) == session_id:
+			return true
+	return false

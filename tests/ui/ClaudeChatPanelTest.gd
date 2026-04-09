@@ -2694,6 +2694,70 @@ func test_panel_ignores_foreign_runtime_session_ids_before_authoritative_live_se
 	await _cleanup_panel(panel)
 
 
+func test_panel_default_target_ignores_named_overlap_traffic_until_default_turn_binds() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	panel.submit_prompt("Default")
+	await _await_frames(1)
+	panel.get_client_node().query("Named", "session-b")
+	await _await_frames(1)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-b",
+		"result": "Named done",
+	})
+	await _await_frames(2)
+
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_empty()
+	assert_int(_count_entries(panel, "result_card")).is_equal(0)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "resolved-default-session",
+		"result": "Default done",
+	})
+	await _await_frames(2)
+
+	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("resolved-default-session")
+	var result_card := _last_entry(panel, "result_card")
+	var result_body: RichTextLabel = result_card.find_child("ResultBodyLabel", true, false) as RichTextLabel
+	assert_object(result_body).is_not_null()
+	assert_str(str(result_body.text)).is_equal("Default done")
+	panel.submit_prompt("Follow up")
+	await _await_frames(1)
+	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("resolved-default-session")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_connect_failure_surfaces_cli_diagnostics_and_preserves_existing_stderr_callback() -> void:
 	var stderr_lines: Array[String] = []
 	var transport = FakeTransportScript.new()

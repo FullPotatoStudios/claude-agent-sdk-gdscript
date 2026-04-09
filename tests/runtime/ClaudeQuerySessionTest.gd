@@ -1432,6 +1432,49 @@ func test_receive_response_finishes_on_first_result_across_overlapping_sessions(
 	assert_that(await response_stream.next_message()).is_null()
 
 
+func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_active() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Default")
+	session.send_user_prompt("Named", "session-b")
+	var default_stream = session.receive_response_for_session("default")
+	var named_stream = session.receive_response_for_session("session-b")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-b",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "B"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-b", "session-b"))
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "resolved-default-session",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Default"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-default", "resolved-default-session"))
+
+	assert_object(await named_stream.next_message()).is_instanceof(ClaudeAssistantMessage)
+	assert_object(await named_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await named_stream.next_message()).is_null()
+
+	var default_message = await default_stream.next_message()
+	assert_object(default_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((default_message as ClaudeAssistantMessage).session_id).is_equal("resolved-default-session")
+	assert_object(await default_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await default_stream.next_message()).is_null()
+
+
 func test_same_session_second_query_is_rejected_while_response_is_active() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -1643,3 +1686,16 @@ func test_dynamic_controls_send_expected_control_requests() -> void:
 			"response": {},
 		},
 	})
+
+
+func _result_payload(result_text: String, session_id: String = "default") -> Dictionary:
+	return {
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 20,
+		"duration_api_ms": 10,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": session_id,
+		"result": result_text,
+	}

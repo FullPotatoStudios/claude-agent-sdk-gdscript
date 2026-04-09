@@ -304,6 +304,45 @@ func test_adapter_ignores_foreign_session_messages_after_default_turn_binds_runt
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_keeps_default_turn_busy_until_promoted_result_arrives_during_named_overlap() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var turn_results: Array[String] = []
+
+	adapter.turn_finished.connect(func(message: ClaudeResultMessage): turn_results.append("%s:%s" % [message.session_id, message.result]))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("Default")
+	adapter.query("Named", "session-b")
+	assert_bool(adapter.is_session_busy("default")).is_true()
+	assert_bool(adapter.is_session_busy("session-b")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-b", "session-b"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_session_busy("default")).is_true()
+	assert_bool(adapter.is_session_busy("session-b")).is_false()
+
+	transport.emit_stdout_message(_result_payload("done-default", "resolved-default-session"))
+	await _await_frames(3)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_bool(adapter.is_session_busy("default")).is_false()
+	assert_array(turn_results).is_equal(["session-b:done-b", "resolved-default-session:done-default"])
+	await _cleanup_adapter(adapter)
+
+
 func test_adapter_streamed_query_sets_busy_without_emitting_turn_started() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)

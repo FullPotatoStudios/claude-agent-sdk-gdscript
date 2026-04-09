@@ -1689,7 +1689,10 @@ func _on_client_busy_changed(_is_busy: bool) -> void:
 
 
 func _on_client_message_received(message: Variant) -> void:
-	_note_runtime_session_id(_message_session_id(message))
+	var message_session_id := _message_session_id(message)
+	if _should_ignore_foreign_live_message(message_session_id):
+		return
+	_note_runtime_session_id(message_session_id)
 	message_received.emit(message)
 	if message is ClaudeRateLimitEvent:
 		_handle_rate_limit_event(message)
@@ -1730,6 +1733,14 @@ func _on_client_message_received(message: Variant) -> void:
 
 
 func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
+	if (
+		_authoritative_live_session_id.is_empty()
+		and _live_session_target_id == "default"
+		and result_message.session_id != "default"
+		and _client_node != null
+		and _client_node.is_session_busy("default")
+	):
+		return
 	_note_runtime_session_id(result_message.session_id)
 	_begin_new_live_turn()
 	Callable(self, "_refresh_context_usage_async").call_deferred()
@@ -2498,6 +2509,37 @@ func _message_session_id(message: Variant) -> String:
 	if message is ClaudeUserMessage:
 		return str(message.raw_data.get("session_id", ""))
 	return ""
+
+
+func _should_ignore_foreign_live_message(session_id: String) -> bool:
+	var normalized := session_id.strip_edges()
+	if normalized.is_empty():
+		return false
+	var authoritative_live_session_id := _authoritative_live_session_id.strip_edges()
+	if (
+		not authoritative_live_session_id.is_empty()
+		and authoritative_live_session_id != "default"
+		and normalized != authoritative_live_session_id
+	):
+		return true
+	var expected_live_session_id := _live_session_target_id.strip_edges()
+	if (
+		not expected_live_session_id.is_empty()
+		and expected_live_session_id != "default"
+		and normalized != "default"
+		and normalized != expected_live_session_id
+	):
+		return true
+	if (
+		expected_live_session_id == "default"
+		and authoritative_live_session_id.is_empty()
+		and normalized != "default"
+		and _client_node != null
+		and _client_node.is_session_busy("default")
+		and _client_node.is_session_busy(normalized)
+	):
+		return true
+	return false
 
 
 func _note_runtime_session_id(session_id: String) -> void:
