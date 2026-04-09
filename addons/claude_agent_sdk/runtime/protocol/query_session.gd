@@ -343,7 +343,13 @@ func _on_transport_stdout_line(line: String) -> void:
 		_cancel_inflight_control_request(str(data.get("request_id", "")))
 		return
 
-	var message: Variant = ClaudeMessageParserScript.parse_message(data)
+	var parse_result := ClaudeMessageParserScript.parse_message_result(data)
+	var parse_error := str(parse_result.get("error", ""))
+	if not parse_error.is_empty():
+		_fail_session("Failed to parse Claude CLI message: %s" % parse_error)
+		return
+
+	var message: Variant = parse_result.get("message", null)
 	if message == null:
 		return
 

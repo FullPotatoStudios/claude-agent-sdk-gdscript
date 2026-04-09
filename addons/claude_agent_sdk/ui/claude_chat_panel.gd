@@ -1498,10 +1498,13 @@ func _handle_assistant_message(message: ClaudeAssistantMessage) -> void:
 
 
 func _handle_stream_event(message: ClaudeStreamEvent) -> void:
-	var text_delta := _extract_stream_text(message.event)
+	if message.event is not Dictionary:
+		return
+	var event := message.event as Dictionary
+	var text_delta := _extract_stream_text(event)
 	if not text_delta.is_empty():
 		_append_live_assistant_delta(text_delta, message.raw_data)
-	var thinking_delta := _extract_stream_thinking(message.event)
+	var thinking_delta := _extract_stream_thinking(event)
 	if not thinking_delta.is_empty():
 		_append_or_merge_thinking_entry(thinking_delta, message.raw_data)
 	if text_delta.is_empty() and thinking_delta.is_empty():

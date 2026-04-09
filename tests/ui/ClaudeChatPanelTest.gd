@@ -614,6 +614,7 @@ func test_panel_rewind_button_uses_echoed_user_uuid_and_sends_control_request() 
 		"subtype": "success",
 		"duration_ms": 120,
 		"duration_api_ms": 80,
+		"is_error": false,
 		"num_turns": 1,
 		"session_id": "default",
 		"result": "Done",
@@ -695,6 +696,7 @@ func test_panel_selected_session_connect_and_send_keeps_rewind_visible_for_defau
 		"subtype": "success",
 		"duration_ms": 120,
 		"duration_api_ms": 80,
+		"is_error": false,
 		"num_turns": 1,
 		"session_id": session_id,
 		"result": "Resumed",
@@ -750,6 +752,7 @@ func test_panel_rewind_failure_emits_single_error_and_keeps_connected_status() -
 		"subtype": "success",
 		"duration_ms": 120,
 		"duration_api_ms": 80,
+		"is_error": false,
 		"num_turns": 1,
 		"session_id": "default",
 		"result": "Done",
@@ -1254,15 +1257,15 @@ func test_panel_transcript_toggles_reveal_live_thinking_tools_and_raw_trace() ->
 		"type": "assistant",
 		"session_id": "default",
 		"message": {
-			"model": "haiku",
-			"content": [
-				{"type": "text", "text": "Done."},
-				{"type": "thinking", "thinking": "Final answer ready."},
-				{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"path": "README.md"}},
-				{"type": "tool_result", "tool_use_id": "tool-1", "content": {"ok": true}, "is_error": false},
-			],
-		},
-	})
+				"model": "haiku",
+				"content": [
+					{"type": "text", "text": "Done."},
+					{"type": "thinking", "thinking": "Final answer ready.", "signature": "sig-final"},
+					{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"path": "README.md"}},
+					{"type": "tool_result", "tool_use_id": "tool-1", "content": {"ok": true}, "is_error": false},
+				],
+			},
+		})
 	await _await_frames(2)
 
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
@@ -2085,7 +2088,11 @@ func test_panel_live_fork_creates_and_selects_new_saved_session_without_prior_se
 	})
 	transport.emit_stdout_message({
 		"type": "assistant",
-		"message": {"role": "assistant", "content": [{"type": "text", "text": "Live answer"}]},
+		"message": {
+			"role": "assistant",
+			"model": "haiku",
+			"content": [{"type": "text", "text": "Live answer"}],
+		},
 		"session_id": live_session_id,
 	})
 	transport.emit_stdout_message({

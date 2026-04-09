@@ -125,6 +125,18 @@ func test_parse_result_extras_and_stream_event() -> void:
 	assert_str(stream_event.parent_tool_use_id).is_equal("tool-1")
 
 
+func test_parse_stream_event_preserves_non_dictionary_event_payloads() -> void:
+	var stream_event: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "stream_event",
+		"session_id": "session-1",
+		"uuid": "stream-2",
+		"event": "raw-delta",
+	})
+
+	assert_object(stream_event).is_instanceof(ClaudeStreamEventScript)
+	assert_that(stream_event.event).is_equal("raw-delta")
+
+
 func test_parse_task_system_messages_into_typed_subclasses() -> void:
 	var started: Variant = ClaudeMessageParserScript.parse_message({
 		"type": "system",
@@ -323,6 +335,78 @@ func test_task_system_messages_require_upstream_mandatory_fields() -> void:
 	assert_that(missing_usage).is_null()
 	assert_that(invalid_usage_type).is_null()
 	assert_that(missing_summary).is_null()
+
+
+func test_parse_message_result_exposes_errors_for_malformed_known_messages() -> void:
+	var invalid_input := ClaudeMessageParserScript.parse_message_result("not-a-dictionary")
+	var missing_type := ClaudeMessageParserScript.parse_message_result({
+		"message": {"content": []},
+	})
+	var missing_user_content := ClaudeMessageParserScript.parse_message_result({
+		"type": "user",
+		"message": {},
+	})
+	var missing_assistant_model := ClaudeMessageParserScript.parse_message_result({
+		"type": "assistant",
+		"message": {
+			"content": [],
+		},
+	})
+	var malformed_assistant_block := ClaudeMessageParserScript.parse_message_result({
+		"type": "assistant",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{"type": "tool_use", "name": "Read", "input": {"path": "README.md"}},
+			],
+		},
+	})
+	var missing_result_fields := ClaudeMessageParserScript.parse_message_result({
+		"type": "result",
+		"subtype": "success",
+	})
+	var missing_stream_event_fields := ClaudeMessageParserScript.parse_message_result({
+		"type": "stream_event",
+		"uuid": "stream-1",
+	})
+	var missing_system_subtype := ClaudeMessageParserScript.parse_message_result({
+		"type": "system",
+	})
+	var missing_rate_limit_status := ClaudeMessageParserScript.parse_message_result({
+		"type": "rate_limit_event",
+		"rate_limit_info": {},
+		"uuid": "rate-limit-1",
+		"session_id": "session-1",
+	})
+	var unknown_type := ClaudeMessageParserScript.parse_message_result({
+		"type": "future_sdk_event",
+		"event": {},
+	})
+
+	assert_that(invalid_input.get("message", null)).is_null()
+	assert_str(str(invalid_input.get("error", ""))).contains("Invalid message data type")
+	assert_str(str(missing_type.get("error", ""))).contains("Message missing 'type' field")
+	assert_str(str(missing_user_content.get("error", ""))).contains("Missing required field in user message: content")
+	assert_str(str(missing_assistant_model.get("error", ""))).contains("Missing required field in assistant message: model")
+	assert_str(str(malformed_assistant_block.get("error", ""))).contains("Missing required field in assistant message block: id")
+	assert_str(str(missing_result_fields.get("error", ""))).contains("Missing required field in result message")
+	assert_str(str(missing_stream_event_fields.get("error", ""))).contains("Missing required field in stream_event message")
+	assert_str(str(missing_system_subtype.get("error", ""))).contains("Missing required field in system message: subtype")
+	assert_str(str(missing_rate_limit_status.get("error", ""))).contains("rate_limit_info.status")
+	assert_that(unknown_type.get("message", null)).is_null()
+	assert_str(str(unknown_type.get("error", ""))).is_empty()
+
+
+func test_parse_message_pushes_error_for_malformed_known_messages() -> void:
+	assert_error(func() -> void:
+		var message: Variant = ClaudeMessageParserScript.parse_message({
+			"type": "assistant",
+			"message": {
+				"content": [],
+			},
+		})
+		assert_that(message).is_null()
+	).is_push_error("Missing required field in assistant message: model")
 
 
 func test_parse_rate_limit_event_into_typed_message() -> void:

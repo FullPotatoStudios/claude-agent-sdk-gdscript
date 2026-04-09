@@ -249,6 +249,81 @@ func test_initialize_error_fails_pending_streams() -> void:
 	assert_bool(transport.connected).is_false()
 
 
+func test_malformed_known_messages_fail_session_instead_of_silent_skip() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var message_stream = session.receive_messages()
+	session.open_session()
+	session.send_user_prompt("Hi")
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request_id := str(initialize_request.get("request_id", ""))
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": request_id,
+			"response": {},
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {
+			"content": [],
+		},
+	})
+	await get_tree().process_frame
+
+	assert_str(session.get_last_error()).contains("Missing required field in assistant message: model")
+	assert_str(message_stream.get_error()).contains("Missing required field in assistant message: model")
+	assert_str(response_stream.get_error()).contains("Missing required field in assistant message: model")
+	assert_that(await response_stream.next_message()).is_null()
+	assert_bool(transport.connected).is_false()
+
+
+func test_unknown_top_level_messages_still_skip_without_failing_session() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	var message_stream = session.receive_messages()
+	session.open_session()
+	session.send_user_prompt("Hi")
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request_id := str(initialize_request.get("request_id", ""))
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": request_id,
+			"response": {},
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "future_sdk_event",
+		"event": {"value": "ignored"},
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 1,
+		"duration_api_ms": 1,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-1",
+		"result": "ok",
+	})
+
+	var message: Variant = await response_stream.next_message()
+	assert_object(message).is_not_null()
+	assert_str(str(message.get("message_type"))).is_equal("result")
+	assert_str(session.get_last_error()).is_empty()
+	assert_str(message_stream.get_error()).is_empty()
+	assert_str(response_stream.get_error()).is_empty()
+	assert_bool(transport.connected).is_true()
+
+
 func test_initialize_timeout_uses_env_value_with_upstream_floor() -> void:
 	var previous_timeout := OS.get_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT")
 	OS.set_environment("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", "1")
