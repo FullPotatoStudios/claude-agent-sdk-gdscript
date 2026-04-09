@@ -320,6 +320,16 @@ func _complete_node_stop_task(node: ClaudeClientNode, task_id: String, label: St
 	_async_completions.append(label)
 
 
+func _complete_node_reconnect_mcp_server(node: ClaudeClientNode, server_name: String, label: String) -> void:
+	await node.reconnect_mcp_server(server_name)
+	_async_completions.append(label)
+
+
+func _complete_node_toggle_mcp_server(node: ClaudeClientNode, server_name: String, enabled: bool, label: String) -> void:
+	await node.toggle_mcp_server(server_name, enabled)
+	_async_completions.append(label)
+
+
 func test_node_rewind_files_passthroughs_to_runtime_client() -> void:
 	var transport = FakeTransportScript.new()
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
@@ -395,6 +405,89 @@ func test_node_stop_task_passthroughs_to_runtime_client() -> void:
 	await _await_frames(1)
 
 	assert_array(_async_completions).contains(["node-stop-task"])
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
+func test_node_reconnect_mcp_server_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_node_reconnect_mcp_server").call_deferred(node, "filesystem", "node-mcp-reconnect")
+	await _await_frames(1)
+	var reconnect_request := _read_last_write(transport)
+	assert_str(str((reconnect_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("mcp_reconnect")
+	assert_str(str((reconnect_request.get("request", {}) as Dictionary).get("serverName", ""))).is_equal("filesystem")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(reconnect_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["node-mcp-reconnect"])
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
+func test_node_toggle_mcp_server_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_node_toggle_mcp_server").call_deferred(node, "filesystem", false, "node-mcp-toggle")
+	await _await_frames(1)
+	var toggle_request := _read_last_write(transport)
+	assert_str(str((toggle_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("mcp_toggle")
+	assert_str(str((toggle_request.get("request", {}) as Dictionary).get("serverName", ""))).is_equal("filesystem")
+	assert_bool(bool((toggle_request.get("request", {}) as Dictionary).get("enabled", true))).is_false()
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(toggle_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["node-mcp-toggle"])
 	node.disconnect_client()
 	await _await_frames(2)
 	get_tree().root.remove_child(node)

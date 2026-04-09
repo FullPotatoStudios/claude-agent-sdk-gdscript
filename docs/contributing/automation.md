@@ -35,6 +35,8 @@ It also now exercises bounded authenticated parity coverage for:
 - live `interrupt()` requests on a connected `ClaudeSDKClient`
 - SDK-hosted MCP tool execution, permission enforcement, multi-tool sequencing, and no-permission non-execution coverage on a connected `ClaudeSDKClient`
 
+Deterministic runtime coverage also now includes `reconnect_mcp_server()` and `toggle_mcp_server()` request-shape parity on the client, adapter, and node surfaces. Live SDK-hosted toggle/reconnect coverage is intentionally not in the passing wrapper at the pinned upstream baseline because the sibling Python SDK reproduces the same Claude CLI limitation: SDK-server `toggle_mcp_server()` can report `tools: []` while the tool still executes, and re-enable currently raises `SDK servers should be handled in print.ts`.
+
 ### Release prep
 
 - `./tools/release/verify_release_metadata.sh`

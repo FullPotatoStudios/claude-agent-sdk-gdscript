@@ -971,6 +971,16 @@ func _complete_adapter_stop_task(adapter: ClaudeClientAdapter, task_id: String, 
 	_async_completions.append(label)
 
 
+func _complete_adapter_reconnect_mcp_server(adapter: ClaudeClientAdapter, server_name: String, label: String) -> void:
+	await adapter.reconnect_mcp_server(server_name)
+	_async_completions.append(label)
+
+
+func _complete_adapter_toggle_mcp_server(adapter: ClaudeClientAdapter, server_name: String, enabled: bool, label: String) -> void:
+	await adapter.toggle_mcp_server(server_name, enabled)
+	_async_completions.append(label)
+
+
 func test_adapter_rewind_files_passthroughs_to_runtime_client() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
@@ -1039,6 +1049,79 @@ func test_adapter_stop_task_passthroughs_to_runtime_client() -> void:
 	await _await_frames(1)
 
 	assert_array(_async_completions).contains(["adapter-stop-task"])
+	assert_str(adapter.get_last_error()).is_empty()
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_reconnect_mcp_server_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_adapter_reconnect_mcp_server").call_deferred(adapter, "filesystem", "adapter-mcp-reconnect")
+	await _await_frames(1)
+	var reconnect_request := _read_last_write(transport)
+	assert_str(str((reconnect_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("mcp_reconnect")
+	assert_str(str((reconnect_request.get("request", {}) as Dictionary).get("serverName", ""))).is_equal("filesystem")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(reconnect_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["adapter-mcp-reconnect"])
+	assert_str(adapter.get_last_error()).is_empty()
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_toggle_mcp_server_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	Callable(self, "_complete_adapter_toggle_mcp_server").call_deferred(adapter, "filesystem", false, "adapter-mcp-toggle")
+	await _await_frames(1)
+	var toggle_request := _read_last_write(transport)
+	assert_str(str((toggle_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("mcp_toggle")
+	assert_str(str((toggle_request.get("request", {}) as Dictionary).get("serverName", ""))).is_equal("filesystem")
+	assert_bool(bool((toggle_request.get("request", {}) as Dictionary).get("enabled", true))).is_false()
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(toggle_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	assert_array(_async_completions).contains(["adapter-mcp-toggle"])
 	assert_str(adapter.get_last_error()).is_empty()
 	await _cleanup_adapter(adapter)
 
