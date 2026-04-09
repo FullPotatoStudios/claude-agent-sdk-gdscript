@@ -170,12 +170,14 @@ Current local rerun status:
   - `mcp_status`
 - those direct SDK MCP reruns only passed after a transport parity fix made local `--mcp-config` emission match upstream by including SDK server metadata while stripping the runtime-only `instance`
 - deterministic runtime coverage now also proves `ClaudeSDKClient.reconnect_mcp_server()` and `toggle_mcp_server()` emit the same wire keys as upstream (`subtype = "mcp_reconnect"` / `"mcp_toggle"` with camelCase `serverName`), with direct adapter/node passthrough coverage on top
+- a same-environment `2026-04-10` repro against both the local GDScript runtime and the sibling pinned Python SDK showed that the explored Bash-based live `rewind_files()` flow is not yet a passing parity proof at `v0.1.54`: rewinding to the plain-string replayed `UserMessage.uuid` resolves but leaves the edited file unchanged, while rewinding to the replayed top-level `tool_result` `UserMessage.uuid` returns `No file checkpoint found for this message.`
 - a same-environment `2026-04-09` repro against both the local GDScript runtime and the sibling pinned Python SDK showed that live SDK-hosted `toggle_mcp_server()` semantics are currently blocked by upstream Claude CLI behavior at `v0.1.54`: after disable, `get_mcp_status()` can report the SDK server with `tools: []` while the SDK tool handler still executes, and re-enable raises `SDK servers should be handled in print.ts`
 
 Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
 - the new `user` live modes only prove the local POSIX same-user relaunch path for the host's current account; they do not prove arbitrary cross-user support, and Windows remains unsupported for `ClaudeAgentOptions.user` in the shell-backed runtime
-- session-forking and rewind/task coverage remain future follow-up work
+- live `rewind_files()` coverage remains future follow-up work even though deterministic `rewind_files(user_message_id)` parity is already delivered; the explored authenticated Bash edit flow currently reproduces the same non-restoring/no-checkpoint behavior in both local GDScript and the sibling pinned Python SDK
+- live `stop_task()` coverage remains future follow-up work
 - live SDK-hosted `toggle_mcp_server()` / `reconnect_mcp_server()` coverage is not in the passing wrapper because the pinned upstream Python SDK reproduces the same runtime limitation; any future live toggle/reconnect slice should target an external MCP server or another harness that can create a genuine disabled/disconnected state truthfully
 - `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run while new parity slices are being developed or debugged

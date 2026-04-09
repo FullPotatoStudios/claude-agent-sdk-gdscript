@@ -41,6 +41,8 @@ Deterministic runtime coverage also now includes `reconnect_mcp_server()` and `t
 
 The `user` live modes are intentionally narrow. They validate the local POSIX same-user `sudo -n -u` wrapper path used by this runtime and confirm that `ClaudeAgentOptions.user` stays transport-only, but they do not claim arbitrary cross-user support. Windows remains unsupported for this option in the current shell-backed transport.
 
+Deterministic `rewind_files(user_message_id)` parity is delivered, but authenticated live rewind is intentionally not in the passing wrapper right now. A same-environment repro against both local GDScript and the sibling pinned Python SDK shows that the explored Bash-based flow is not yet an upstream-proven success path: rewinding to the plain-string replayed `UserMessage.uuid` resolves without restoring the file, while rewinding to the replayed top-level `tool_result` `UserMessage.uuid` returns `No file checkpoint found for this message.` Live rewind and live `stop_task()` therefore remain future follow-up work in the wrapper.
+
 ### Release prep
 
 - `./tools/release/verify_release_metadata.sh`
