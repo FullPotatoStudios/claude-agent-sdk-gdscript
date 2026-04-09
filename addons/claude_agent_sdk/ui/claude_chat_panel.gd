@@ -2000,19 +2000,19 @@ func _create_transcript_primary_view(entry: Dictionary) -> Control:
 		"task":
 			return _create_task_card(entry)
 		"thinking":
-			return _create_detail_card("thinking", str(entry.get("title", "Thinking")), str(entry.get("text", "")), false)
+			return _create_detail_card("thinking", str(entry.get("title", "Thinking")), str(entry.get("text", "")), false, entry)
 		"tool_prompt":
-			return _create_detail_card("tool_prompt", str(entry.get("title", "Tool prompt")), str(entry.get("text", "")), false)
+			return _create_detail_card("tool_prompt", str(entry.get("title", "Tool prompt")), str(entry.get("text", "")), false, entry)
 		"tool_use":
-			return _create_detail_card("tool_use", str(entry.get("title", "Tool use")), str(entry.get("text", "")), false)
+			return _create_detail_card("tool_use", str(entry.get("title", "Tool use")), str(entry.get("text", "")), false, entry)
 		"tool_result":
-			return _create_detail_card("tool_result", str(entry.get("title", "Tool result")), str(entry.get("text", "")), false)
+			return _create_detail_card("tool_result", str(entry.get("title", "Tool result")), str(entry.get("text", "")), false, entry)
 		"system":
-			return _create_detail_card("system", str(entry.get("title", "System")), str(entry.get("text", "")), false)
+			return _create_detail_card("system", str(entry.get("title", "System")), str(entry.get("text", "")), false, entry)
 		"progress":
-			return _create_detail_card("progress", str(entry.get("title", "Progress")), str(entry.get("text", "")), false)
+			return _create_detail_card("progress", str(entry.get("title", "Progress")), str(entry.get("text", "")), false, entry)
 		"attachment":
-			return _create_detail_card("attachment", str(entry.get("title", "Attachment")), str(entry.get("text", "")), false)
+			return _create_detail_card("attachment", str(entry.get("title", "Attachment")), str(entry.get("text", "")), false, entry)
 		"result":
 			return _create_result_card(entry)
 	return null
@@ -2026,7 +2026,7 @@ func _update_transcript_primary_view(primary: Control, entry: Dictionary) -> voi
 		"task":
 			_update_task_card(primary, entry)
 		"thinking", "tool_prompt", "tool_use", "tool_result", "system", "progress", "attachment":
-			_update_detail_card(primary, str(entry.get("title", "")), str(entry.get("text", "")), false)
+			_update_detail_card(primary, str(entry.get("title", "")), str(entry.get("text", "")), false, entry)
 		"result":
 			_update_result_card(primary, entry)
 
@@ -2064,7 +2064,16 @@ func _should_show_rewind_action(entry: Dictionary) -> bool:
 
 func _should_show_saved_fork_action(entry: Dictionary) -> bool:
 	var kind := str(entry.get("kind", ""))
-	if kind != "user" and kind != "assistant":
+	if kind not in [
+		"user",
+		"assistant",
+		"thinking",
+		"tool_use",
+		"tool_result",
+		"system",
+		"progress",
+		"attachment",
+	]:
 		return false
 	if _session_live or _is_connecting:
 		return false
@@ -2296,7 +2305,13 @@ func _update_message_bubble(row: Control, role: String, entry: Dictionary) -> vo
 	rewind_button.text = "Rewinding..." if is_pending else "Rewind files here"
 
 
-func _create_detail_card(kind: String, title: String, body_text: String, collapsed: bool) -> Control:
+func _create_detail_card(
+	kind: String,
+	title: String,
+	body_text: String,
+	collapsed: bool,
+	entry: Dictionary = {}
+) -> Control:
 	var row := VBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.set_meta("entry_kind", "%s_card" % kind)
@@ -2333,6 +2348,23 @@ func _create_detail_card(kind: String, title: String, body_text: String, collaps
 	content.add_theme_font_size_override("normal_font_size", 14)
 	card_body.add_child(content)
 
+	var actions := HBoxContainer.new()
+	actions.name = "CardActions"
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	card_body.add_child(actions)
+
+	var fork_button := Button.new()
+	fork_button.name = "ForkFromHereButton"
+	fork_button.text = "Fork from here"
+	fork_button.focus_mode = Control.FOCUS_NONE
+	fork_button.pressed.connect(_on_saved_transcript_fork_pressed.bind(int(entry.get("id", -1))))
+	actions.add_child(fork_button)
+
+	var can_fork := _should_show_saved_fork_action(entry)
+	actions.visible = can_fork
+	fork_button.visible = can_fork
+	fork_button.disabled = not can_fork
+
 	toggle.pressed.connect(func():
 		content.visible = not content.visible
 		toggle.text = _card_title(title, not content.visible)
@@ -2342,7 +2374,13 @@ func _create_detail_card(kind: String, title: String, body_text: String, collaps
 	return row
 
 
-func _update_detail_card(card: Control, title: String, body_text: String, collapsed: bool) -> void:
+func _update_detail_card(
+	card: Control,
+	title: String,
+	body_text: String,
+	collapsed: bool,
+	entry: Dictionary = {}
+) -> void:
 	var toggle := card.find_child("CardToggle", true, false) as Button
 	var content := card.find_child("CardBody", true, false) as RichTextLabel
 	if toggle == null or content == null:
@@ -2351,6 +2389,13 @@ func _update_detail_card(card: Control, title: String, body_text: String, collap
 	content.text = body_text
 	content.visible = not should_collapse
 	toggle.text = _card_title(title, should_collapse)
+	var actions := card.find_child("CardActions", true, false) as HBoxContainer
+	var fork_button := card.find_child("ForkFromHereButton", true, false) as Button
+	if actions != null and fork_button != null:
+		var can_fork := _should_show_saved_fork_action(entry)
+		actions.visible = can_fork
+		fork_button.visible = can_fork
+		fork_button.disabled = not can_fork
 
 
 func _create_task_card(entry: Dictionary) -> Control:

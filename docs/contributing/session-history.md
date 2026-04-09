@@ -113,8 +113,8 @@ Transcript reading reconstructs the main visible conversation chain and skips si
 Panel-specific note:
 
 - `ClaudeChatPanel` now exposes saved-session and connected-idle live-session full-session forking through the selected-session card
-- `ClaudeChatPanel` also exposes disconnected saved-session user- and assistant-message `Fork from here` actions that pass the clicked message UUID through `up_to_message_id`
-- non-message transcript-entry cutoff selection through `up_to_message_id` remains runtime-only in the current panel slice
+- `ClaudeChatPanel` also exposes disconnected saved-session `Fork from here` actions on user/assistant chat bubbles plus thinking/tool/system/progress/attachment detail cards that pass the clicked transcript UUID through `up_to_message_id`
+- progress-card cutoffs still omit historical `progress` entries in the written fork, matching the existing runtime mutation semantics
 
 Basic mutation behavior:
 

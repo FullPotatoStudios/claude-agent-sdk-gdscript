@@ -301,6 +301,11 @@ Delivered in Phase 10AG:
 - typed `ClaudeMcpStatusResponse` runtime models for live MCP status diagnostics, including nested server info/tool metadata while keeping broader status-config unions dictionary-backed for now
 - `ClaudeSDKClient`, `ClaudeClientAdapter`, `ClaudeClientNode`, and `ClaudeChatPanel` now consume typed live-diagnostics models instead of raw `Dictionary` payloads
 
+Delivered in Phase 10AH:
+- `ClaudeChatPanel` disconnected saved-session `Fork from here` actions now extend from chat bubbles into non-message transcript detail cards for thinking, tool, system, progress, and attachment entries
+- detail-card cutoffs reuse the same inclusive runtime `fork_session(..., up_to_message_id, ...)` path already used for saved-session chat-bubble forks
+- progress-card cutoffs are now documented and covered as cutoff markers only, while the forked session continues to omit historical `progress` entries per the existing runtime mutation semantics
+
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
 - per-task `stop_task(task_id)` controls in the reference panel while a task is active
@@ -358,7 +363,7 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, non-message transcript-entry fork parity, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
+The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
 
 ## Parity findings (2026-04-09)
 

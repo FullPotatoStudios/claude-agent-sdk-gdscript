@@ -90,7 +90,7 @@ The shipped panel currently includes:
 - reconnect/resume handoff for selected saved sessions while keeping the active live session authoritative until disconnect
 - basic rename, tag, clear-tag, delete, and full-session fork controls for saved sessions
 - connected-idle live-session full-session fork handoff through the same fork controls when the active runtime session has a resolved session UUID
-- disconnected saved-session user- and assistant-message `Fork from here` actions backed by runtime `up_to_message_id` support
+- disconnected saved-session `Fork from here` actions on user/assistant chat bubbles plus saved transcript detail cards backed by runtime `up_to_message_id` support
 - connect/disconnect controls
 - disconnected composer-driven connect-and-send flow, including selected saved-session resume targets
 - transcript rendering for user, assistant, system, tool, thinking, stream, and result output
@@ -115,13 +115,13 @@ Live transcript detail uses the same normalized transcript model as saved-sessio
 - saved-session transcript loading uses the richer `ClaudeSessions.get_session_transcript()` detail model under the same filter toggles
 - saved-session forking uses the existing runtime `fork_session()` helper, supports an optional title override, auto-selects the new fork, and restores its transcript immediately
 - connected-idle live-session forking uses a disconnect-and-handoff flow backed by the same runtime `fork_session()` helper, sources the authoritative runtime session UUID, and leaves the new fork selected offline instead of pretending the live runtime branched in place
-- saved-session user- and assistant-message fork points branch from the clicked message UUID inclusively and reuse the same fork-title input as the selected-session card
+- saved-session user/assistant chat bubbles plus thinking/tool/system/progress/attachment detail cards branch from the clicked transcript UUID inclusively and reuse the same fork-title input as the selected-session card
+- progress-card cutoffs stop at that point, but the forked session still omits historical `progress` entries because the runtime fork writer preserves only the visible retained message chain
 - the rewind toggle is panel-owned: it enables file checkpointing and adds `replay-user-messages` so user transcript entries can expose rewind actions without hand-editing `extra_args`
 
 The panel intentionally does not yet include:
 
 - multiple simultaneous in-flight sessions inside one panel instance
-- non-message transcript-entry fork parity for tool/system/progress/result detail
 - richer task dashboards beyond the current per-task transcript cards and stop control
 - SDK-hosted MCP/custom-tool authoring UX
 - editor-plugin workflows

@@ -493,6 +493,60 @@ func test_panel_saved_session_cutoff_fork_action_only_appears_on_disconnected_se
 	await _cleanup_panel(panel)
 
 
+func test_panel_saved_session_cutoff_fork_action_only_appears_on_disconnected_selected_detail_entries() -> void:
+	_create_panel_detail_session_fixture("detail-fork-visibility")
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	_button(panel, "TasksToggle").button_pressed = true
+	_button(panel, "TasksToggle").toggled.emit(true)
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	_button(panel, "SystemToggle").button_pressed = true
+	_button(panel, "SystemToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	var disconnected_system_fork_button := _last_entry(panel, "system_card").find_child("ForkFromHereButton", true, false) as Button
+	assert_object(disconnected_system_fork_button).is_not_null()
+	assert_bool(disconnected_system_fork_button.is_visible_in_tree()).is_true()
+	var disconnected_progress_fork_button := _last_entry(panel, "progress_card").find_child("ForkFromHereButton", true, false) as Button
+	assert_object(disconnected_progress_fork_button).is_not_null()
+	assert_bool(disconnected_progress_fork_button.is_visible_in_tree()).is_true()
+	var disconnected_tool_result_fork_button := _last_entry(panel, "tool_result_card").find_child("ForkFromHereButton", true, false) as Button
+	assert_object(disconnected_tool_result_fork_button).is_not_null()
+	assert_bool(disconnected_tool_result_fork_button.is_visible_in_tree()).is_true()
+
+	panel.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(2)
+
+	var connected_system_fork_button := _last_entry(panel, "system_card").find_child("ForkFromHereButton", true, false) as Button
+	assert_object(connected_system_fork_button).is_not_null()
+	assert_bool(connected_system_fork_button.is_visible_in_tree()).is_false()
+	var connected_progress_fork_button := _last_entry(panel, "progress_card").find_child("ForkFromHereButton", true, false) as Button
+	assert_object(connected_progress_fork_button).is_not_null()
+	assert_bool(connected_progress_fork_button.is_visible_in_tree()).is_false()
+	var connected_tool_result_fork_button := _last_entry(panel, "tool_result_card").find_child("ForkFromHereButton", true, false) as Button
+	assert_object(connected_tool_result_fork_button).is_not_null()
+	assert_bool(connected_tool_result_fork_button.is_visible_in_tree()).is_false()
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_defaults_to_chat_view_and_switches_to_settings_view() -> void:
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
@@ -2556,6 +2610,62 @@ func test_panel_saved_session_assistant_cutoff_fork_uses_runtime_default_title_w
 	await _cleanup_panel(panel)
 
 
+func test_panel_saved_session_progress_cutoff_fork_uses_progress_as_cutoff_marker_only() -> void:
+	var session_id := _create_panel_detail_session_fixture("panel-fork-cutoff-progress-success")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	_button(panel, "TasksToggle").button_pressed = true
+	_button(panel, "TasksToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	_line_edit(panel, "ForkTitleInput").text = "Branch at progress"
+	var fork_button := _last_entry(panel, "progress_card").find_child("ForkFromHereButton", true, false) as Button
+	fork_button.pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_session_id_from_panel(panel)).is_not_equal(session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Branch at progress")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(0)
+	assert_int(_count_entries(panel, "progress_card")).is_equal(0)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_saved_session_tool_result_cutoff_fork_uses_containing_assistant_message() -> void:
+	var session_id := _create_panel_detail_session_fixture("panel-fork-cutoff-tool-result-success")
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+
+	_button(panel, "ToolsToggle").button_pressed = true
+	_button(panel, "ToolsToggle").toggled.emit(true)
+	await _await_frames(2)
+
+	_line_edit(panel, "ForkTitleInput").text = "Branch after tool result"
+	var fork_button := _last_entry(panel, "tool_result_card").find_child("ForkFromHereButton", true, false) as Button
+	fork_button.pressed.emit()
+	await _await_frames(2)
+
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_session_id_from_panel(panel)).is_not_equal(session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Branch after tool result")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).is_equal("Saved answer")
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_session_fork_control_uses_runtime_default_title_when_blank() -> void:
 	_create_panel_session_fixture("panel-fork-default-title")
 	var panel = ChatPanelScene.instantiate()
@@ -3111,23 +3221,30 @@ func _create_panel_detail_session_fixture(label: String) -> String:
 	_write_session_file(project_dir, session_id, [
 		{
 			"type": "user",
-			"uuid": "detail-u-1",
+			"uuid": "11111111-1111-4111-8111-111111111111",
 			"sessionId": session_id,
 			"timestamp": "2026-04-05T13:00:00",
 			"cwd": project_path,
 			"message": {"role": "user", "content": "Saved prompt"},
 		},
 		{
+			"type": "system",
+			"uuid": "22222222-2222-4222-8222-222222222222",
+			"parentUuid": "11111111-1111-4111-8111-111111111111",
+			"sessionId": session_id,
+			"message": {"subtype": "note", "content": "Remember to validate the saved branch."},
+		},
+		{
 			"type": "progress",
-			"uuid": "detail-p-1",
-			"parentUuid": "detail-u-1",
+			"uuid": "33333333-3333-4333-8333-333333333333",
+			"parentUuid": "22222222-2222-4222-8222-222222222222",
 			"sessionId": session_id,
 			"message": {"summary": "Background task is still running", "status": "running"},
 		},
 		{
 			"type": "assistant",
-			"uuid": "detail-a-1",
-			"parentUuid": "detail-p-1",
+			"uuid": "44444444-4444-4444-8444-444444444444",
+			"parentUuid": "33333333-3333-4333-8333-333333333333",
 			"sessionId": session_id,
 			"message": {
 				"role": "assistant",

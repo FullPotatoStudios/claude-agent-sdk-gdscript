@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: reference-panel UX expansion planning after the session-lifecycle truthfulness bugfix slice
+- Active roadmap slice: remaining reference-panel UX expansion after saved-session transcript-detail fork parity
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -101,6 +101,8 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` disconnected saved-session user-message `Fork from here` actions backed by runtime `up_to_message_id` session forking
   - cutoff-based saved-session forks in the panel now auto-select the new branch and restore its truncated transcript immediately
   - `ClaudeChatPanel` disconnected saved-session assistant-message `Fork from here` actions backed by the same inclusive `up_to_message_id` session-forking path already used for user-message cutoffs
+  - `ClaudeChatPanel` disconnected saved-session non-message detail-card `Fork from here` actions for thinking, tool, system, progress, and attachment transcript entries
+  - detail-card cutoffs now reuse the same inclusive runtime `up_to_message_id` session-forking path already used for chat-bubble cutoffs, while keeping historical `progress` entries fork-marker-only
   - `ClaudePermissionRuleValue` and `ClaudePermissionUpdate` for typed runtime permission-update construction and serialization
   - `ClaudeHookOutput` plus event-specific hook output helper classes for typed runtime hook callback responses
   - additive hook-output coercion in `ClaudeQuerySession`, including Python-style `continue_` / `async_` alias handling for raw dictionaries
