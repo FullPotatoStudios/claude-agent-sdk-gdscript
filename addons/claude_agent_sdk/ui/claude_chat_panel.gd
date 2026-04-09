@@ -121,6 +121,11 @@ var _uuid_regex: RegEx = null
 @onready var _disallowed_tools_input: LineEdit = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/ToolsSection/ToolRulesAdvancedGroup/ToolRulesAdvancedBody/ToolGovernanceGrid/DisallowedToolsGroup/DisallowedToolsInput
 @onready var _rewind_support_toggle: CheckBox = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/RewindSection/RewindSupportToggle
 @onready var _mcp_summary_value: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpSummaryValue
+@onready var _mcp_authoring_hint_label: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpAuthoringHintLabel
+@onready var _add_mcp_server_button: Button = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/AddMcpServerButton
+@onready var _mcp_editable_server_list: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpEditableServerList
+@onready var _mcp_read_only_section_label: Label = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpReadOnlySectionLabel
+@onready var _mcp_read_only_server_list: VBoxContainer = $Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup/McpReadOnlyServerList
 @onready var _split_row: HSplitContainer = $Shell/Margin/Body/SplitRow
 @onready var _session_refresh_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/SessionRefreshButton
 @onready var _new_chat_button: Button = $Shell/Margin/Body/SplitRow/SessionPane/SessionMargin/SessionBody/SessionHeader/SessionActions/NewChatButton
@@ -353,6 +358,8 @@ func _wire_ui() -> void:
 		_disallowed_tools_input.text_changed.connect(_on_disallowed_tools_text_changed)
 	if not _rewind_support_toggle.toggled.is_connected(_on_rewind_support_toggled):
 		_rewind_support_toggle.toggled.connect(_on_rewind_support_toggled)
+	if not _add_mcp_server_button.pressed.is_connected(_on_add_mcp_server_pressed):
+		_add_mcp_server_button.pressed.connect(_on_add_mcp_server_pressed)
 	if not _session_refresh_button.pressed.is_connected(_on_session_refresh_pressed):
 		_session_refresh_button.pressed.connect(_on_session_refresh_pressed)
 	if not _new_chat_button.pressed.is_connected(_on_new_chat_pressed):
@@ -504,6 +511,7 @@ func _apply_initial_control_values() -> void:
 	var has_advanced_rules: bool = not _configured_options.allowed_tools.is_empty() or not _configured_options.disallowed_tools.is_empty()
 	_tool_rules_advanced_toggle.set_pressed_no_signal(has_advanced_rules)
 	_refresh_mcp_summary()
+	_rebuild_mcp_authoring_rows()
 	_refresh_configuration_field_visibility()
 	_refresh_live_session_diagnostics()
 	_suppress_configuration_sync = false
@@ -717,6 +725,7 @@ func _refresh_configuration_controls() -> void:
 	_disallowed_tools_input.editable = not configuration_locked and _tool_rules_advanced_body.visible
 	_rewind_support_toggle.disabled = configuration_locked
 	_refresh_built_in_tool_picker_state()
+	_refresh_mcp_authoring_control_state()
 	_refresh_live_session_diagnostics()
 
 
@@ -737,16 +746,375 @@ func _refresh_configuration_field_visibility() -> void:
 
 func _refresh_mcp_summary() -> void:
 	var summary := "No MCP servers configured."
+	var hint := "Disconnected only. Simple external stdio servers can be edited here. SDK-hosted and passthrough configs stay read-only."
 	if _configured_options != null:
-		if _configured_options.mcp_servers is Dictionary and not (_configured_options.mcp_servers as Dictionary).is_empty():
-			var server_names: Array[String] = []
-			for server_name_variant in (_configured_options.mcp_servers as Dictionary).keys():
-				server_names.append(str(server_name_variant))
-			server_names.sort()
-			summary = "%d configured: %s" % [server_names.size(), ", ".join(server_names)]
-		elif _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
-			summary = "External MCP config: %s" % str(_configured_options.mcp_servers).strip_edges()
+		var classification := _classify_mcp_servers(_configured_options.mcp_servers)
+		summary = str(classification.get("summary", summary))
+		hint = str(classification.get("hint", hint))
 	_mcp_summary_value.text = summary
+	_mcp_authoring_hint_label.text = hint
+
+
+func _current_mcp_authoring_locked() -> bool:
+	return _session_live or _is_connecting or _has_pending_live_fork()
+
+
+func _rebuild_mcp_authoring_rows() -> void:
+	var classification := _classify_mcp_servers(_configured_options.mcp_servers if _configured_options != null else {})
+	_clear_container_children(_mcp_editable_server_list)
+	_clear_container_children(_mcp_read_only_server_list)
+	var editable_entries: Array = classification.get("editable", [])
+	for index in range(editable_entries.size()):
+		var entry := editable_entries[index] as Dictionary
+		var row := _build_mcp_editable_row(index, entry)
+		_mcp_editable_server_list.add_child(row)
+	var read_only_entries: Array = classification.get("read_only", [])
+	for index in range(read_only_entries.size()):
+		var entry := read_only_entries[index] as Dictionary
+		var row := _build_mcp_read_only_row(index, entry)
+		_mcp_read_only_server_list.add_child(row)
+
+	_mcp_read_only_section_label.visible = _mcp_read_only_server_list.get_child_count() > 0
+	_refresh_mcp_authoring_control_state()
+
+
+func _refresh_mcp_authoring_control_state() -> void:
+	var locked := _current_mcp_authoring_locked()
+	var raw_passthrough := _configured_options != null and _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty()
+	_add_mcp_server_button.disabled = locked or raw_passthrough
+	if raw_passthrough:
+		_add_mcp_server_button.tooltip_text = "Raw mcp_servers passthrough config stays read-only in this slice."
+	elif locked:
+		_add_mcp_server_button.tooltip_text = "MCP configuration editing is available only while disconnected."
+	else:
+		_add_mcp_server_button.tooltip_text = ""
+
+	for row_variant in _mcp_editable_server_list.get_children():
+		if row_variant is not Control:
+			continue
+		var row := row_variant as Control
+		var name_input := row.find_child("McpServerNameInput", true, false) as LineEdit
+		var command_input := row.find_child("McpServerCommandInput", true, false) as LineEdit
+		var args_input := row.find_child("McpServerArgsInput", true, false) as LineEdit
+		var remove_button := row.find_child("McpRemoveServerButton", true, false) as Button
+		if name_input != null:
+			name_input.editable = not locked
+		if command_input != null:
+			command_input.editable = not locked
+		if args_input != null:
+			args_input.editable = not locked
+		if remove_button != null:
+			remove_button.disabled = locked
+
+
+func _clear_container_children(container: Node) -> void:
+	for child in container.get_children():
+		container.remove_child(child)
+		child.queue_free()
+
+
+func _classify_mcp_servers(value: Variant) -> Dictionary:
+	var result := {
+		"summary": "No MCP servers configured.",
+		"hint": "Disconnected only. Simple external stdio servers can be edited here. SDK-hosted and passthrough configs stay read-only.",
+		"editable": [],
+		"read_only": [],
+	}
+	if value is Dictionary and not (value as Dictionary).is_empty():
+		var server_names: Array[String] = []
+		for server_name_variant in (value as Dictionary).keys():
+			server_names.append(str(server_name_variant))
+		server_names.sort()
+		result["summary"] = "%d configured: %s" % [server_names.size(), ", ".join(server_names)]
+		for server_name in server_names:
+			var config_variant: Variant = (value as Dictionary).get(server_name)
+			if config_variant is Dictionary:
+				var config := config_variant as Dictionary
+				var server_type := str(config.get("type", "")).strip_edges()
+				if server_type == "sdk":
+					result["read_only"].append({
+						"server_name": server_name,
+						"row_name": _mcp_server_node_name(server_name),
+						"title": "%s · SDK server" % server_name,
+						"detail": _sdk_mcp_inventory_text(server_name, config),
+						"preserved_value": config.duplicate(true),
+						"preserve_in_options": true,
+					})
+				elif _is_editable_stdio_mcp_config(config):
+					result["editable"].append({
+						"name": server_name,
+						"command": str(config.get("command", "")).strip_edges(),
+						"args": (config.get("args", []) as Array).duplicate() if config.get("args", []) is Array else [],
+						"explicit_type": config.has("type"),
+						"had_args": config.has("args"),
+					})
+				else:
+					var read_only_type := server_type if not server_type.is_empty() else "external"
+					result["read_only"].append({
+						"server_name": server_name,
+						"row_name": _mcp_server_node_name(server_name),
+						"title": "%s · %s" % [server_name, read_only_type],
+						"detail": "Read-only in this slice. Manage this config in code or raw mcp_servers.\n%s" % _json_pretty(config),
+						"preserved_value": config.duplicate(true),
+						"preserve_in_options": true,
+					})
+			else:
+				result["read_only"].append({
+					"server_name": server_name,
+					"row_name": _mcp_server_node_name(server_name),
+					"title": "%s · Unsupported config" % server_name,
+					"detail": "Read-only in this slice. The stored config is not a dictionary-backed server entry.\n%s" % _json_pretty(config_variant),
+					"preserved_value": config_variant,
+					"preserve_in_options": true,
+				})
+	elif value is String and not str(value).strip_edges().is_empty():
+		var passthrough := str(value).strip_edges()
+		result["summary"] = "External MCP config: %s" % passthrough
+		result["hint"] = "This panel preserves raw MCP passthrough config as read-only. Switch to dictionary-backed mcp_servers to edit simple stdio servers here."
+		result["read_only"].append({
+			"row_name": "passthrough",
+			"title": "Raw MCP passthrough",
+			"detail": passthrough,
+			"preserve_in_options": false,
+		})
+	return result
+
+
+func _is_editable_stdio_mcp_config(config: Dictionary) -> bool:
+	if not config.has("command"):
+		return false
+	if not (config.get("command") is String):
+		return false
+	if config.has("args") and not (config.get("args") is Array):
+		return false
+	var server_type := str(config.get("type", "")).strip_edges()
+	if not server_type.is_empty() and server_type != "stdio":
+		return false
+	for key_variant in config.keys():
+		var key := str(key_variant)
+		if key != "type" and key != "command" and key != "args":
+			return false
+	return true
+
+
+func _sdk_mcp_inventory_text(server_name: String, config: Dictionary) -> String:
+	var instance: Variant = config.get("instance")
+	var version := str(config.get("version", "")).strip_edges()
+	var tool_names: Array[String] = []
+	if instance is ClaudeSdkMcpServer:
+		var sdk_server := instance as ClaudeSdkMcpServer
+		if version.is_empty():
+			version = sdk_server.version
+		for tool in sdk_server.tools:
+			tool_names.append("mcp__%s__%s" % [server_name, tool.name])
+	var parts: Array[String] = ["Code-authored through ClaudeMcp and preserved read-only in the panel."]
+	if not version.is_empty():
+		parts.append("Version: %s" % version)
+	if tool_names.is_empty():
+		parts.append("No tools declared.")
+	else:
+		parts.append("Tools: %s" % ", ".join(tool_names))
+	return " ".join(parts)
+
+
+func _build_mcp_editable_row(index: int, entry: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.name = "McpEditableServerRow_%d" % index
+	card.set_meta("mcp_row_flags", {
+		"explicit_type": bool(entry.get("explicit_type", true)),
+		"had_args": bool(entry.get("had_args", false)),
+	})
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	card.add_child(margin)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	margin.add_child(body)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	body.add_child(header)
+
+	var title := Label.new()
+	title.name = "McpEditableServerTitle"
+	title.text = "External stdio server"
+	title.size_flags_horizontal = SIZE_EXPAND_FILL
+	header.add_child(title)
+
+	var remove_button := Button.new()
+	remove_button.name = "McpRemoveServerButton"
+	remove_button.text = "Remove"
+	remove_button.pressed.connect(_on_remove_mcp_server_pressed.bind(card))
+	header.add_child(remove_button)
+
+	var name_label := Label.new()
+	name_label.text = "Server name"
+	name_label.modulate = COLOR_MUTED
+	body.add_child(name_label)
+
+	var name_input := LineEdit.new()
+	name_input.name = "McpServerNameInput"
+	name_input.placeholder_text = "stdio-server"
+	name_input.text = str(entry.get("name", ""))
+	name_input.text_changed.connect(_on_mcp_editable_row_text_changed.bind(card))
+	body.add_child(name_input)
+
+	var command_label := Label.new()
+	command_label.text = "Command"
+	command_label.modulate = COLOR_MUTED
+	body.add_child(command_label)
+
+	var command_input := LineEdit.new()
+	command_input.name = "McpServerCommandInput"
+	command_input.placeholder_text = "/path/to/mcp-server"
+	command_input.text = str(entry.get("command", ""))
+	command_input.text_changed.connect(_on_mcp_editable_row_text_changed.bind(card))
+	body.add_child(command_input)
+
+	var args_label := Label.new()
+	args_label.text = "Args"
+	args_label.modulate = COLOR_MUTED
+	body.add_child(args_label)
+
+	var args_input := LineEdit.new()
+	args_input.name = "McpServerArgsInput"
+	args_input.placeholder_text = "--stdio,--project,/path/to/workspace"
+	var args_parts: Array[String] = []
+	for value in (entry.get("args", []) as Array):
+		args_parts.append(str(value))
+	args_input.text = ",".join(args_parts)
+	args_input.text_changed.connect(_on_mcp_editable_row_text_changed.bind(card))
+	body.add_child(args_input)
+
+	return card
+
+
+func _build_mcp_read_only_row(index: int, entry: Dictionary) -> Control:
+	var row_name := str(entry.get("row_name", "row_%d" % index))
+	var card := PanelContainer.new()
+	card.name = "McpReadOnlyServerRow_%s" % row_name
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	card.add_child(margin)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	margin.add_child(body)
+
+	var title := Label.new()
+	title.name = "McpReadOnlyServerTitle_%s" % row_name
+	title.text = str(entry.get("title", "Read-only MCP config"))
+	body.add_child(title)
+
+	var detail := Label.new()
+	detail.name = "McpReadOnlyServerDetail_%s" % row_name
+	detail.text = str(entry.get("detail", ""))
+	detail.modulate = COLOR_MUTED
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(detail)
+
+	return card
+
+
+func _editable_mcp_row_entries(skip_row: Control = null) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for row_variant in _mcp_editable_server_list.get_children():
+		if row_variant == skip_row or row_variant is not Control:
+			continue
+		entries.append(_editable_mcp_entry_from_row(row_variant as Control))
+	return entries
+
+
+func _editable_mcp_entry_from_row(row: Control) -> Dictionary:
+	var name_input := row.find_child("McpServerNameInput", true, false) as LineEdit
+	var command_input := row.find_child("McpServerCommandInput", true, false) as LineEdit
+	var args_input := row.find_child("McpServerArgsInput", true, false) as LineEdit
+	var flags := row.get_meta("mcp_row_flags", {}) as Dictionary
+	return {
+		"name": name_input.text.strip_edges() if name_input != null else "",
+		"command": command_input.text.strip_edges() if command_input != null else "",
+		"args": _parse_tool_csv(args_input.text) if args_input != null else [],
+		"explicit_type": bool(flags.get("explicit_type", true)),
+		"had_args": bool(flags.get("had_args", false)),
+	}
+
+
+func _editable_mcp_entry_to_config(entry: Dictionary) -> Dictionary:
+	var config := {
+		"command": str(entry.get("command", "")),
+	}
+	if bool(entry.get("explicit_type", true)):
+		config["type"] = "stdio"
+	var args := entry.get("args", []) as Array
+	if not args.is_empty() or bool(entry.get("had_args", false)):
+		config["args"] = args.duplicate()
+	return config
+
+
+func _preserved_read_only_mcp_servers() -> Dictionary:
+	var preserved: Dictionary = {}
+	if _configured_options == null or not (_configured_options.mcp_servers is Dictionary):
+		return preserved
+	var classification := _classify_mcp_servers(_configured_options.mcp_servers)
+	for entry_variant in classification.get("read_only", []) as Array:
+		var entry := entry_variant as Dictionary
+		if not bool(entry.get("preserve_in_options", false)):
+			continue
+		var server_name := str(entry.get("server_name", "")).strip_edges()
+		if server_name.is_empty() or not entry.has("preserved_value"):
+			continue
+		var preserved_value: Variant = entry.get("preserved_value")
+		if preserved_value is Dictionary or preserved_value is Array:
+			preserved[server_name] = preserved_value.duplicate(true)
+		else:
+			preserved[server_name] = preserved_value
+	return preserved
+
+
+func _merge_mcp_servers(preserved: Dictionary, editable_entries: Array[Dictionary]) -> Dictionary:
+	var merged := preserved.duplicate(true)
+	for entry in editable_entries:
+		var server_name := str(entry.get("name", "")).strip_edges()
+		if server_name.is_empty() or merged.has(server_name):
+			continue
+		merged[server_name] = _editable_mcp_entry_to_config(entry)
+	return merged
+
+
+func _next_mcp_server_name(preserved: Dictionary, editable_entries: Array[Dictionary]) -> String:
+	var used := {}
+	for server_name in preserved.keys():
+		used[str(server_name)] = true
+	for entry in editable_entries:
+		var server_name := str(entry.get("name", "")).strip_edges()
+		if not server_name.is_empty():
+			used[server_name] = true
+	var base_name := "stdio-server"
+	if not used.has(base_name):
+		return base_name
+	var suffix := 2
+	while used.has("%s-%d" % [base_name, suffix]):
+		suffix += 1
+	return "%s-%d" % [base_name, suffix]
+
+
+func _sync_mcp_authoring_to_options() -> void:
+	if _configured_options == null or _suppress_configuration_sync:
+		return
+	if _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
+		_refresh_mcp_summary()
+		return
+	_configured_options.mcp_servers = _merge_mcp_servers(_preserved_read_only_mcp_servers(), _editable_mcp_row_entries())
+	_refresh_mcp_summary()
 
 
 func _refresh_live_session_diagnostics() -> void:
@@ -3094,6 +3462,39 @@ func _on_tool_group_enable_all_pressed(group_id: String) -> void:
 func _on_tool_group_disable_all_pressed(group_id: String) -> void:
 	_set_group_tool_state(group_id, false)
 	_sync_configuration_from_controls()
+
+
+func _on_add_mcp_server_pressed() -> void:
+	if _configured_options == null or _current_mcp_authoring_locked():
+		return
+	if _configured_options.mcp_servers is String and not str(_configured_options.mcp_servers).strip_edges().is_empty():
+		return
+	var preserved := _preserved_read_only_mcp_servers()
+	var editable_entries := _editable_mcp_row_entries()
+	editable_entries.append({
+		"name": _next_mcp_server_name(preserved, editable_entries),
+		"command": "",
+		"args": [],
+		"explicit_type": true,
+		"had_args": false,
+	})
+	_configured_options.mcp_servers = _merge_mcp_servers(preserved, editable_entries)
+	_refresh_mcp_summary()
+	_rebuild_mcp_authoring_rows()
+	_refresh_configuration_controls()
+
+
+func _on_mcp_editable_row_text_changed(_new_text: String, _row: Control) -> void:
+	_sync_mcp_authoring_to_options()
+
+
+func _on_remove_mcp_server_pressed(row: Control) -> void:
+	if _configured_options == null or _current_mcp_authoring_locked():
+		return
+	_configured_options.mcp_servers = _merge_mcp_servers(_preserved_read_only_mcp_servers(), _editable_mcp_row_entries(row))
+	_refresh_mcp_summary()
+	_rebuild_mcp_authoring_rows()
+	_refresh_configuration_controls()
 
 
 func _on_rewind_button_pressed(entry_id: int) -> void:

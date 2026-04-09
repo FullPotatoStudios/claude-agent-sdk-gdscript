@@ -46,7 +46,7 @@ Use `ClaudeClientNode` when:
 
 Use `ClaudeChatPanel` when:
 
-- you want a working Claude chat UI with auth-state, saved-session browsing, connect controls, transcript rendering, disconnected prompt/tool configuration editing, and a composer immediately
+- you want a working Claude chat UI with auth-state, saved-session browsing, connect controls, transcript rendering, disconnected prompt/tool/MCP configuration editing, and a composer immediately
 - you want a reference implementation for custom UI work
 - you are happy with the panel owning its own internal `ClaudeClientNode`
 
@@ -103,5 +103,6 @@ The integration layer is intentionally thin.
 - the deprecated Python `debug_stderr` convenience shim is intentionally not mirrored in GDScript; use `stderr` plus optional `extra_args = {"debug-to-stderr": null}` instead
 - richer `system_prompt` modes and base built-in tool selection live in `ClaudeAgentOptions` and flow through every layer, including the panel
 - `ClaudeBuiltInToolCatalog` is the shared runtime source of truth for built-in Claude Code tool metadata used by the reference panel and available to custom panels
+- `ClaudeChatPanel` now edits only the bounded external `stdio` subset of dictionary-backed `mcp_servers`; SDK-hosted servers, raw passthrough strings, and non-`stdio` configs remain read-only in the panel and code-authored at the runtime layer
 
 For panel-specific setup and usage guidance, see `docs/contributing/ui-panel.md`.

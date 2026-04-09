@@ -61,7 +61,7 @@ This payload includes:
 - `ClaudeBuiltInToolCatalog`
 - `ClaudeClientAdapter`
 - `ClaudeClientNode`
-- `ClaudeChatPanel` with saved-session browsing, transcript restoration, transcript granularity filters, transcript-level rewind actions, disconnected connect-and-send composer behavior, truthful reconnect/resume handoff, saved-session cutoff forks from user or assistant chat bubbles, basic rename/tag/delete controls, and disconnected prompt/tool configuration controls
+- `ClaudeChatPanel` with saved-session browsing, transcript restoration, transcript granularity filters, transcript-level rewind actions, disconnected connect-and-send composer behavior, truthful reconnect/resume handoff, saved-session cutoff forks from user or assistant chat bubbles, basic rename/tag/delete controls, and disconnected prompt/tool/MCP configuration controls
 - the canonical addon `VERSION`
 - the addon-local `LICENSE.txt`
 

@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: remaining reference-panel UX expansion around multiple simultaneous sessions, MCP authoring UX, and editor-plugin workflows
+- Active roadmap slice: remaining reference-panel UX expansion around multiple simultaneous sessions and editor-plugin workflows
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -113,6 +113,8 @@ The first public implementation target is the scene-free core conversation loop,
   - typed hook-input coercion in `ClaudeQuerySession`, including tool-lifecycle `tool_use_id` backfill from the outer control request without mutating the raw callback dictionary
   - `ClaudeChatPanel` connected-session context-usage diagnostics with automatic post-connect / post-result refresh plus manual refresh controls
   - `ClaudeChatPanel` live MCP status cards with reconnect and enable/disable actions backed by the existing runtime MCP controls
+  - `ClaudeChatPanel` disconnected MCP authoring controls for simple dictionary-backed external `stdio` server entries
+  - read-only panel MCP inventory for SDK-hosted servers, raw passthrough `mcp_servers` config, and external non-`stdio` configs that remain code-authored in this slice
   - typed `ClaudeContextUsageResponse`, `ClaudeContextUsageCategory`, `ClaudeContextUsageMemoryFile`, `ClaudeContextUsageMcpTool`, and `ClaudeContextUsageAgent` models for live context diagnostics
   - typed `ClaudeMcpStatusResponse`, `ClaudeMcpServerStatus`, `ClaudeMcpServerInfo`, `ClaudeMcpServerToolInfo`, and `ClaudeMcpServerToolAnnotations` models for live MCP status diagnostics
   - `ClaudeSDKClient`, `ClaudeClientAdapter`, `ClaudeClientNode`, and `ClaudeChatPanel` now consume typed live-diagnostics models instead of raw context/MCP status dictionaries

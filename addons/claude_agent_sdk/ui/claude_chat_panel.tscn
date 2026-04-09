@@ -459,6 +459,29 @@ text = "No MCP servers configured."
 label_settings = SubResource("LabelSettings_bjn48")
 autowrap_mode = 3
 
+[node name="McpAuthoringHintLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup" unique_id=114000142]
+layout_mode = 2
+text = "Disconnected only. Simple external stdio servers can be edited here. SDK-hosted and passthrough configs stay read-only."
+label_settings = SubResource("LabelSettings_bjn48")
+autowrap_mode = 3
+
+[node name="AddMcpServerButton" type="Button" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup" unique_id=114000143]
+layout_mode = 2
+text = "Add stdio server"
+
+[node name="McpEditableServerList" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup" unique_id=114000144]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="McpReadOnlySectionLabel" type="Label" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup" unique_id=114000145]
+layout_mode = 2
+text = "Read-only MCP inventory"
+label_settings = SubResource("LabelSettings_bjn48")
+
+[node name="McpReadOnlyServerList" type="VBoxContainer" parent="Shell/Margin/Body/SettingsScroll/SettingsBody/ControlRow/ControlMargin/SettingsRow/McpSummarySection/McpSummaryGroup" unique_id=114000146]
+layout_mode = 2
+theme_override_constants/separation = 8
+
 [node name="SplitRow" type="HSplitContainer" parent="Shell/Margin/Body" unique_id=1314554121]
 layout_mode = 2
 size_flags_vertical = 3

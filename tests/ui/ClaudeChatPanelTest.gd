@@ -36,7 +36,14 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 	var sdk_server := ClaudeMcp.create_sdk_server(
 		"gameplay",
 		"1.0.0",
-		[]
+		[
+			ClaudeMcp.tool(
+				"echo",
+				"Echo input",
+				ClaudeMcp.schema_object({"text": ClaudeMcp.schema_scalar("string")}, ["text"]),
+				func(tool_args: Dictionary): return {"content": [{"type": "text", "text": str(tool_args.get("text", ""))}]}
+			),
+		]
 	)
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(ClaudeAgentOptionsScript.new({
@@ -49,6 +56,7 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 		"mcp_servers": {
 			"gameplay": sdk_server,
 			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+			"http_api": {"type": "http", "url": "https://example.com/mcp"},
 		},
 	}), FakeTransportScript.new())
 
@@ -80,6 +88,182 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 	assert_str(_line_edit(panel, "DisallowedToolsInput").text).is_equal("Edit")
 	assert_str(_label(panel, "McpSummaryValue").text).contains("gameplay")
 	assert_str(_label(panel, "McpSummaryValue").text).contains("filesystem")
+	assert_str(_label(panel, "McpSummaryValue").text).contains("http_api")
+	assert_bool(_button(panel, "AddMcpServerButton").disabled).is_false()
+	assert_object(_mcp_editable_row(panel, 0)).is_not_null()
+	assert_str(_mcp_row_name_input(panel, 0).text).is_equal("filesystem")
+	assert_str(_mcp_row_command_input(panel, 0).text).is_equal("mcp-server")
+	assert_str(_mcp_row_args_input(panel, 0).text).is_equal("stdio")
+	assert_object(panel.find_child("McpReadOnlyServerRow_gameplay", true, false)).is_not_null()
+	assert_object(panel.find_child("McpReadOnlyServerRow_http_api", true, false)).is_not_null()
+	assert_str(_label(panel, "McpReadOnlyServerDetail_gameplay").text).contains("mcp__gameplay__echo")
+	assert_str(_label(panel, "McpReadOnlyServerDetail_http_api").text).contains("https://example.com/mcp")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_mcp_authoring_updates_external_stdio_rows_and_preserves_read_only_entries() -> void:
+	var sdk_server := ClaudeMcp.create_sdk_server(
+		"gameplay",
+		"1.0.0",
+		[
+			ClaudeMcp.tool(
+				"echo",
+				"Echo input",
+				ClaudeMcp.schema_object({"text": ClaudeMcp.schema_scalar("string")}, ["text"]),
+				func(tool_args: Dictionary): return {"content": [{"type": "text", "text": str(tool_args.get("text", ""))}]}
+			),
+		]
+	)
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"mcp_servers": {
+			"gameplay": sdk_server,
+			"filesystem": {"type": "stdio", "command": "mcp-server", "args": ["stdio"]},
+			"http_api": {"type": "http", "url": "https://example.com/mcp"},
+		},
+	}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	_mcp_row_name_input(panel, 0).text = "local_tools"
+	_mcp_row_name_input(panel, 0).text_changed.emit("local_tools")
+	_mcp_row_command_input(panel, 0).text = "/usr/local/bin/mcp-server"
+	_mcp_row_command_input(panel, 0).text_changed.emit("/usr/local/bin/mcp-server")
+	_mcp_row_args_input(panel, 0).text = "--stdio,--project,/tmp/workspace"
+	_mcp_row_args_input(panel, 0).text_changed.emit("--stdio,--project,/tmp/workspace")
+	_button(panel, "AddMcpServerButton").pressed.emit()
+	await _await_frames(1)
+
+	_mcp_row_name_input(panel, 1).text = "scratch"
+	_mcp_row_name_input(panel, 1).text_changed.emit("scratch")
+	_mcp_row_command_input(panel, 1).text = "python"
+	_mcp_row_command_input(panel, 1).text_changed.emit("python")
+	_mcp_row_args_input(panel, 1).text = "-m,example_mcp"
+	_mcp_row_args_input(panel, 1).text_changed.emit("-m,example_mcp")
+	await _await_frames(2)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	var mcp_servers := configured_options.mcp_servers as Dictionary
+	assert_bool(mcp_servers.has("filesystem")).is_false()
+	assert_dict(mcp_servers["local_tools"]).is_equal({
+		"type": "stdio",
+		"command": "/usr/local/bin/mcp-server",
+		"args": ["--stdio", "--project", "/tmp/workspace"],
+	})
+	assert_dict(mcp_servers["scratch"]).is_equal({
+		"type": "stdio",
+		"command": "python",
+		"args": ["-m", "example_mcp"],
+	})
+	assert_bool(mcp_servers.has("gameplay")).is_true()
+	assert_bool(mcp_servers.has("http_api")).is_true()
+	assert_object(((mcp_servers["gameplay"] as Dictionary).get("instance"))).is_instanceof(ClaudeSdkMcpServer)
+	assert_str(_label(panel, "McpSummaryValue").text).contains("local_tools")
+	assert_str(_label(panel, "McpSummaryValue").text).contains("scratch")
+	assert_object(panel.find_child("McpReadOnlyServerRow_gameplay", true, false)).is_not_null()
+	assert_object(panel.find_child("McpReadOnlyServerRow_http_api", true, false)).is_not_null()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_mcp_authoring_remove_button_clears_added_stdio_rows() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new(), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	_button(panel, "AddMcpServerButton").pressed.emit()
+	await _await_frames(1)
+	assert_object(_mcp_editable_row(panel, 0)).is_not_null()
+	assert_bool((panel.get("_configured_options") as ClaudeAgentOptions).mcp_servers is Dictionary).is_true()
+	assert_bool(((panel.get("_configured_options") as ClaudeAgentOptions).mcp_servers as Dictionary).has("stdio-server")).is_true()
+
+	_mcp_remove_button(panel, 0).pressed.emit()
+	await _await_frames(1)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	assert_object(_mcp_editable_row(panel, 0)).is_null()
+	assert_dict(configured_options.mcp_servers).is_empty()
+	assert_str(_label(panel, "McpSummaryValue").text).is_equal("No MCP servers configured.")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_mcp_authoring_treats_raw_passthrough_as_read_only() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"mcp_servers": "/tmp/mcp-config.json",
+	}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	assert_bool(_button(panel, "AddMcpServerButton").disabled).is_true()
+	assert_int(_control(panel, "McpEditableServerList").get_child_count()).is_equal(0)
+	assert_object(panel.find_child("McpReadOnlyServerRow_passthrough", true, false)).is_not_null()
+	assert_str(_label(panel, "McpAuthoringHintLabel").text).contains("raw MCP passthrough")
+	assert_str(_label(panel, "McpReadOnlyServerDetail_passthrough").text).contains("/tmp/mcp-config.json")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_mcp_authoring_preserves_non_dictionary_read_only_entries() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"mcp_servers": {
+			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+			"legacy_passthrough": "res://mcp/legacy.json",
+		},
+	}), FakeTransportScript.new())
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	assert_object(panel.find_child("McpReadOnlyServerRow_legacy_passthrough", true, false)).is_not_null()
+	assert_str(_label(panel, "McpReadOnlyServerDetail_legacy_passthrough").text).contains("res://mcp/legacy.json")
+
+	_mcp_row_name_input(panel, 0).text = "workspace_tools"
+	_mcp_row_name_input(panel, 0).text_changed.emit("workspace_tools")
+	await _await_frames(1)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	var mcp_servers := configured_options.mcp_servers as Dictionary
+	assert_bool(mcp_servers.has("legacy_passthrough")).is_true()
+	assert_str(str(mcp_servers["legacy_passthrough"])).is_equal("res://mcp/legacy.json")
+	assert_bool(mcp_servers.has("workspace_tools")).is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_mcp_authoring_controls_lock_while_connected() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"mcp_servers": {
+			"filesystem": {"command": "mcp-server", "args": ["stdio"]},
+		},
+	}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	assert_bool(_button(panel, "AddMcpServerButton").disabled).is_false()
+	assert_bool(_mcp_row_name_input(panel, 0).editable).is_true()
+	panel.connect_client()
+	await _await_frames(1)
+
+	assert_bool(_button(panel, "AddMcpServerButton").disabled).is_true()
+	assert_bool(_mcp_row_name_input(panel, 0).editable).is_false()
+	assert_bool(_mcp_row_command_input(panel, 0).editable).is_false()
+	assert_bool(_mcp_row_args_input(panel, 0).editable).is_false()
 
 	await _cleanup_panel(panel)
 
@@ -3018,6 +3202,38 @@ func _option_button(panel, node_name: String) -> OptionButton:
 func _selected_option_text(panel, node_name: String) -> String:
 	var option := _option_button(panel, node_name)
 	return option.get_item_text(option.selected)
+
+
+func _mcp_editable_row(panel, index: int) -> Control:
+	return panel.find_child("McpEditableServerRow_%d" % index, true, false) as Control
+
+
+func _mcp_row_name_input(panel, index: int) -> LineEdit:
+	var row := _mcp_editable_row(panel, index)
+	if row == null:
+		return null
+	return row.find_child("McpServerNameInput", true, false) as LineEdit
+
+
+func _mcp_row_command_input(panel, index: int) -> LineEdit:
+	var row := _mcp_editable_row(panel, index)
+	if row == null:
+		return null
+	return row.find_child("McpServerCommandInput", true, false) as LineEdit
+
+
+func _mcp_row_args_input(panel, index: int) -> LineEdit:
+	var row := _mcp_editable_row(panel, index)
+	if row == null:
+		return null
+	return row.find_child("McpServerArgsInput", true, false) as LineEdit
+
+
+func _mcp_remove_button(panel, index: int) -> Button:
+	var row := _mcp_editable_row(panel, index)
+	if row == null:
+		return null
+	return row.find_child("McpRemoveServerButton", true, false) as Button
 
 
 func _built_in_tool_checkbox(panel, tool_name: String) -> CheckBox:

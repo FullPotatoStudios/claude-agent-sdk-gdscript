@@ -322,6 +322,11 @@ Delivered in Phase 10AJ:
 - session-tag sanitization now covers broader single-codepoint NFKC compatibility rewrites plus iterative stripping of format/private-use/unassigned codepoint ranges
 - runtime coverage now includes the previously missing parity regressions for `Å`, `㎏`, `µ`, `⒈`, `㏂`, `㉑`, `ʰ`, and `ſ`
 
+Delivered in Phase 10AK:
+- `ClaudeChatPanel` disconnected MCP authoring controls for simple dictionary-backed external `stdio` server entries, including add/remove rows plus name/command/args editing
+- read-only MCP inventory cards in the panel for SDK-hosted servers, raw passthrough `mcp_servers` config, and external non-`stdio` configs that stay code-authored in this slice
+- panel/docs coverage updated so MCP configuration authoring is treated as a bounded reference-UI capability rather than full SDK MCP tool-handler authoring
+
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
 - per-task `stop_task(task_id)` controls in the reference panel while a task is active
@@ -379,7 +384,7 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
+The current bounded MCP authoring slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
 
 ## Parity findings (2026-04-09)
 

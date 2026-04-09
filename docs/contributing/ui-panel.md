@@ -103,7 +103,9 @@ The shipped panel currently includes:
 - connected-only live context-usage inspection with manual refresh plus automatic refresh after connect and turn results
 - connected-only MCP server status cards with reconnect and enable/disable controls in the separate `Settings` view
 - typed runtime live-diagnostics models underneath those cards via `ClaudeContextUsageResponse` and `ClaudeMcpStatusResponse`
-- disconnected-only system prompt, built-in tool, advanced allow/deny, rewind-support, and MCP-summary editing in the separate `Settings` view
+- disconnected-only system prompt, built-in tool, advanced allow/deny, rewind-support, and bounded MCP configuration editing in the separate `Settings` view
+- disconnected-only editing for simple external dictionary-backed `stdio` MCP servers, with add/remove rows plus name/command/args controls
+- read-only MCP inventory cards for SDK-hosted servers, raw passthrough `mcp_servers` config, and external non-`stdio` server configs that the panel does not rewrite
 - per-user rewind actions in the transcript when the active session has rewindable user-message UUIDs available
 
 Live transcript detail uses the same normalized transcript model as saved-session restoration:
@@ -123,8 +125,9 @@ The panel intentionally does not yet include:
 
 - multiple simultaneous in-flight sessions inside one panel instance
 - richer task dashboards beyond the current per-task transcript cards and stop control
-- SDK-hosted MCP/custom-tool authoring UX
 - editor-plugin workflows
 
 The built-in tool picker only covers Claude's built-in tools. SDK/external MCP
 tools still stay code-driven through `ClaudeMcp` and `ClaudeAgentOptions`.
+The panel can edit simple external `stdio` config and inspect existing
+SDK-hosted tool inventory, but it does not author tool handlers or schemas.
