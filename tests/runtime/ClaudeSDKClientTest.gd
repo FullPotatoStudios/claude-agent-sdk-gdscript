@@ -603,7 +603,7 @@ func test_client_disconnect_finishes_active_streams() -> void:
 	assert_bool(stream.is_finished()).is_true()
 
 
-func test_client_emits_error_signal_for_async_control_response_failure() -> void:
+func test_client_emits_error_signal_for_async_control_response_failure_after_model_reset_request() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
 	var errors: Array[String] = []
@@ -619,8 +619,10 @@ func test_client_emits_error_signal_for_async_control_response_failure() -> void
 		},
 	})
 
-	client.set_model("sonnet")
+	client.set_model(null)
 	var model_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+	assert_that((model_request.get("request", {}) as Dictionary).get("model", "missing")).is_equal(null)
 	transport.emit_stdout_message({
 		"type": "control_response",
 		"response": {
@@ -633,6 +635,49 @@ func test_client_emits_error_signal_for_async_control_response_failure() -> void
 
 	assert_array(errors).contains(["model denied"])
 	assert_str(client.get_last_error()).contains("model denied")
+	client.disconnect_client()
+
+
+func test_client_set_model_without_argument_serializes_null_reset() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.set_model()
+	var model_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+	assert_that((model_request.get("request", {}) as Dictionary).get("model", "missing")).is_equal(null)
+	client.disconnect_client()
+
+
+func test_client_set_model_rejects_non_string_non_null_value() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	client.set_model(123)
+
+	assert_str(client.get_last_error()).contains("model must be null or a String")
+	assert_int(transport.writes.size()).is_equal(1)
 	client.disconnect_client()
 
 

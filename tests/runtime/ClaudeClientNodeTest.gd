@@ -402,6 +402,35 @@ func test_node_stop_task_passthroughs_to_runtime_client() -> void:
 	await _await_frames(2)
 
 
+func test_node_set_model_null_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	node.set_model(null)
+	var model_request := _read_last_write(transport)
+	assert_str(str((model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+	assert_that((model_request.get("request", {}) as Dictionary).get("model", "missing")).is_equal(null)
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
 func _await_frames(count: int) -> void:
 	for _index in range(count):
 		await get_tree().process_frame

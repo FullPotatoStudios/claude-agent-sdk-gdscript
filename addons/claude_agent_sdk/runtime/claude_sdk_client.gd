@@ -110,7 +110,7 @@ func set_permission_mode(mode: String) -> void:
 	_last_error = _session.get_last_error()
 
 
-func set_model(model: String = "") -> void:
+func set_model(model = null) -> void:
 	if _session == null:
 		_emit_error("Call connect_client() before set_model()")
 		return

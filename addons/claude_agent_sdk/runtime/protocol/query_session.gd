@@ -197,10 +197,13 @@ func set_permission_mode(mode: String) -> void:
 	})
 
 
-func set_model(model: String = "") -> void:
+func set_model(model = null) -> void:
+	if model != null and not (model is String or model is StringName):
+		_emit_error("model must be null or a String")
+		return
 	_send_control_request({
 		"subtype": "set_model",
-		"model": model,
+		"model": null if model == null else str(model),
 	})
 
 

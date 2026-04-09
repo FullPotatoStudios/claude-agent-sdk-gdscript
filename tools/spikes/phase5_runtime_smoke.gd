@@ -412,7 +412,7 @@ func _run_dynamic_model_smoke(args: Dictionary) -> Dictionary:
 		"What is 2 + 2? Just respond with the number."
 	)
 
-	client.set_model("")
+	client.set_model(null)
 	await process_frame
 	_append_client_error(control_errors, client)
 	var reset_turn := await _run_connected_client_turn(
@@ -424,7 +424,7 @@ func _run_dynamic_model_smoke(args: Dictionary) -> Dictionary:
 
 	summary["control_errors"] = control_errors
 	summary["model_switch_value"] = "haiku"
-	summary["model_reset_value"] = ""
+	summary["model_reset_value"] = null
 	summary["turn_summaries"] = [default_turn, switched_turn, reset_turn]
 	summary["ok"] = bool(summary.get("init_present", false)) \
 		and control_errors.is_empty() \
@@ -918,7 +918,7 @@ func _empty_summary(mode: String) -> Dictionary:
 		"interrupt_error": "",
 		"interrupt_stream_summary": {},
 		"model_switch_value": "",
-		"model_reset_value": "",
+		"model_reset_value": null,
 		"sdk_mcp_executions": [],
 		"sdk_mcp_server_name": "",
 		"sdk_mcp_expected_executed": [],

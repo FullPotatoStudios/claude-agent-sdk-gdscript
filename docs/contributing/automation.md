@@ -31,7 +31,7 @@ It also now exercises bounded authenticated parity coverage for:
 - `PreToolUse` hook callbacks on real Bash tool use
 - `can_use_tool` permission callbacks on an interactive Bash `touch` prompt, using a temp target outside the project cwd
 - live `set_permission_mode()` switching on a connected `ClaudeSDKClient`
-- live `set_model()` switching plus an empty-string reset probe for upstream `set_model(None)` parity
+- live `set_model()` switching plus `set_model(null)` / zero-arg reset parity for upstream `set_model(None)`
 - live `interrupt()` requests on a connected `ClaudeSDKClient`
 - SDK-hosted MCP tool execution, permission enforcement, multi-tool sequencing, and no-permission non-execution coverage on a connected `ClaudeSDKClient`
 

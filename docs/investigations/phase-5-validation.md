@@ -135,7 +135,7 @@ Implemented assertions for the new smoke modes:
 - `hook_pre_tool_use`: requires a `PreToolUse` hook to match a real Bash invocation, see a non-empty `tool_use_id`, and allow the request through `hookSpecificOutput.permissionDecision = "allow"`
 - `tool_permission_bash_touch`: connects a real `ClaudeSDKClient`, sends an interactive string `query("Run the command: touch ...")`, then requires a real Bash permission callback, a non-empty `tool_use_id`, and the prompted temp file created via `touch` outside the project cwd
 - `dynamic_permission_mode`: connects a real `ClaudeSDKClient`, waits for initialize completion, switches from the default permission mode to `acceptEdits`, completes a first turn, switches back to `default`, and completes a second turn without control or stream errors
-- `dynamic_model`: connects a real `ClaudeSDKClient`, completes one turn on the initial model, switches to `haiku`, completes another turn, then probes upstream `set_model(None)` reset parity through the current local `set_model("")` path before attempting a third turn
+- `dynamic_model`: connects a real `ClaudeSDKClient`, completes one turn on the initial model, switches to `haiku`, completes another turn, then resets to the default model through local `set_model(null)` parity with upstream `set_model(None)` before attempting a third turn
 - `dynamic_interrupt`: connects a real `ClaudeSDKClient`, starts a longer-running turn, sends `interrupt()`, and verifies the request does not surface a local client error while the response stream remains consumable without assuming a specific interrupted result shape
 - `context_usage`: connects a real `ClaudeSDKClient`, completes one real turn, then requires `get_context_usage()` to return a typed response with non-empty categories and non-negative total/max token counts without assuming the CLI always returns a model string
 - `mcp_status`: connects a real `ClaudeSDKClient` with an SDK MCP server, polls `get_mcp_status()` briefly for the configured server entry, and then requires concrete tool metadata for that SDK server without assuming a fixed live status string unless the CLI reports one deterministically
@@ -146,10 +146,9 @@ Implemented assertions for the new smoke modes:
 
 Current local rerun status:
 
-- a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` now succeeds through `tool_permission_bash_touch` after the smoke moved to the upstream-style interactive `ClaudeSDKClient.query(String)` flow and mirrored the Python SDK by touching a temp file outside the project cwd
+- a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` now succeeds through the full current bounded wrapper, including `tool_permission_bash_touch`, `dynamic_model`, `dynamic_interrupt`, `context_usage`, `mcp_status`, and the SDK MCP live modes
 - the same authenticated environment also passes upstream Python `e2e-tests/test_tool_permissions.py`, confirming the local smoke now matches the pinned `v0.1.54` callback path instead of relying on the earlier in-project workaround
-- the next full-wrapper blocker is now `dynamic_model`: the first two live turns succeed, but the third turn after local `set_model("")` reset still returns Claude API `400 invalid_request_error` because the CLI receives an empty model string instead of the upstream `set_model(None)` reset semantics
-- because the wrapper currently exits on that later failure, the `dynamic_interrupt`, `context_usage`, and `mcp_status` modes were not re-run end to end in the same wrapper pass
+- the `dynamic_model` reset leg now passes after the local runtime widened `set_model()` to nullable/default-null control requests, so the wire payload mirrors upstream `{"subtype": "set_model", "model": null}` semantics instead of sending an empty string
 - the new SDK MCP modes were re-validated directly on `2026-04-09` through authenticated `tools/spikes/phase5_runtime_smoke.gd` invocations:
   - `sdk_mcp_tool_execution`
   - `sdk_mcp_permission_enforcement`
@@ -164,4 +163,4 @@ Scope note:
 
 - this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
 - session-forking, rewind/task, live `toggle_mcp_server()` / `reconnect_mcp_server()` coverage, and `plugins` / `user` coverage remain future follow-up work
-- `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run when the full wrapper is blocked on a later parity gap
+- `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run while new parity slices are being developed or debugged

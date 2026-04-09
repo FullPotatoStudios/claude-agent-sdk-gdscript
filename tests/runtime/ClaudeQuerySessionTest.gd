@@ -1678,11 +1678,25 @@ func test_dynamic_controls_send_expected_control_requests() -> void:
 	session.set_model("haiku")
 	var model_request: Dictionary = JSON.parse_string(transport.writes[-1])
 	assert_str(str((model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+	assert_that((model_request.get("request", {}) as Dictionary).get("model", null)).is_equal("haiku")
 	transport.emit_stdout_message({
 		"type": "control_response",
 		"response": {
 			"subtype": "success",
 			"request_id": str(model_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.set_model(null)
+	var reset_model_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((reset_model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+	assert_that((reset_model_request.get("request", {}) as Dictionary).get("model", "missing")).is_equal(null)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(reset_model_request.get("request_id", "")),
 			"response": {},
 		},
 	})

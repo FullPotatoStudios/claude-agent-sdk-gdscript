@@ -79,7 +79,7 @@ func set_permission_mode(mode: String) -> void:
 	_client.set_permission_mode(mode)
 
 
-func set_model(model: String = "") -> void:
+func set_model(model = null) -> void:
 	_client.set_model(model)
 
 

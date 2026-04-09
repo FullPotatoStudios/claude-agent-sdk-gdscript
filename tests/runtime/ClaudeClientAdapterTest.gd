@@ -1043,6 +1043,29 @@ func test_adapter_stop_task_passthroughs_to_runtime_client() -> void:
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_set_model_null_passthroughs_to_runtime_client() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.set_model(null)
+	var model_request := _read_last_write(transport)
+	assert_str(str((model_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("set_model")
+	assert_that((model_request.get("request", {}) as Dictionary).get("model", "missing")).is_equal(null)
+	await _cleanup_adapter(adapter)
+
+
 func _await_frames(count: int) -> void:
 	for _index in range(count):
 		await get_tree().process_frame

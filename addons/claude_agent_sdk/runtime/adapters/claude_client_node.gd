@@ -54,7 +54,7 @@ func set_permission_mode(mode: String) -> void:
 	_adapter.set_permission_mode(mode)
 
 
-func set_model(model: String = "") -> void:
+func set_model(model = null) -> void:
 	_adapter.set_model(model)
 
 
