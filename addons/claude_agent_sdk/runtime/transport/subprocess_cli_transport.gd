@@ -233,8 +233,6 @@ func _fallback_cli_locations() -> PackedStringArray:
 
 
 func _get_cli_search_path_env() -> String:
-	if _options.env.has("PATH"):
-		return str(_options.env["PATH"])
 	if OS.has_environment("PATH"):
 		return OS.get_environment("PATH")
 	return ""

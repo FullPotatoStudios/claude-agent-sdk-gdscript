@@ -260,8 +260,8 @@ Delivered in Phase 10P:
 - documented Windows caveat for the shell-backed runtime, where `ClaudeAgentOptions.user` remains unsupported
 
 Delivered in Phase 10Q:
-- upstream-style CLI discovery fallback parity for the default `cli_path`
-- launch-time/auth-probe search through `PATH` plus the same common local install locations used by the Python SDK
+- non-bundled upstream-style CLI discovery fallback parity for the default `cli_path`
+- launch-time/auth-probe search through host `PATH` plus the same common local install locations used by the Python SDK
 - coverage that keeps public process-spec inspection stable while launch paths resolve lazily
 
 Delivered in Phase 10AA:

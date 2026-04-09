@@ -111,6 +111,23 @@ func test_resolve_cli_path_uses_upstream_fallback_locations_when_path_lookup_mis
 	assert_str(resolved_path).is_equal("/usr/local/bin/claude")
 
 
+func test_resolve_cli_path_treats_empty_cli_path_as_default_like() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var transport := CliDiscoveryTransport.new(
+		{"cli_path": ""},
+		"",
+		"/Users/tester",
+		[
+			"/Users/tester/.npm-global/bin/claude",
+		]
+	)
+
+	var resolved_path := transport._resolve_cli_path_for_launch()
+
+	assert_str(resolved_path).is_equal("/Users/tester/.npm-global/bin/claude")
+
+
 func test_resolve_cli_path_preserves_explicit_custom_override() -> void:
 	var explicit_path := "/tmp/custom/claude"
 	var transport := CliDiscoveryTransport.new(
@@ -125,6 +142,39 @@ func test_resolve_cli_path_preserves_explicit_custom_override() -> void:
 	var resolved_path := transport._resolve_cli_path_for_launch()
 
 	assert_str(resolved_path).is_equal(explicit_path)
+
+
+func test_resolve_cli_path_uses_host_path_instead_of_options_env_override() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var transport := CliDiscoveryTransport.new(
+		{"env": {"PATH": "/override/bin"}},
+		"/host/bin",
+		"/Users/tester",
+		[
+			"/host/bin/claude",
+			"/override/bin/claude",
+		]
+	)
+
+	var resolved_path := transport._resolve_cli_path_for_launch()
+
+	assert_str(resolved_path).is_equal("/host/bin/claude")
+
+
+func test_fallback_cli_locations_match_upstream_non_bundled_order() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var transport := CliDiscoveryTransport.new({}, "", "/Users/tester")
+
+	assert_array(Array(transport._fallback_cli_locations())).is_equal([
+		"/Users/tester/.npm-global/bin/claude",
+		"/usr/local/bin/claude",
+		"/Users/tester/.local/bin/claude",
+		"/Users/tester/node_modules/.bin/claude",
+		"/Users/tester/.yarn/bin/claude",
+		"/Users/tester/.claude/local/claude",
+	])
 
 
 func test_probe_auth_status_uses_resolved_cli_path_without_changing_public_logical_spec() -> void:
