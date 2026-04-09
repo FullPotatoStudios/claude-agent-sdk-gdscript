@@ -492,6 +492,7 @@ func _run_context_usage_smoke(args: Dictionary) -> Dictionary:
 	_merge_turn_summary(summary, turn_summary)
 	summary["control_errors"] = control_errors
 	summary["context_usage"] = _variant_to_dictionary(usage)
+	summary["context_usage_typed"] = usage is ClaudeContextUsageResponse
 	summary["context_usage_category_count"] = 0
 	summary["context_usage_model"] = ""
 	summary["context_usage_total_tokens"] = 0
@@ -655,13 +656,16 @@ func _run_mcp_status_smoke(args: Dictionary) -> Dictionary:
 
 	summary["control_errors"] = control_errors
 	summary["mcp_status"] = _variant_to_dictionary(status)
+	summary["mcp_status_typed"] = status is ClaudeMcpStatusResponse
 	summary["mcp_status_error"] = control_errors[0] if not control_errors.is_empty() else ""
 	summary["sdk_mcp_server_name"] = server_name
 	summary["mcp_status_observed_status"] = observed_status
 	summary["mcp_status_tool_names"] = tool_names
 	summary["ok"] = bool(summary.get("init_present", false)) \
 		and control_errors.is_empty() \
+		and bool(summary.get("mcp_status_typed", false)) \
 		and not server_status.is_empty() \
+		and not observed_status.is_empty() \
 		and tool_names.has("echo")
 	status = null
 	client = null
@@ -749,7 +753,8 @@ func _poll_mcp_status(client: ClaudeSDKClient, server_name: String, timeout_sec 
 	var latest = null
 	while Time.get_ticks_usec() < timeout_at_usec:
 		latest = await client.get_mcp_status()
-		if not _find_mcp_server_status(latest, server_name).is_empty():
+		var server_status := _find_mcp_server_status(latest, server_name)
+		if not server_status.is_empty() and _dictionary_string_array(server_status.get("tools", [])).has("echo"):
 			return latest
 		if not client.get_last_error().is_empty():
 			return latest
@@ -917,6 +922,7 @@ func _empty_summary(mode: String) -> Dictionary:
 		"sdk_mcp_expected_executed": [],
 		"sdk_mcp_expected_not_executed": [],
 		"context_usage": {},
+		"context_usage_typed": false,
 		"context_usage_category_count": 0,
 		"context_usage_model": "",
 		"context_usage_total_tokens": 0,
@@ -924,6 +930,7 @@ func _empty_summary(mode: String) -> Dictionary:
 		"context_usage_percentage": 0.0,
 		"context_usage_error": "",
 		"mcp_status": {},
+		"mcp_status_typed": false,
 		"mcp_status_error": "",
 		"mcp_status_observed_status": "",
 		"mcp_status_tool_names": [],
