@@ -3,6 +3,7 @@ class_name ClaudeSubprocessCLITransport
 
 const POLL_INTERVAL_SEC := 0.02
 const POLL_INTERVAL_MSEC := 20
+const PROCESS_EXIT_GRACE_MSEC := 5000
 const SDK_ENTRYPOINT := "sdk-gd"
 const DEFAULT_MAX_BUFFER_SIZE := 1024 * 1024
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
@@ -349,11 +350,13 @@ func close() -> void:
 	_stop_requested = true
 	_close_pipes()
 	_wait_for_reader_threads()
-	_wait_for_process_exit()
-	if _pid > 0 and OS.is_process_running(_pid):
-		OS.kill(_pid)
-	_wait_for_reader_threads()
+	var exited_cleanly := _wait_for_process_exit_with_timeout(PROCESS_EXIT_GRACE_MSEC)
+	if not exited_cleanly:
+		_kill_process()
+		_wait_for_process_exit_with_timeout(PROCESS_EXIT_GRACE_MSEC)
 	_connected = false
+	_pid = 0
+	_process = {}
 	_emit_closed_once()
 
 
@@ -855,10 +858,16 @@ func _wait_for_reader_threads() -> void:
 		_stderr_thread = null
 
 
-func _wait_for_process_exit() -> void:
+func _wait_for_process_exit_with_timeout(timeout_msec: int) -> bool:
 	if _pid <= 0:
-		return
-	var attempts := 0
-	while attempts < 10 and OS.is_process_running(_pid):
+		return true
+	var waited_msec := 0
+	while waited_msec < timeout_msec and OS.is_process_running(_pid):
 		OS.delay_msec(POLL_INTERVAL_MSEC)
-		attempts += 1
+		waited_msec += POLL_INTERVAL_MSEC
+	return not OS.is_process_running(_pid)
+
+
+func _kill_process() -> void:
+	if _pid > 0 and OS.is_process_running(_pid):
+		OS.kill(_pid)

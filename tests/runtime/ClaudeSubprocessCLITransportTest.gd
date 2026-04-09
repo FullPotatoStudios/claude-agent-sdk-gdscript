@@ -2,6 +2,38 @@
 extends GdUnitTestSuite
 
 const DEFAULT_MAX_BUFFER_SIZE := 1024 * 1024
+const PROCESS_EXIT_GRACE_MSEC := 5000
+
+
+class CloseBehaviorTransport extends ClaudeSubprocessCLITransport:
+	var wait_results: Array[bool] = []
+	var wait_timeouts: Array[int] = []
+	var kill_calls := 0
+	var close_pipes_calls := 0
+	var reader_wait_calls := 0
+
+	func _init(config: Dictionary = {}, results: Array[bool] = []) -> void:
+		wait_results = results.duplicate()
+		super(ClaudeAgentOptions.new(config))
+
+	func _close_pipes() -> void:
+		close_pipes_calls += 1
+		_stdio = null
+		_stderr = null
+
+	func _wait_for_reader_threads() -> void:
+		reader_wait_calls += 1
+		_stdout_thread = null
+		_stderr_thread = null
+
+	func _wait_for_process_exit_with_timeout(timeout_msec: int) -> bool:
+		wait_timeouts.append(timeout_msec)
+		if wait_results.is_empty():
+			return true
+		return bool(wait_results.pop_front())
+
+	func _kill_process() -> void:
+		kill_calls += 1
 
 
 func _make_transport(config: Dictionary = {}) -> ClaudeSubprocessCLITransport:
@@ -230,3 +262,44 @@ func test_consume_stdout_chunk_does_not_normalize_zero_buffer_limit() -> void:
 	var result := transport._consume_stdout_chunk(JSON.stringify({"type": "system"}))
 
 	assert_str(str(result.get("error", ""))).contains("maximum buffer size of 0 bytes")
+
+
+func test_close_waits_for_graceful_process_exit_before_force_kill() -> void:
+	var transport := CloseBehaviorTransport.new({}, [true])
+	var close_events := [0]
+	transport.transport_closed.connect(func() -> void:
+		close_events[0] += 1
+	)
+	transport._pid = 123
+	transport._connected = true
+	transport._process = {"pid": 123}
+
+	transport.close()
+
+	assert_array(transport.wait_timeouts).is_equal([PROCESS_EXIT_GRACE_MSEC])
+	assert_int(transport.kill_calls).is_equal(0)
+	assert_int(transport.close_pipes_calls).is_equal(1)
+	assert_int(transport.reader_wait_calls).is_equal(1)
+	assert_bool(transport.transport_is_connected()).is_false()
+	assert_int(transport._pid).is_equal(0)
+	assert_dict(transport._process).is_empty()
+	assert_int(int(close_events[0])).is_equal(1)
+
+
+func test_close_force_kills_process_after_grace_period_timeout() -> void:
+	var transport := CloseBehaviorTransport.new({}, [false, true])
+	transport._pid = 456
+	transport._connected = true
+	transport._process = {"pid": 456}
+
+	transport.close()
+
+	assert_array(transport.wait_timeouts).is_equal([
+		PROCESS_EXIT_GRACE_MSEC,
+		PROCESS_EXIT_GRACE_MSEC,
+	])
+	assert_int(transport.kill_calls).is_equal(1)
+	assert_int(transport.close_pipes_calls).is_equal(1)
+	assert_int(transport.reader_wait_calls).is_equal(1)
+	assert_bool(transport.transport_is_connected()).is_false()
+	assert_int(transport._pid).is_equal(0)
