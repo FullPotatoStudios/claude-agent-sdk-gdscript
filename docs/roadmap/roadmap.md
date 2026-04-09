@@ -273,12 +273,12 @@ Next candidate slice after Phase 10AA:
 Delivered in Phase 10AB:
 - `ClaudeChatPanel` disconnected saved-session user-message `Fork from here` actions backed by runtime `fork_session(..., up_to_message_id, ...)`
 - automatic post-fork selection and transcript restoration for cutoff-based saved-session branches in the reference panel
-- docs and UI coverage updated to keep assistant-message cutoff selection and live-session forking explicitly deferred
+- docs and UI coverage updated to keep assistant-message cutoff selection and live-session forking explicitly deferred at that stage
 
 Delivered in Phase 10AC:
 - `ClaudeChatPanel` disconnected saved-session assistant-message `Fork from here` actions backed by the same runtime `fork_session(..., up_to_message_id, ...)` path used for user-message cutoffs
 - panel/UI coverage updated to keep rewind user-only while proving assistant cutoffs remain inclusive and worktree-aware
-- docs updated so live-session forking and non-message transcript-entry fork parity stay deferred while saved-session chat-bubble cutoff forks now cover both user and assistant messages
+- docs updated so live-session forking and non-message transcript-entry fork parity stayed deferred at that stage while saved-session chat-bubble cutoff forks now cover both user and assistant messages
 
 Delivered in Phase 10AD:
 - transport-owned buffered stdout parsing for split, concatenated, blank-line-separated, and large minified CLI JSON payloads
@@ -290,6 +290,11 @@ Delivered in Phase 10AE:
 - subprocess transport shutdown now gives the Claude CLI a 5-second grace window after stdin EOF before force-killing the process
 - transport coverage now proves clean exits are preserved when they happen inside the grace window, with a forced-kill fallback when they do not
 - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
+
+Delivered in Phase 10AF:
+- `ClaudeChatPanel` connected-idle `Fork live session` handoff that disconnects the active runtime session, forks from the authoritative live session id, and auto-selects the new saved branch offline
+- pending-fork panel locking and truthful status/composer/session-browser copy so the reference UI does not pretend the live runtime mutated in place while the handoff is still in flight
+- worktree-aware panel coverage plus docs/parity updates so saved-session and live-session full-session forking are both treated as delivered reference-panel behavior
 
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
@@ -348,7 +353,7 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, live-session forking, non-message transcript-entry fork parity, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
+The current bounded session-lifecycle truthfulness slice is now delivered. The next parity planning pass should target the remaining reference-panel UX expansion around multiple simultaneous sessions, non-message transcript-entry fork parity, MCP authoring UX, and editor-plugin workflows, while keeping the remaining Windows `user` caveat tracked separately.
 
 ## Parity findings (2026-04-09)
 

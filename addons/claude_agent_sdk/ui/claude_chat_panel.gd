@@ -57,6 +57,7 @@ var _selected_session_transcript: Array[ClaudeSessionTranscriptEntry] = []
 var _delete_confirm_armed := false
 var _live_session_target_id := "default"
 var _authoritative_live_session_id := ""
+var _pending_live_fork: Dictionary = {}
 var _clear_transcript_after_disconnect := false
 var _last_cli_diagnostic_line := ""
 var _forwarded_stderr_callback: Callable = Callable()
@@ -81,6 +82,7 @@ var _live_mcp_status: Dictionary = {}
 var _live_mcp_status_error := ""
 var _mcp_status_refresh_pending := false
 var _mcp_server_action_pending: Dictionary = {}
+var _uuid_regex: RegEx = null
 
 @onready var _shell: PanelContainer = $Shell
 @onready var _status_badge: PanelContainer = $Shell/Margin/Body/Header/TopRow/StatusCluster/StatusBadge
@@ -649,6 +651,42 @@ func _active_session_reference_id() -> String:
 	return current_session_id
 
 
+func _current_live_fork_source_session_id() -> String:
+	if _has_pending_live_fork():
+		return str(_pending_live_fork.get("source_session_id", ""))
+	return _active_session_reference_id()
+
+
+func _current_live_fork_source_directory() -> String:
+	if _has_pending_live_fork():
+		return str(_pending_live_fork.get("source_directory", ""))
+	var active_session_id := _active_session_reference_id()
+	if _has_selected_session() and _selected_session_id == active_session_id:
+		return _selected_session_directory()
+	return _session_scope_directory if not _session_scope_directory.is_empty() else _resolve_session_scope_directory()
+
+
+func _has_pending_live_fork() -> bool:
+	return not _pending_live_fork.is_empty()
+
+
+func _can_fork_live_session() -> bool:
+	if _has_pending_live_fork():
+		return false
+	if not _session_live or _is_connecting or _client_node == null or _client_node.is_busy():
+		return false
+	return _looks_like_session_uuid(_current_live_fork_source_session_id())
+
+
+func _looks_like_session_uuid(session_id: String) -> bool:
+	if session_id.is_empty():
+		return false
+	if _uuid_regex == null:
+		_uuid_regex = RegEx.new()
+		_uuid_regex.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+	return _uuid_regex.search(session_id) != null
+
+
 func _resolve_session_scope_directory() -> String:
 	if _configured_options != null and not _configured_options.cwd.is_empty():
 		return _configured_options.cwd
@@ -664,7 +702,7 @@ func _set_current_view(view: int) -> void:
 
 
 func _refresh_configuration_controls() -> void:
-	var configuration_locked := _session_live or _is_connecting
+	var configuration_locked := _session_live or _is_connecting or _has_pending_live_fork()
 	_chat_model_option.disabled = _is_connecting
 	_chat_permission_mode.disabled = _is_connecting
 	_chat_effort_option.disabled = configuration_locked
@@ -1024,7 +1062,7 @@ func _refresh_built_in_tools_summary() -> void:
 
 
 func _refresh_built_in_tool_group_buttons() -> void:
-	var locked := _session_live or _is_connecting
+	var locked := _session_live or _is_connecting or _has_pending_live_fork()
 	var selected_lookup := {}
 	for tool_name in _selected_built_in_tools():
 		selected_lookup[tool_name] = true
@@ -1045,7 +1083,7 @@ func _refresh_built_in_tool_group_buttons() -> void:
 
 
 func _refresh_built_in_tool_picker_state() -> void:
-	var locked := _session_live or _is_connecting
+	var locked := _session_live or _is_connecting or _has_pending_live_fork()
 	for checkbox_variant in _built_in_tool_checks.values():
 		var checkbox := checkbox_variant as CheckBox
 		checkbox.disabled = locked
@@ -1180,6 +1218,18 @@ func _refresh_selected_session_fields() -> void:
 
 func _refresh_selected_session_metadata() -> void:
 	if _selected_session_info == null:
+		if _session_live or _has_pending_live_fork():
+			var live_session_id := _current_live_fork_source_session_id()
+			var live_directory := _current_live_fork_source_directory()
+			_selected_session_summary.text = "Current live session"
+			_selected_session_meta.text = (
+				"Disconnecting and restoring the new saved fork."
+				if _has_pending_live_fork()
+				else "Disconnect to create a saved fork of the active session."
+			)
+			_selected_session_branch.text = "Session: %s" % live_session_id if _looks_like_session_uuid(live_session_id) else ""
+			_selected_session_cwd.text = "Directory: %s" % live_directory if not live_directory.is_empty() else ""
+			return
 		_selected_session_summary.text = "No saved session selected."
 		_selected_session_meta.text = "Choose a saved transcript to inspect it, or start a new chat."
 		_selected_session_branch.text = ""
@@ -1201,21 +1251,25 @@ func _refresh_selected_session_metadata() -> void:
 func _refresh_session_controls() -> void:
 	var has_selection := _has_selected_session()
 	var switching_locked := not _can_switch_sessions()
-	var mutations_locked := _session_live or _is_connecting
+	var saved_mutations_available := has_selection and not _session_live and not _is_connecting and not _has_pending_live_fork()
+	var live_fork_available := _can_fork_live_session()
+	var delete_locked := _session_live or _is_connecting or _has_pending_live_fork()
 	_session_refresh_button.disabled = switching_locked
 	_new_chat_button.disabled = switching_locked or (not has_selection and _transcript_list.get_child_count() == 0)
 	_session_list.mouse_filter = Control.MOUSE_FILTER_IGNORE if switching_locked else Control.MOUSE_FILTER_STOP
 	_session_list.focus_mode = Control.FOCUS_NONE if switching_locked else Control.FOCUS_ALL
-	_session_title_input.editable = has_selection and not mutations_locked
-	_session_tag_input.editable = has_selection and not mutations_locked
-	_fork_title_input.editable = has_selection and not mutations_locked
-	_rename_session_button.disabled = not has_selection or mutations_locked or _session_title_input.text.strip_edges().is_empty()
-	_apply_tag_button.disabled = not has_selection or mutations_locked or _session_tag_input.text.strip_edges().is_empty()
-	_clear_tag_button.disabled = not has_selection or mutations_locked or _selected_session_info == null or _selected_session_info.tag == null or str(_selected_session_info.tag).is_empty()
-	_delete_session_button.disabled = not has_selection or mutations_locked
-	_fork_session_button.disabled = not has_selection or mutations_locked
-	_confirm_delete_button.visible = has_selection and not mutations_locked and _delete_confirm_armed
-	_cancel_delete_button.visible = has_selection and not mutations_locked and _delete_confirm_armed
+	_session_title_input.editable = saved_mutations_available
+	_session_tag_input.editable = saved_mutations_available
+	_fork_title_input.editable = saved_mutations_available or live_fork_available
+	_rename_session_button.disabled = not saved_mutations_available or _session_title_input.text.strip_edges().is_empty()
+	_apply_tag_button.disabled = not saved_mutations_available or _session_tag_input.text.strip_edges().is_empty()
+	_clear_tag_button.disabled = not saved_mutations_available or _selected_session_info == null or _selected_session_info.tag == null or str(_selected_session_info.tag).is_empty()
+	_delete_session_button.disabled = not has_selection or delete_locked
+	_fork_session_button.disabled = not (saved_mutations_available or live_fork_available)
+	_fork_session_button.text = "Fork live session" if live_fork_available else "Fork session"
+	_fork_session_button.tooltip_text = "Disconnects the active live session and restores the new saved fork." if live_fork_available else ""
+	_confirm_delete_button.visible = has_selection and not delete_locked and _delete_confirm_armed
+	_cancel_delete_button.visible = has_selection and not delete_locked and _delete_confirm_armed
 
 
 func _has_selected_session() -> bool:
@@ -1229,6 +1283,8 @@ func _selected_session_directory() -> String:
 
 
 func _can_switch_sessions() -> bool:
+	if _has_pending_live_fork():
+		return false
 	if _is_connecting:
 		return false
 	if not _session_live:
@@ -1255,6 +1311,8 @@ func _restore_disconnected_view() -> void:
 	_refresh_composer_state()
 	_refresh_session_controls()
 	_refresh_transcript_entry_views_visibility()
+	if _has_pending_live_fork():
+		call_deferred("_complete_pending_live_fork_handoff")
 
 
 func _on_client_session_ready(server_info: Dictionary) -> void:
@@ -2527,7 +2585,11 @@ func _bubble_color(role: String) -> Color:
 
 
 func _update_status_from_state(server_info: Dictionary = {}) -> void:
-	if _session_live:
+	if _has_pending_live_fork():
+		_set_status_badge("Forking", COLOR_ACCENT)
+		_status_title.text = "Creating a saved fork"
+		_status_detail.text = "Disconnecting the active live session and restoring the new saved fork."
+	elif _session_live:
 		var command_count := (server_info.get("commands", []) as Array).size() if server_info.has("commands") else 0
 		_set_status_badge("Connected", COLOR_SUCCESS)
 		_status_title.text = "Connected to Claude"
@@ -2562,15 +2624,15 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 			_status_title.text = "Claude CLI is authenticated"
 			_status_detail.text = _auth_detail_text()
 
-	_connect_button.disabled = _is_connecting or _session_live or not bool(_last_auth_status.get("logged_in", false))
-	_disconnect_button.disabled = not _session_live and not _is_connecting
-	_refresh_auth_button.disabled = _is_connecting
+	_connect_button.disabled = _is_connecting or _session_live or _has_pending_live_fork() or not bool(_last_auth_status.get("logged_in", false))
+	_disconnect_button.disabled = _has_pending_live_fork() or (not _session_live and not _is_connecting)
+	_refresh_auth_button.disabled = _is_connecting or _has_pending_live_fork()
 	_refresh_configuration_controls()
 
 
 func _refresh_composer_state() -> void:
 	var logged_in := bool(_last_auth_status.get("logged_in", false))
-	var can_draft: bool = not _is_connecting and logged_in and not _client_node.is_busy()
+	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in and not _client_node.is_busy()
 	var can_send: bool = can_draft and not _prompt_input.text.strip_edges().is_empty()
 	_prompt_input.editable = can_draft
 	_send_button.disabled = not can_send
@@ -2581,6 +2643,8 @@ func _refresh_composer_state() -> void:
 func _composer_hint_text() -> String:
 	if _is_connecting:
 		return _status_detail_with_diagnostic("Claude is connecting. The initial prompt will send as soon as the session is ready.")
+	if _has_pending_live_fork():
+		return "Creating a saved fork from the current live session."
 	if not bool(_last_auth_status.get("logged_in", false)):
 		return "Connect the authenticated Claude CLI to start chatting."
 	if not _session_live:
@@ -3135,6 +3199,9 @@ func _on_confirm_delete_pressed() -> void:
 
 
 func _on_fork_session_pressed() -> void:
+	if _can_fork_live_session():
+		_begin_live_fork_handoff()
+		return
 	_fork_selected_session()
 
 
@@ -3172,6 +3239,53 @@ func _fork_selected_session(up_to_message_id: String = "") -> void:
 		_select_session_by_index(forked_index)
 	else:
 		_update_status_from_state()
+		_refresh_session_controls()
+
+
+func _begin_live_fork_handoff() -> void:
+	if not _can_fork_live_session():
+		return
+	_pending_live_fork = {
+		"source_session_id": _current_live_fork_source_session_id(),
+		"source_directory": _current_live_fork_source_directory(),
+		"title": _fork_title_input.text,
+		"had_selected_session": _has_selected_session(),
+	}
+	_clear_transcript_after_disconnect = not bool(_pending_live_fork.get("had_selected_session", false))
+	_status_issue_message = ""
+	_update_status_from_state()
+	_refresh_composer_state()
+	_refresh_session_controls()
+	_client_node.disconnect_client()
+
+
+func _complete_pending_live_fork_handoff() -> void:
+	if not _has_pending_live_fork() or _session_live or _is_connecting:
+		return
+	var pending := _pending_live_fork.duplicate(true)
+	var fork_result: Variant = _client_node.fork_session(
+		str(pending.get("source_session_id", "")),
+		str(pending.get("source_directory", "")),
+		"",
+		str(pending.get("title", ""))
+	)
+	_pending_live_fork.clear()
+	if fork_result == null:
+		_status_issue_message = _client_node.get_last_error()
+		_update_status_from_state()
+		_refresh_composer_state()
+		_refresh_session_controls()
+		_refresh_selected_session_metadata()
+		return
+	_status_issue_message = ""
+	_reload_sessions(false)
+	var forked_session_id: String = fork_result.session_id
+	var forked_index := _find_session_index(forked_session_id)
+	if forked_index >= 0:
+		_select_session_by_index(forked_index)
+	else:
+		_update_status_from_state()
+		_refresh_composer_state()
 		_refresh_session_controls()
 
 

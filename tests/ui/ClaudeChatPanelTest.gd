@@ -1864,7 +1864,7 @@ func test_panel_keyboard_activation_selects_saved_session() -> void:
 	await _cleanup_panel(panel)
 
 
-func test_panel_resumes_selected_session_and_disables_mutations_while_connected() -> void:
+func test_panel_resumes_selected_session_and_enables_live_fork_when_idle() -> void:
 	var session_id := _create_panel_session_fixture("panel-resume")
 	var transport = FakeTransportScript.new()
 	var panel = ChatPanelScene.instantiate()
@@ -1899,13 +1899,297 @@ func test_panel_resumes_selected_session_and_disables_mutations_while_connected(
 	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
 	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
-	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
-	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_false()
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_false()
+	assert_str(_button(panel, "ForkSessionButton").text).is_equal("Fork live session")
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_true()
 
 	panel.disconnect_client()
 	await _await_frames(2)
 	assert_bool(_prompt_input(panel).editable).is_true()
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_stays_disabled_while_connecting_and_without_resolved_live_session_id() -> void:
+	var live_session_id := "71717171-7171-4717-8717-717171717171"
+	var config_root := _create_config_root("panel-live-fork-disabled")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	_write_panel_session(project_dir, project_path, live_session_id, "Live source", "Saved prompt", "Saved answer", "", 1712302250)
+
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	panel.connect_client()
+	await _await_frames(1)
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_false()
+
+	var init_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(2)
+
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_false()
+
+	panel.submit_prompt("Resolve the live session id")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Resolved",
+	})
+	await _await_frames(2)
+
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_false()
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_stays_disabled_while_busy() -> void:
+	var live_session_id := "72727272-7272-4727-8727-727272727272"
+	var config_root := _create_config_root("panel-live-fork-busy")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	_write_panel_session(project_dir, project_path, live_session_id, "Busy source", "Saved prompt", "Saved answer", "", 1712302255)
+
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Resolve and stay busy")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Resolved",
+	})
+	await _await_frames(2)
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_false()
+
+	panel.submit_prompt("Stay busy")
+	await _await_frames(2)
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_true()
+	assert_bool(_line_edit(panel, "ForkTitleInput").editable).is_false()
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Finished",
+	})
+	await _await_frames(2)
+	assert_bool(_button(panel, "ForkSessionButton").disabled).is_false()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_creates_and_selects_new_saved_session_without_prior_selection() -> void:
+	var live_session_id := "73737373-7373-4737-8737-737373737373"
+	var config_root := _create_config_root("panel-live-fork-success")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	_write_panel_session(project_dir, project_path, live_session_id, "Live source", "Live prompt", "Live answer", "", 1712302260)
+
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Fork this live session")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "user",
+		"message": {"role": "user", "content": "Fork this live session"},
+		"session_id": live_session_id,
+	})
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"role": "assistant", "content": [{"type": "text", "text": "Live answer"}]},
+		"session_id": live_session_id,
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Done",
+	})
+	await _await_frames(3)
+
+	_line_edit(panel, "ForkTitleInput").text = "Live branch"
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(3)
+
+	assert_bool(panel.get_client_node().is_client_connected()).is_false()
+	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_str(_session_id_from_panel(panel)).is_not_equal(live_session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Live branch")
+	assert_str(_status_badge(panel).text).is_equal("Saved")
+	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).contains("Live answer")
+	assert_str(_line_edit(panel, "ForkTitleInput").text).is_equal("")
+	assert_bool(_prompt_input(panel).editable).is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_uses_authoritative_runtime_session_id_instead_of_stale_selected_preview() -> void:
+	var live_session_id := "75757575-7575-4757-8757-757575757575"
+	var preview_session_id := "76767676-7676-4767-8767-767676767676"
+	var config_root := _create_config_root("panel-live-fork-authoritative")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	_write_panel_session(project_dir, project_path, preview_session_id, "Preview source", "Preview prompt", "Preview answer", "", 1712302262)
+	_write_panel_session(project_dir, project_path, live_session_id, "Live source", "Live prompt", "Live answer", "", 1712302263)
+
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Live authority",
+	})
+	await _await_frames(2)
+
+	panel.set("_selected_session_id", preview_session_id)
+	panel.set("_selected_session_info", panel.get_client_node().get_session_info(preview_session_id, project_path))
+	panel.call("_refresh_selected_session_fields")
+	panel.call("_refresh_selected_session_metadata")
+	panel.call("_refresh_session_controls")
+	await _await_frames(1)
+
+	_line_edit(panel, "ForkTitleInput").text = "Authority wins"
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(3)
+
+	var forked_session_id := _session_id_from_panel(panel)
+	var forked_content := FileAccess.get_file_as_string(project_dir.path_join("%s.jsonl" % forked_session_id))
+	assert_str(forked_session_id).is_not_equal(live_session_id)
+	assert_str(forked_content).contains('"sessionId":"%s"' % forked_session_id)
+	assert_str(forked_content).contains('"forkedFrom":{"sessionId":"%s"' % live_session_id)
+	assert_str(forked_content).contains("Authority wins")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_failure_without_prior_selection_returns_to_truthful_draft() -> void:
+	var live_session_id := "74747474-7474-4747-8747-747474747474"
+	var config_root := _create_config_root("panel-live-fork-failure")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	_write_panel_session(project_dir, project_path, live_session_id, "Live source", "Live prompt", "Live answer", "", 1712302265)
+
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Fork failure path")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Done",
+	})
+	await _await_frames(2)
+
+	assert_int(DirAccess.remove_absolute(project_dir.path_join("%s.jsonl" % live_session_id))).is_equal(OK)
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(3)
+
+	assert_bool(panel.get_client_node().is_client_connected()).is_false()
+	assert_str(_session_id_from_panel(panel)).is_equal("")
+	assert_int(_transcript_list(panel).get_child_count()).is_equal(0)
+	assert_str(_status_badge(panel).text).is_equal("Issue")
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("not found")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_failure_with_prior_saved_selection_restores_preview_truthfully() -> void:
+	var live_session_id := "78787878-7878-4787-8787-787878787878"
+	var preview_session_id := "79797979-7979-4797-8797-797979797979"
+	var config_root := _create_config_root("panel-live-fork-selected-failure")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	_write_panel_session(project_dir, project_path, preview_session_id, "Preview source", "Preview prompt", "Preview answer", "", 1712302266)
+	_write_panel_session(project_dir, project_path, live_session_id, "Live source", "Live prompt", "Live answer", "", 1712302267)
+
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": live_session_id,
+		"result": "Live authority",
+	})
+	await _await_frames(2)
+
+	panel.set("_selected_session_id", preview_session_id)
+	panel.set("_selected_session_info", panel.get_client_node().get_session_info(preview_session_id, project_path))
+	panel.call("_refresh_selected_session_fields")
+	panel.call("_refresh_selected_session_metadata")
+	panel.call("_refresh_session_controls")
+	await _await_frames(1)
+
+	assert_int(DirAccess.remove_absolute(project_dir.path_join("%s.jsonl" % live_session_id))).is_equal(OK)
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(3)
+
+	assert_bool(panel.get_client_node().is_client_connected()).is_false()
+	assert_str(_session_id_from_panel(panel)).is_equal(preview_session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Preview source")
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).contains("Preview answer")
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("not found")
 
 	await _cleanup_panel(panel)
 
@@ -2488,6 +2772,50 @@ func test_panel_fork_uses_selected_worktree_session_directory() -> void:
 	assert_bool(FileAccess.file_exists(repo_project_dir.path_join("%s.jsonl" % forked_session_id))).is_false()
 	assert_str(_label(panel, "SelectedSessionCwdValue").text).contains(str(fixture["worktree_root"]))
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Worktree fork")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_live_fork_uses_active_worktree_session_directory() -> void:
+	var fixture := _create_duplicate_worktree_session_fixture("panel-worktree-live-fork")
+	var original_session_id := "42424242-4242-4424-8424-424242424242"
+	var transport = FakeTransportScript.new()
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"model": "haiku",
+		"cwd": fixture["repo_root"],
+	}), transport)
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	_select_session_with_click_signal(panel, 0)
+	await _await_frames(2)
+	panel.connect_client()
+	await _await_frames(1)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {"commands": [{"name": "/help"}]},
+		},
+	})
+	await _await_frames(2)
+
+	_line_edit(panel, "ForkTitleInput").text = "Worktree live fork"
+	_button(panel, "ForkSessionButton").pressed.emit()
+	await _await_frames(3)
+
+	var forked_session_id := _session_id_from_panel(panel)
+	var repo_project_dir := str(fixture["repo_file"]).get_base_dir()
+	var worktree_project_dir := str(fixture["worktree_file"]).get_base_dir()
+	assert_str(forked_session_id).is_not_equal(original_session_id)
+	assert_bool(FileAccess.file_exists(worktree_project_dir.path_join("%s.jsonl" % forked_session_id))).is_true()
+	assert_bool(FileAccess.file_exists(repo_project_dir.path_join("%s.jsonl" % forked_session_id))).is_false()
+	assert_str(_label(panel, "SelectedSessionCwdValue").text).contains(str(fixture["worktree_root"]))
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Worktree live fork")
+	assert_str(_status_badge(panel).text).is_equal("Saved")
 
 	await _cleanup_panel(panel)
 

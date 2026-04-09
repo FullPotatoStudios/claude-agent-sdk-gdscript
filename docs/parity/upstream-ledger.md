@@ -88,7 +88,7 @@ The first public implementation target is the scene-free core conversation loop,
   - typed task system message parity through `ClaudeTaskStartedMessage`, `ClaudeTaskProgressMessage`, and `ClaudeTaskNotificationMessage`
   - transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
   - `ClaudeChatPanel` task-aware transcript controls with per-task stop actions and saved-session `progress` routing
-  - `ClaudeChatPanel` saved-session forking UI backed by the existing runtime `fork_session()` helpers
+  - `ClaudeChatPanel` saved-session and connected-idle live-session full-session forking UI backed by the existing runtime `fork_session()` helpers
   - typed `ClaudeRateLimitInfo` and `ClaudeRateLimitEvent` parsing for top-level `rate_limit_event` messages
   - `ClaudeChatPanel` rendering for rate-limit events through the existing `System` transcript path
   - `ClaudePromptStream` scene-free outbound prompt queue support
