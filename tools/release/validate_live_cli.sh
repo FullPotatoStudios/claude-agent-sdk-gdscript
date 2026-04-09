@@ -5,11 +5,16 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../common.sh"
 
 claude_path="${CLAUDE_BIN:-claude}"
+requested_modes=()
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--claude-path)
 			claude_path="$2"
+			shift 2
+			;;
+		--mode)
+			requested_modes+=("$2")
 			shift 2
 			;;
 		*)
@@ -97,6 +102,25 @@ done < <(
 if [ "${#smoke_modes[@]}" -eq 0 ]; then
 	echo "Could not determine live smoke modes from tools/spikes/phase5_runtime_smoke.gd" >&2
 	exit 1
+fi
+
+if [ "${#requested_modes[@]}" -gt 0 ]; then
+	filtered_modes=()
+	for requested_mode in "${requested_modes[@]}"; do
+		found=0
+		for mode in "${smoke_modes[@]}"; do
+			if [ "${mode}" = "${requested_mode}" ]; then
+				filtered_modes+=("${mode}")
+				found=1
+				break
+			fi
+		done
+		if [ "${found}" -eq 0 ]; then
+			echo "Unknown live smoke mode: ${requested_mode}" >&2
+			exit 1
+		fi
+	done
+	smoke_modes=("${filtered_modes[@]}")
 fi
 
 for mode in "${smoke_modes[@]}"; do

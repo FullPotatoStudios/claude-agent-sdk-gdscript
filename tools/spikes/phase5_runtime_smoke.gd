@@ -513,9 +513,15 @@ func _run_context_usage_smoke(args: Dictionary) -> Dictionary:
 			and typed_usage.categories.size() > 0 \
 			and typed_usage.total_tokens >= 0 \
 			and typed_usage.max_tokens >= 0
+		usage = null
+		client = null
+		await process_frame
 		return summary
 
 	summary["ok"] = false
+	usage = null
+	client = null
+	await process_frame
 	return summary
 
 
@@ -650,8 +656,6 @@ func _run_mcp_status_smoke(args: Dictionary) -> Dictionary:
 	summary["control_errors"] = control_errors
 	summary["mcp_status"] = _variant_to_dictionary(status)
 	summary["mcp_status_error"] = control_errors[0] if not control_errors.is_empty() else ""
-	summary["mcp_status_turn_summary"] = {}
-	summary["mcp_status_sdk_mcp_executions"] = []
 	summary["sdk_mcp_server_name"] = server_name
 	summary["mcp_status_observed_status"] = observed_status
 	summary["mcp_status_tool_names"] = tool_names
@@ -659,6 +663,9 @@ func _run_mcp_status_smoke(args: Dictionary) -> Dictionary:
 		and control_errors.is_empty() \
 		and not server_status.is_empty() \
 		and tool_names.has("echo")
+	status = null
+	client = null
+	await process_frame
 	return summary
 
 
@@ -920,8 +927,6 @@ func _empty_summary(mode: String) -> Dictionary:
 		"mcp_status_error": "",
 		"mcp_status_observed_status": "",
 		"mcp_status_tool_names": [],
-		"mcp_status_turn_summary": {},
-		"mcp_status_sdk_mcp_executions": [],
 		"turn_summary": {},
 	}
 
