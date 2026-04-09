@@ -118,11 +118,11 @@ func fork_session(
 	return _adapter.fork_session(session_id, directory, up_to_message_id, title)
 
 
-func get_context_usage() -> Dictionary:
+func get_context_usage():
 	return await _adapter.get_context_usage()
 
 
-func get_mcp_status() -> Dictionary:
+func get_mcp_status():
 	return await _adapter.get_mcp_status()
 
 

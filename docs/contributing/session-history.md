@@ -159,7 +159,7 @@ if not history.is_empty():
 
 ## Current scope
 
-Phase 10H delivers explicit session forking, but broader settings and agent-definition parity are still deferred. Use the parity docs for the current status of broader session and upstream parity work:
+Phase 10H delivered explicit session forking, and later slices also delivered the broader settings and agent-definition parity that used to be deferred here. Use the parity docs for the current status of active session and upstream parity follow-ups:
 
 - `docs/parity/feature-matrix.md`
 - `docs/parity/upstream-ledger.md`

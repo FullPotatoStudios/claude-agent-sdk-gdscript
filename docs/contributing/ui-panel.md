@@ -102,6 +102,7 @@ The shipped panel currently includes:
 - reconnect-only effort changes, exposed in the chat view but disabled while connected
 - connected-only live context-usage inspection with manual refresh plus automatic refresh after connect and turn results
 - connected-only MCP server status cards with reconnect and enable/disable controls in the separate `Settings` view
+- typed runtime live-diagnostics models underneath those cards via `ClaudeContextUsageResponse` and `ClaudeMcpStatusResponse`
 - disconnected-only system prompt, built-in tool, advanced allow/deny, rewind-support, and MCP-summary editing in the separate `Settings` view
 - per-user rewind actions in the transcript when the active session has rewindable user-message UUIDs available
 

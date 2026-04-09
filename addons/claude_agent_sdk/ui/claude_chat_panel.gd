@@ -8,6 +8,8 @@ signal turn_finished(result_message: ClaudeResultMessage)
 signal error_occurred(message: String)
 
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
+const ClaudeContextUsageResponseScript := preload("res://addons/claude_agent_sdk/runtime/claude_context_usage_response.gd")
+const ClaudeMcpStatusResponseScript := preload("res://addons/claude_agent_sdk/runtime/claude_mcp_status_response.gd")
 const SendIcon := preload("res://addons/claude_agent_sdk/icons/send.svg")
 const InterruptIcon := preload("res://addons/claude_agent_sdk/icons/interrupt.svg")
 const RefreshIcon := preload("res://addons/claude_agent_sdk/icons/refresh.svg")
@@ -75,10 +77,10 @@ var _current_assistant_entry_id := -1
 var _current_thinking_entry_id := -1
 var _pending_prompt_entry_id := -1
 var _rewind_pending_entry_id := -1
-var _live_context_usage: Dictionary = {}
+var _live_context_usage: ClaudeContextUsageResponse = null
 var _live_context_usage_error := ""
 var _context_usage_refresh_pending := false
-var _live_mcp_status: Dictionary = {}
+var _live_mcp_status: ClaudeMcpStatusResponse = null
 var _live_mcp_status_error := ""
 var _mcp_status_refresh_pending := false
 var _mcp_server_action_pending: Dictionary = {}
@@ -755,7 +757,7 @@ func _refresh_live_session_diagnostics() -> void:
 	if not _session_live:
 		_live_context_summary_value.text = "Waiting for a connected session." if _is_connecting else "Connect to inspect live context usage."
 		_live_context_detail_value.text = ""
-	elif _live_context_usage.is_empty():
+	elif _live_context_usage == null or _live_context_usage.is_empty():
 		_live_context_summary_value.text = _live_context_usage_error if not _live_context_usage_error.is_empty() else "Refresh to inspect live context usage."
 		_live_context_detail_value.text = ""
 	else:
@@ -773,74 +775,64 @@ func _refresh_live_session_diagnostics() -> void:
 
 
 func _clear_live_session_diagnostics() -> void:
-	_live_context_usage.clear()
+	_live_context_usage = null
 	_live_context_usage_error = ""
 	_context_usage_refresh_pending = false
-	_live_mcp_status.clear()
+	_live_mcp_status = null
 	_live_mcp_status_error = ""
 	_mcp_status_refresh_pending = false
 	_mcp_server_action_pending.clear()
 	_refresh_live_session_diagnostics()
 
 
-func _context_usage_summary_text(usage: Dictionary) -> String:
-	if usage.is_empty():
+func _context_usage_summary_text(usage: ClaudeContextUsageResponse) -> String:
+	if usage == null or usage.is_empty():
 		return "Refresh to inspect live context usage."
-	var percentage := str(usage.get("percentage", ""))
-	var total_tokens := str(usage.get("totalTokens", ""))
-	var max_tokens := str(usage.get("maxTokens", ""))
-	var model := str(usage.get("model", "")).strip_edges()
+	var percentage := str(usage.percentage)
+	var total_tokens := str(usage.total_tokens)
+	var max_tokens := str(usage.max_tokens)
+	var model := usage.model.strip_edges()
 	var parts: Array[String] = []
-	if not percentage.is_empty():
+	if usage.percentage > 0.0:
 		parts.append("%s%% used" % percentage)
-	if not total_tokens.is_empty() and not max_tokens.is_empty():
+	if usage.total_tokens > 0 and usage.max_tokens > 0:
 		parts.append("%s / %s tokens" % [total_tokens, max_tokens])
-	elif not total_tokens.is_empty():
+	elif usage.total_tokens > 0:
 		parts.append("%s tokens" % total_tokens)
 	if not model.is_empty():
 		parts.append(model)
 	return " · ".join(parts)
 
 
-func _context_usage_detail_text(usage: Dictionary) -> String:
+func _context_usage_detail_text(usage: ClaudeContextUsageResponse) -> String:
 	var parts: Array[String] = []
-	var categories := usage.get("categories", []) as Array
-	if not categories.is_empty():
+	if not usage.categories.is_empty():
 		var category_parts: Array[String] = []
-		for category_variant in categories:
-			if not (category_variant is Dictionary):
-				continue
-			var category := category_variant as Dictionary
-			category_parts.append("%s %s" % [str(category.get("name", "")), str(category.get("tokens", ""))])
+		for category in usage.categories:
+			category_parts.append("%s %s" % [category.name, str(category.tokens)])
 			if category_parts.size() >= 3:
 				break
 		if not category_parts.is_empty():
 			parts.append("Top categories: %s" % " · ".join(category_parts))
-	var memory_files := usage.get("memoryFiles", []) as Array
-	if not memory_files.is_empty():
-		parts.append("%d memory file%s" % [memory_files.size(), "" if memory_files.size() == 1 else "s"])
-	var mcp_tools := usage.get("mcpTools", []) as Array
-	if not mcp_tools.is_empty():
-		parts.append("%d MCP tool%s loaded" % [mcp_tools.size(), "" if mcp_tools.size() == 1 else "s"])
-	var agents := usage.get("agents", []) as Array
-	if not agents.is_empty():
-		parts.append("%d agent definition%s" % [agents.size(), "" if agents.size() == 1 else "s"])
+	if not usage.memory_files.is_empty():
+		parts.append("%d memory file%s" % [usage.memory_files.size(), "" if usage.memory_files.size() == 1 else "s"])
+	if not usage.mcp_tools.is_empty():
+		parts.append("%d MCP tool%s loaded" % [usage.mcp_tools.size(), "" if usage.mcp_tools.size() == 1 else "s"])
+	if not usage.agents.is_empty():
+		parts.append("%d agent definition%s" % [usage.agents.size(), "" if usage.agents.size() == 1 else "s"])
 	return " · ".join(parts)
 
 
-func _mcp_status_summary_text(status: Dictionary, error_message: String = "") -> String:
+func _mcp_status_summary_text(status: ClaudeMcpStatusResponse, error_message: String = "") -> String:
 	if not error_message.is_empty():
 		return error_message
-	var servers := status.get("mcpServers", []) as Array
-	if servers.is_empty():
+	if status == null or status.mcp_servers.is_empty():
 		return "No live MCP servers reported for this session."
 	var counts: Dictionary = {}
-	for server_variant in servers:
-		if not (server_variant is Dictionary):
-			continue
-		var state := str((server_variant as Dictionary).get("status", "unknown"))
+	for server in status.mcp_servers:
+		var state := server.status
 		counts[state] = int(counts.get(state, 0)) + 1
-	var parts: Array[String] = ["%d server%s" % [servers.size(), "" if servers.size() == 1 else "s"]]
+	var parts: Array[String] = ["%d server%s" % [status.mcp_servers.size(), "" if status.mcp_servers.size() == 1 else "s"]]
 	for state in ["connected", "failed", "needs-auth", "pending", "disabled"]:
 		if int(counts.get(state, 0)) > 0:
 			parts.append("%d %s" % [int(counts.get(state, 0)), state])
@@ -852,21 +844,17 @@ func _rebuild_live_mcp_server_rows() -> void:
 		child.queue_free()
 	if not _session_live:
 		return
-	var servers := _live_mcp_status.get("mcpServers", []) as Array
-	if servers.is_empty():
+	if _live_mcp_status == null or _live_mcp_status.mcp_servers.is_empty():
 		return
-	for server_variant in servers:
-		if not (server_variant is Dictionary):
-			continue
-		var server := server_variant as Dictionary
-		var server_name := str(server.get("name", "")).strip_edges()
+	for server in _live_mcp_status.mcp_servers:
+		var server_name := server.name.strip_edges()
 		if server_name.is_empty():
 			continue
 		var row := _build_mcp_server_row(server_name, server)
 		_live_mcp_server_list.add_child(row)
 
 
-func _build_mcp_server_row(server_name: String, server: Dictionary) -> Control:
+func _build_mcp_server_row(server_name: String, server: ClaudeMcpServerStatus) -> Control:
 	var row_name := _mcp_server_node_name(server_name)
 	var card := PanelContainer.new()
 	card.name = "McpServerRow_%s" % row_name
@@ -890,7 +878,7 @@ func _build_mcp_server_row(server_name: String, server: Dictionary) -> Control:
 	var title := Label.new()
 	title.name = "McpServerTitle_%s" % row_name
 	title.size_flags_horizontal = SIZE_EXPAND_FILL
-	title.text = "%s · %s" % [server_name, str(server.get("status", "unknown")).capitalize()]
+	title.text = "%s · %s" % [server_name, server.status.capitalize()]
 	header.add_child(title)
 
 	var reconnect_button := Button.new()
@@ -919,30 +907,28 @@ func _build_mcp_server_row(server_name: String, server: Dictionary) -> Control:
 	return card
 
 
-func _mcp_server_detail_text(server: Dictionary) -> String:
+func _mcp_server_detail_text(server: ClaudeMcpServerStatus) -> String:
 	var parts: Array[String] = []
-	var scope := str(server.get("scope", "")).strip_edges()
+	var scope := server.scope.strip_edges()
 	if not scope.is_empty():
 		parts.append("Scope: %s" % scope)
-	var tools := server.get("tools", []) as Array
-	if not tools.is_empty():
-		parts.append("%d tool%s" % [tools.size(), "" if tools.size() == 1 else "s"])
-	var config := server.get("config", {}) as Dictionary
-	var config_type := str(config.get("type", "")).strip_edges()
+	if not server.tools.is_empty():
+		parts.append("%d tool%s" % [server.tools.size(), "" if server.tools.size() == 1 else "s"])
+	var config_type := str(server.config.get("type", "")).strip_edges()
 	if not config_type.is_empty():
 		parts.append("Type: %s" % config_type)
-	var error_text := str(server.get("error", "")).strip_edges()
+	var error_text := server.error_message.strip_edges()
 	if not error_text.is_empty():
 		parts.append(error_text)
 	return " · ".join(parts)
 
 
-func _mcp_server_toggle_target(server: Dictionary) -> bool:
-	return str(server.get("status", "")).strip_edges().to_lower() == "disabled"
+func _mcp_server_toggle_target(server: ClaudeMcpServerStatus) -> bool:
+	return server.status.strip_edges().to_lower() == "disabled"
 
 
-func _should_show_mcp_reconnect_button(server: Dictionary) -> bool:
-	var status := str(server.get("status", "")).strip_edges().to_lower()
+func _should_show_mcp_reconnect_button(server: ClaudeMcpServerStatus) -> bool:
+	var status := server.status.strip_edges().to_lower()
 	return status == "failed" or status == "needs-auth" or status == "pending"
 
 
@@ -2906,10 +2892,10 @@ func _refresh_context_usage_async() -> void:
 	_context_usage_refresh_pending = true
 	_live_context_usage_error = ""
 	_refresh_live_session_diagnostics()
-	var usage: Dictionary = await _client_node.get_context_usage()
+	var usage = await _client_node.get_context_usage()
 	if not _session_live:
 		return
-	_live_context_usage = usage.duplicate(true)
+	_live_context_usage = ClaudeContextUsageResponseScript.coerce(usage)
 	_live_context_usage_error = _client_node.get_last_error()
 	_context_usage_refresh_pending = false
 	_refresh_live_session_diagnostics()
@@ -2923,10 +2909,10 @@ func _refresh_mcp_status_async() -> void:
 	_mcp_status_refresh_pending = true
 	_live_mcp_status_error = ""
 	_refresh_live_session_diagnostics()
-	var status: Dictionary = await _client_node.get_mcp_status()
+	var status = await _client_node.get_mcp_status()
 	if not _session_live:
 		return
-	_live_mcp_status = status.duplicate(true)
+	_live_mcp_status = ClaudeMcpStatusResponseScript.coerce(status)
 	_live_mcp_status_error = _client_node.get_last_error()
 	_mcp_status_refresh_pending = false
 	_refresh_live_session_diagnostics()

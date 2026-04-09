@@ -7,6 +7,8 @@ const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_sdk/runtime/transport/subprocess_cli_transport.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
+const ClaudeContextUsageResponseScript := preload("res://addons/claude_agent_sdk/runtime/claude_context_usage_response.gd")
+const ClaudeMcpStatusResponseScript := preload("res://addons/claude_agent_sdk/runtime/claude_mcp_status_response.gd")
 
 var _async_completions: Array[String] = []
 
@@ -39,6 +41,16 @@ func _complete_client_rewind(client: ClaudeSDKClient, user_message_id: String, l
 
 func _complete_client_stop_task(client: ClaudeSDKClient, task_id: String, label: String) -> void:
 	await client.stop_task(task_id)
+	_async_completions.append(label)
+
+
+func _capture_client_context_usage(client: ClaudeSDKClient, sink: Array, label: String) -> void:
+	sink.append(await client.get_context_usage())
+	_async_completions.append(label)
+
+
+func _capture_client_mcp_status(client: ClaudeSDKClient, sink: Array, label: String) -> void:
+	sink.append(await client.get_mcp_status())
 	_async_completions.append(label)
 
 
@@ -786,6 +798,131 @@ func test_client_exposes_context_usage_and_mcp_control_methods() -> void:
 	assert_bool(Callable(client, "stop_task").is_valid()).is_true()
 	assert_bool(Callable(client, "reconnect_mcp_server").is_valid()).is_true()
 	assert_bool(Callable(client, "toggle_mcp_server").is_valid()).is_true()
+
+
+func test_client_get_context_usage_returns_typed_response() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	var responses: Array = []
+	Callable(self, "_capture_client_context_usage").call_deferred(client, responses, "client-context-usage")
+	await get_tree().process_frame
+	var usage_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((usage_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("get_context_usage")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(usage_request.get("request_id", "")),
+			"response": {
+				"categories": [
+					{"name": "System prompt", "tokens": 3200, "color": "#abc"},
+					{"name": "Messages", "tokens": 61400, "color": "#def", "isDeferred": true},
+				],
+				"totalTokens": 98200,
+				"maxTokens": 155000,
+				"rawMaxTokens": 200000,
+				"percentage": 49.1,
+				"model": "claude-sonnet-4-5",
+				"isAutoCompactEnabled": true,
+				"memoryFiles": [{"path": "CLAUDE.md", "type": "project", "tokens": 512}],
+				"mcpTools": [{"name": "search", "serverName": "ref", "tokens": 164, "isLoaded": true}],
+				"agents": [{"agentType": "coder", "source": "sdk", "tokens": 299}],
+				"gridRows": [],
+				"apiUsage": null,
+			},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_array(_async_completions).contains(["client-context-usage"])
+	assert_int(responses.size()).is_equal(1)
+	assert_object(responses[0]).is_instanceof(ClaudeContextUsageResponseScript)
+	var usage = responses[0] as ClaudeContextUsageResponse
+	assert_object(usage).is_not_null()
+	if usage == null:
+		return
+	assert_int(usage.total_tokens).is_equal(98200)
+	assert_int(usage.categories.size()).is_equal(2)
+	assert_str(usage.categories[0].name).is_equal("System prompt")
+	assert_bool(bool(usage.categories[1].is_deferred)).is_true()
+	assert_str(usage.mcp_tools[0].server_name).is_equal("ref")
+	client.disconnect_client()
+	responses.clear()
+
+
+func test_client_get_mcp_status_returns_typed_response() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	var responses: Array = []
+	Callable(self, "_capture_client_mcp_status").call_deferred(client, responses, "client-mcp-status")
+	await get_tree().process_frame
+	var status_request: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str((status_request.get("request", {}) as Dictionary).get("subtype", ""))).is_equal("mcp_status")
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(status_request.get("request_id", "")),
+			"response": {
+				"mcpServers": [
+					{
+						"name": "my-http-server",
+						"status": "connected",
+						"serverInfo": {"name": "my-http-server", "version": "1.0.0"},
+						"config": {"type": "http", "url": "https://example.com/mcp"},
+						"scope": "project",
+						"tools": [
+							{"name": "greet", "description": "Greet a user", "annotations": {"readOnly": true}},
+							{"name": "reset"},
+						],
+					},
+					{
+						"name": "failed-server",
+						"status": "failed",
+						"error": "Connection refused",
+					},
+				],
+			},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_array(_async_completions).contains(["client-mcp-status"])
+	assert_int(responses.size()).is_equal(1)
+	assert_object(responses[0]).is_instanceof(ClaudeMcpStatusResponseScript)
+	var status = responses[0] as ClaudeMcpStatusResponse
+	assert_object(status).is_not_null()
+	if status == null:
+		return
+	assert_int(status.mcp_servers.size()).is_equal(2)
+	assert_str(status.mcp_servers[0].server_info.version).is_equal("1.0.0")
+	assert_str(str(status.mcp_servers[0].config.get("type", ""))).is_equal("http")
+	assert_bool(bool(status.mcp_servers[0].tools[0].annotations.read_only)).is_true()
+	assert_str(status.mcp_servers[1].error_message).is_equal("Connection refused")
+	client.disconnect_client()
+	responses.clear()
 
 
 func test_client_rewind_files_requires_active_connection() -> void:

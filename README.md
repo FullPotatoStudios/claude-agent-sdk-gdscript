@@ -55,6 +55,7 @@ The current addon does not require `plugin.cfg`, autoload setup, or editor-plugi
 - transport-first file-checkpointing parity through `ClaudeAgentOptions.enable_file_checkpointing` plus runtime `rewind_files()` controls on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - task-control parity through runtime `stop_task()` controls plus typed `task_started`, `task_progress`, and `task_notification` system messages
 - typed `rate_limit_event` parity through `ClaudeRateLimitInfo`, `ClaudeRateLimitEvent`, and system-path rendering in the shipped chat panel
+- typed live-diagnostics parity through `ClaudeContextUsageResponse` and `ClaudeMcpStatusResponse`, including nested context/MCP status models used by the runtime and shipped panel
 - interactive prompt-on-connect parity through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`
 - typed hook-input helpers through `ClaudeHookInput` plus event-specific hook input classes, exposed additively on `ClaudeHookContext.typed_input` / `hook_input` while preserving raw dictionary callback inputs
 - typed hook-output helpers through `ClaudeHookOutput` plus event-specific hook output classes, with additive runtime coercion for legacy dictionary callbacks
@@ -121,6 +122,7 @@ func _ready() -> void:
 - One-shot queries plus interactive connected sessions
 - Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, session forking, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
+- Typed live context/MCP diagnostics through `ClaudeContextUsageResponse`, `ClaudeMcpStatusResponse`, and nested status/category models
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
 - additive typed hook-input wrappers through `ClaudeHookContext.typed_input` / `hook_input` while keeping hook callbacks dictionary-first for compatibility
 - Typed hook-output helpers plus typed permission-update/result helpers for runtime callback integrations

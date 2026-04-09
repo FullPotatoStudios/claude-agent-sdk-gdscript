@@ -10,6 +10,8 @@ const ClaudeSubprocessCLITransportScript := preload("res://addons/claude_agent_s
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
+const ClaudeContextUsageResponseScript := preload("res://addons/claude_agent_sdk/runtime/claude_context_usage_response.gd")
+const ClaudeMcpStatusResponseScript := preload("res://addons/claude_agent_sdk/runtime/claude_mcp_status_response.gd")
 
 var options = null
 var _custom_transport = null
@@ -129,22 +131,22 @@ func get_auth_status() -> Dictionary:
 	return {}
 
 
-func get_context_usage() -> Dictionary:
+func get_context_usage():
 	if _session == null:
 		_emit_error("Call connect_client() before get_context_usage()")
-		return {}
+		return ClaudeContextUsageResponseScript.new()
 	var result: Dictionary = await _session.get_context_usage()
 	_last_error = _session.get_last_error()
-	return result
+	return ClaudeContextUsageResponseScript.coerce(result)
 
 
-func get_mcp_status() -> Dictionary:
+func get_mcp_status():
 	if _session == null:
 		_emit_error("Call connect_client() before get_mcp_status()")
-		return {}
+		return ClaudeMcpStatusResponseScript.new()
 	var result: Dictionary = await _session.get_mcp_status()
 	_last_error = _session.get_last_error()
-	return result
+	return ClaudeMcpStatusResponseScript.coerce(result)
 
 
 func rewind_files(user_message_id: String) -> void:

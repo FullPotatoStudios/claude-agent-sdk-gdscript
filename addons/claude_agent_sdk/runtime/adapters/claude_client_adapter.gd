@@ -154,11 +154,11 @@ func fork_session(
 	return null
 
 
-func get_context_usage() -> Dictionary:
+func get_context_usage():
 	return await _client.get_context_usage()
 
 
-func get_mcp_status() -> Dictionary:
+func get_mcp_status():
 	return await _client.get_mcp_status()
 
 
