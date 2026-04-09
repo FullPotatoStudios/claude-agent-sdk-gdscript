@@ -5,6 +5,7 @@ const FakeTransportScript := preload("res://tests/support/fake_transport.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudePermissionRuleValueScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_rule_value.gd")
 const ClaudePermissionUpdateScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_update.gd")
+const ClaudeAbortSignalScript := preload("res://addons/claude_agent_sdk/runtime/claude_abort_signal.gd")
 const ClaudeHookInputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input.gd")
 const ClaudeHookInputPreToolUseScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_pre_tool_use.gd")
 const ClaudeHookInputPostToolUseScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input_post_tool_use.gd")
@@ -114,6 +115,19 @@ func test_permission_context_keeps_raw_suggestions_and_exposes_typed_updates() -
 	assert_str((typed_update.rules[0] as ClaudePermissionRuleValue).tool_name).is_equal("Write")
 	assert_that(context.tool_use_id).is_equal("tool-77")
 	assert_that(context.agent_id).is_equal("agent-9")
+
+
+func test_abort_signal_tracks_canceled_state_and_reason() -> void:
+	var reasons: Array[String] = []
+	var abort_signal = ClaudeAbortSignalScript.new()
+	abort_signal.canceled.connect(func(reason: String): reasons.append(reason))
+
+	abort_signal.cancel("control_cancel_request")
+	abort_signal.cancel("ignored")
+
+	assert_bool(abort_signal.is_canceled()).is_true()
+	assert_str(abort_signal.get_reason()).is_equal("control_cancel_request")
+	assert_array(reasons).is_equal(["control_cancel_request"])
 
 
 func test_hook_context_exposes_signal_alias() -> void:

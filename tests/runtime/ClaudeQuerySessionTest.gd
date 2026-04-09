@@ -2,16 +2,21 @@
 extends GdUnitTestSuite
 
 const FakeTransportScript := preload("res://tests/support/fake_transport.gd")
+const ClaudeAbortSignalScript := preload("res://addons/claude_agent_sdk/runtime/claude_abort_signal.gd")
 const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
 var _async_completions: Array[String] = []
+var _cancelable_hook_state: Dictionary = {}
+var _cancelable_permission_state: Dictionary = {}
 
 
 func after_test() -> void:
 	_async_completions.clear()
+	_cancelable_hook_state.clear()
+	_cancelable_permission_state.clear()
 
 
 func _async_hook_callback(input_data: Dictionary, tool_use_id: String, _context) -> Dictionary:
@@ -21,6 +26,37 @@ func _async_hook_callback(input_data: Dictionary, tool_use_id: String, _context)
 		"echo": input_data,
 		"toolUseId": tool_use_id,
 	}
+
+
+func _cancelable_hook_callback(_input_data: Dictionary, _tool_use_id: Variant, context) -> Dictionary:
+	_cancelable_hook_state["started"] = true
+	var callback_signal = context.signal
+	_cancelable_hook_state["has_signal"] = callback_signal is ClaudeAbortSignal
+	if not (callback_signal is ClaudeAbortSignal):
+		return {"missing_signal": true}
+	var abort_signal := callback_signal as ClaudeAbortSignal
+	if not abort_signal.is_canceled():
+		await abort_signal.canceled
+	_cancelable_hook_state["canceled"] = abort_signal.is_canceled()
+	_cancelable_hook_state["reason"] = abort_signal.get_reason()
+	return {
+		"continue": true,
+	}
+
+
+func _cancelable_permission_callback(_tool_name: String, input_data: Dictionary, context):
+	_cancelable_permission_state["started"] = true
+	_cancelable_permission_state["input"] = input_data.duplicate(true)
+	var callback_signal = context.signal
+	_cancelable_permission_state["has_signal"] = callback_signal is ClaudeAbortSignal
+	if not (callback_signal is ClaudeAbortSignal):
+		return ClaudePermissionResultAllowScript.new(input_data)
+	var abort_signal := callback_signal as ClaudeAbortSignal
+	if not abort_signal.is_canceled():
+		await abort_signal.canceled
+	_cancelable_permission_state["canceled"] = abort_signal.is_canceled()
+	_cancelable_permission_state["reason"] = abort_signal.get_reason()
+	return ClaudePermissionResultAllowScript.new(input_data)
 
 
 func _complete_session_rewind(session: ClaudeQuerySession, user_message_id: String, label: String) -> void:
@@ -883,6 +919,126 @@ func test_control_cancel_request_suppresses_late_response() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+	assert_int(transport.writes.size()).is_equal(writes_before)
+
+
+func test_control_cancel_request_exposes_hook_abort_signal() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"hooks": {
+				"PreToolUse": [
+					ClaudeHookMatcherScript.new({
+						"matcher": "Bash",
+						"hooks": [Callable(self, "_cancelable_hook_callback")],
+					}),
+				],
+			},
+		})
+	)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hook_callback_id := str((((initialize_request.get("request", {}) as Dictionary).get("hooks", {}) as Dictionary).get("PreToolUse", []) as Array)[0].get("hookCallbackIds", [])[0])
+	var writes_before: int = transport.writes.size()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "hook-signal-cancel",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"input": {"tool_name": "Bash"},
+		},
+	})
+	await get_tree().process_frame
+	transport.emit_stdout_message({
+		"type": "control_cancel_request",
+		"request_id": "hook-signal-cancel",
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_bool(bool(_cancelable_hook_state.get("started", false))).is_true()
+	assert_bool(bool(_cancelable_hook_state.get("has_signal", false))).is_true()
+	assert_bool(bool(_cancelable_hook_state.get("canceled", false))).is_true()
+	assert_str(str(_cancelable_hook_state.get("reason", ""))).is_equal("control_cancel_request")
+	assert_int(transport.writes.size()).is_equal(writes_before)
+
+
+func test_control_cancel_request_skips_hook_callback_before_deferred_start() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"hooks": {
+				"PreToolUse": [
+					ClaudeHookMatcherScript.new({
+						"matcher": "Bash",
+						"hooks": [Callable(self, "_cancelable_hook_callback")],
+					}),
+				],
+			},
+		})
+	)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hook_callback_id := str((((initialize_request.get("request", {}) as Dictionary).get("hooks", {}) as Dictionary).get("PreToolUse", []) as Array)[0].get("hookCallbackIds", [])[0])
+	var writes_before: int = transport.writes.size()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "hook-cancel-before-run",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"input": {"tool_name": "Bash"},
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "control_cancel_request",
+		"request_id": "hook-cancel-before-run",
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_bool(bool(_cancelable_hook_state.get("started", false))).is_false()
+	assert_int(transport.writes.size()).is_equal(writes_before)
+
+
+func test_control_cancel_request_exposes_permission_abort_signal() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(
+		transport,
+		ClaudeAgentOptions.new({
+			"can_use_tool": Callable(self, "_cancelable_permission_callback"),
+		})
+	)
+	session.open_session()
+	var writes_before: int = transport.writes.size()
+
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "permission-signal-cancel",
+		"request": {
+			"subtype": "can_use_tool",
+			"tool_name": "Write",
+			"input": {"file_path": "notes.txt"},
+			"tool_use_id": "tool-perm-1",
+		},
+	})
+	await get_tree().process_frame
+	transport.emit_stdout_message({
+		"type": "control_cancel_request",
+		"request_id": "permission-signal-cancel",
+	})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_bool(bool(_cancelable_permission_state.get("started", false))).is_true()
+	assert_bool(bool(_cancelable_permission_state.get("has_signal", false))).is_true()
+	assert_bool(bool(_cancelable_permission_state.get("canceled", false))).is_true()
+	assert_str(str(_cancelable_permission_state.get("reason", ""))).is_equal("control_cancel_request")
 	assert_int(transport.writes.size()).is_equal(writes_before)
 
 

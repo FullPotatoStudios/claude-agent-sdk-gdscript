@@ -12,6 +12,7 @@ const ClaudeHookContextScript := preload("res://addons/claude_agent_sdk/runtime/
 const ClaudeHookInputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_input.gd")
 const ClaudeHookOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_output.gd")
 const ClaudeHookSpecificOutputScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_specific_output.gd")
+const ClaudeAbortSignalScript := preload("res://addons/claude_agent_sdk/runtime/claude_abort_signal.gd")
 const ClaudeToolPermissionContextScript := preload("res://addons/claude_agent_sdk/runtime/claude_tool_permission_context.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
@@ -619,26 +620,34 @@ func _start_inbound_control_request(data: Dictionary) -> void:
 		return
 	var metadata := {
 		"canceled": false,
+		"signal": ClaudeAbortSignalScript.new(),
 	}
 	_inflight_control_requests[request_id] = metadata
 	Callable(self, "_run_inbound_control_request").call_deferred(request_id, data)
 
 
-func _cancel_inflight_control_request(request_id: String) -> void:
+func _cancel_inflight_control_request(request_id: String, reason: String = "control_cancel_request") -> void:
 	if request_id.is_empty() or not _inflight_control_requests.has(request_id):
 		return
 	var metadata: Dictionary = _inflight_control_requests[request_id]
 	metadata["canceled"] = true
+	var callback_signal: Variant = metadata.get("signal", null)
+	if callback_signal is ClaudeAbortSignal:
+		(callback_signal as ClaudeAbortSignal).cancel(reason)
 	_inflight_control_requests[request_id] = metadata
 
 
 func _cancel_all_inflight_control_requests() -> void:
 	for request_id_variant in _inflight_control_requests.keys():
 		var request_id := str(request_id_variant)
-		_cancel_inflight_control_request(request_id)
+		_cancel_inflight_control_request(request_id, "session_closed")
 
 
 func _run_inbound_control_request(request_id: String, data: Dictionary) -> void:
+	if _is_inflight_control_request_canceled(request_id):
+		_inflight_control_requests.erase(request_id)
+		return
+
 	var request_data: Dictionary = data.get("request", {}) if data.get("request", {}) is Dictionary else {}
 	var subtype := str(request_data.get("subtype", ""))
 	var response_payload: Dictionary = {}
@@ -649,9 +658,9 @@ func _run_inbound_control_request(request_id: String, data: Dictionary) -> void:
 	else:
 		match subtype:
 			"hook_callback":
-				response_payload = await _handle_hook_callback_request(request_data)
+				response_payload = await _handle_hook_callback_request(request_id, request_data)
 			"can_use_tool":
-				response_payload = await _handle_permission_control_request(request_data)
+				response_payload = await _handle_permission_control_request(request_id, request_data)
 			"mcp_message":
 				response_payload = await _handle_mcp_message_request(request_data)
 			_:
@@ -670,39 +679,49 @@ func _run_inbound_control_request(request_id: String, data: Dictionary) -> void:
 	_inflight_control_requests.erase(request_id)
 
 
-func _handle_hook_callback_request(request_data: Dictionary) -> Dictionary:
+func _handle_hook_callback_request(request_id: String, request_data: Dictionary) -> Dictionary:
 	var callback_id := str(request_data.get("callback_id", ""))
 	var callback: Callable = _hook_callbacks.get(callback_id, Callable())
 	if not callback.is_valid():
 		push_error("No hook callback found for ID: %s" % callback_id)
 		return _raise_control_request_error("No hook callback found for ID: %s" % callback_id)
 
+	var callback_signal = _get_inflight_control_request_signal(request_id)
+	if callback_signal != null and callback_signal.is_canceled():
+		return {}
 	var tool_use_id: Variant = request_data.get("tool_use_id", null)
 	var input_data: Dictionary = (
 		request_data.get("input", {}) if request_data.get("input", {}) is Dictionary else {}
 	).duplicate(true)
 	var typed_input = ClaudeHookInputScript.coerce_input(input_data, tool_use_id)
-	var hook_context = ClaudeHookContextScript.new(null, input_data, typed_input)
+	var hook_context = ClaudeHookContextScript.new(callback_signal, input_data, typed_input)
 	var result: Variant = await callback.callv([input_data, tool_use_id, hook_context])
+	if callback_signal != null and callback_signal.is_canceled():
+		return {}
 	if result == null:
 		return {}
 	return _normalize_hook_callback_result(result)
 
 
-func _handle_permission_control_request(request_data: Dictionary) -> Dictionary:
+func _handle_permission_control_request(request_id: String, request_data: Dictionary) -> Dictionary:
 	if _options == null or not _options.can_use_tool.is_valid():
 		return _raise_control_request_error("can_use_tool callback is not provided")
 
+	var callback_signal = _get_inflight_control_request_signal(request_id)
+	if callback_signal != null and callback_signal.is_canceled():
+		return {}
 	var tool_name := str(request_data.get("tool_name", ""))
 	var input_data: Dictionary = request_data.get("input", {}) if request_data.get("input", {}) is Dictionary else {}
 	var suggestions: Array = request_data.get("permission_suggestions", []) if request_data.get("permission_suggestions", []) is Array else []
 	var context = ClaudeToolPermissionContextScript.new(
-		null,
+		callback_signal,
 		suggestions,
 		request_data.get("tool_use_id", null),
 		request_data.get("agent_id", null),
 	)
 	var result: Variant = await _options.can_use_tool.callv([tool_name, input_data, context])
+	if callback_signal != null and callback_signal.is_canceled():
+		return {}
 	if result is ClaudePermissionResultAllow:
 		var allow_result = result as ClaudePermissionResultAllow
 		return allow_result.to_dict(input_data)
@@ -996,6 +1015,14 @@ func _is_inflight_control_request_canceled(request_id: String) -> bool:
 		return false
 	var metadata: Dictionary = _inflight_control_requests[request_id]
 	return bool(metadata.get("canceled", false))
+
+
+func _get_inflight_control_request_signal(request_id: String):
+	if not _inflight_control_requests.has(request_id):
+		return null
+	var metadata: Dictionary = _inflight_control_requests[request_id]
+	var callback_signal: Variant = metadata.get("signal", null)
+	return callback_signal if callback_signal is ClaudeAbortSignal else null
 
 
 func _complete_pending_control_requests(message: String) -> void:

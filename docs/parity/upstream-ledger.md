@@ -133,6 +133,7 @@ The first public implementation target is the scene-free core conversation loop,
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
+  - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
   - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
   - session-tag sanitization now mirrors a broader upstream-derived compatibility/strip set, but it still stops short of upstream whole-string Unicode normalization/composition parity
 
