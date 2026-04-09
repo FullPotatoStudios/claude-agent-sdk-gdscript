@@ -78,7 +78,15 @@ then
 	exit 1
 fi
 
-for mode in baseline structured partial; do
+for mode in \
+	baseline \
+	structured \
+	partial \
+	agents \
+	setting_sources_default \
+	setting_sources_project_included \
+	filesystem_agent_project
+do
 	echo "Running live Claude smoke: ${mode}"
 	log_file="${log_dir}/${mode}.log"
 	"${godot_binary}" \

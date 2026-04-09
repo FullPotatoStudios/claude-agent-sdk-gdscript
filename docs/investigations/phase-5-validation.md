@@ -88,3 +88,28 @@ The root cause of the earlier smoke failure was:
 - the final successful result therefore arrived on turn two
 
 The smoke now treats structured mode as a two-turn validation path while keeping the cheaper one-turn budget for baseline and partial modes.
+
+## Post-Phase-5 live smoke additions
+
+Date reviewed: 2026-04-09
+
+The reusable authenticated smoke entrypoint under `tools/spikes/phase5_runtime_smoke.gd` has since been widened beyond the original Phase 5 trio.
+
+Additional validated modes:
+
+- `agents`
+- `setting_sources_default`
+- `setting_sources_project_included`
+- `filesystem_agent_project`
+
+Observed results in this environment:
+
+- `agents`: `ClaudeAgentOptions.agents` appeared in the init `SystemMessage` and the query still completed with assistant plus result messages
+- `setting_sources_default`: a temporary project-local `.claude/settings.local.json` was loaded when `setting_sources` was left unset, and init reported `output_style = "local-test-style"`
+- `setting_sources_project_included`: the same local settings file was loaded when `setting_sources = ["user", "project", "local"]`, again surfacing `output_style = "local-test-style"` in init
+- `filesystem_agent_project`: a temporary `.claude/agents/fs-test-agent.md` file was discovered when `setting_sources = ["project"]`; init listed `fs-test-agent`, and the session continued through assistant plus result messages instead of stopping at init-only
+
+Scope note:
+
+- this still only covers the first scripted live-parity expansion slice
+- dynamic control, hook/tool-permission, SDK MCP, stderr, session-forking, rewind/task, context/MCP diagnostics, `plugins`, and `user` coverage remain future follow-up work

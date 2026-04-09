@@ -23,7 +23,7 @@ This is the normal branch/push validation path. It installs GdUnit4 if needed, r
 
 - `./tools/release/validate_live_cli.sh`
 
-This is the local-only authenticated runtime smoke. It runs the `baseline`, `structured`, and `partial` modes against the real installed Claude CLI using the real local environment.
+This is the local-only authenticated runtime smoke. It now covers the original `baseline`, `structured`, and `partial` modes plus first-slice parity checks for `agents`, default `setting_sources`, explicit project/local `setting_sources`, and filesystem agents loaded from `.claude/agents/`, all against the real installed Claude CLI using the real local environment.
 
 ### Release prep
 
