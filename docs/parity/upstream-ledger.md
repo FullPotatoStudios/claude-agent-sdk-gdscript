@@ -126,12 +126,14 @@ The first public implementation target is the scene-free core conversation loop,
   - transport-only `ClaudeAgentOptions.max_buffer_size` parity with a local default in `ClaudeSubprocessCLITransport`
   - subprocess transport shutdown grace parity after stdin EOF, with a 5-second wait before forced kill so final session-file flushes are less likely to be lost
   - malformed known-message payloads now fail loudly through `ClaudeMessageParser.parse_message_result()` and fatal `ClaudeQuerySession` stream/session errors, while unknown top-level message types still skip forward-compatibly
+  - broader session-tag Unicode compatibility normalization through generated upstream-derived single-codepoint NFKC rewrite data plus iterative stripping of format/private-use/unassigned codepoint ranges
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
   - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
+  - session-tag sanitization now mirrors a broader upstream-derived compatibility/strip set, but it still stops short of upstream whole-string Unicode normalization/composition parity
 
 ## Update process
 

@@ -493,6 +493,18 @@ func test_tag_session_validates_sanitizes_clears_and_updates_visible_tag() -> vo
 		return
 	assert_str(str(tagged_info.tag)).is_equal("A")
 
+	assert_int(ClaudeSessions.tag_session(session_id, "  ㎏\u200b  ", project_path)).is_equal(OK)
+	var normalized_info = ClaudeSessions.get_session_info(session_id, project_path)
+	assert_object(normalized_info).is_not_null()
+	if normalized_info == null:
+		return
+	assert_str(str(normalized_info.tag)).is_equal("kg")
+
+	lines = FileAccess.get_file_as_string(session_file).strip_edges().split("\n", false)
+	assert_str(lines[-1]).is_equal(
+		'{"type":"tag","tag":"kg","sessionId":"%s"}' % session_id
+	)
+
 
 func test_delete_session_removes_file_and_visibility() -> void:
 	var config_root := _create_config_root("delete")
@@ -612,6 +624,14 @@ func test_tag_sanitization_handles_compatibility_characters() -> void:
 	assert_str(ClaudeSessionsScript._sanitize_tag("Ⓐ①ﬃ")).is_equal("A1ffi")
 	assert_str(ClaudeSessionsScript._sanitize_tag("Ⅳ")).is_equal("IV")
 	assert_str(ClaudeSessionsScript._sanitize_tag("a\u2066Ⓑ\u2069")).is_equal("aB")
+	assert_str(ClaudeSessionsScript._sanitize_tag("Å")).is_equal("Å")
+	assert_str(ClaudeSessionsScript._sanitize_tag("㎏")).is_equal("kg")
+	assert_str(ClaudeSessionsScript._sanitize_tag("µ")).is_equal("μ")
+	assert_str(ClaudeSessionsScript._sanitize_tag("⒈")).is_equal("1.")
+	assert_str(ClaudeSessionsScript._sanitize_tag("㏂")).is_equal("a.m.")
+	assert_str(ClaudeSessionsScript._sanitize_tag("㉑")).is_equal("21")
+	assert_str(ClaudeSessionsScript._sanitize_tag("ʰ")).is_equal("h")
+	assert_str(ClaudeSessionsScript._sanitize_tag("ſ")).is_equal("s")
 
 
 func test_scoped_mutation_falls_through_primary_access_error_to_worktree_session() -> void:
