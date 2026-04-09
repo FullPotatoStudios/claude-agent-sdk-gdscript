@@ -42,6 +42,13 @@ Run this locally before creating or pushing the release tag:
 ./tools/release/validate_live_cli.sh
 ```
 
+For targeted authenticated reruns while investigating a later smoke mode, you can
+repeat `--mode <name>` without changing the default full-wrapper pre-tag check:
+
+```bash
+./tools/release/validate_live_cli.sh --mode context_usage --mode mcp_status
+```
+
 ## Known limitations section
 
 Each public release note should include a concise limitations section covering:
