@@ -50,6 +50,10 @@ Validated modes:
 - `baseline`
 - `structured`
 - `partial`
+- `agents`
+- `setting_sources_default`
+- `setting_sources_project_included`
+- `filesystem_agent_project`
 - auth probe
 
 Observed results in this environment:
@@ -57,6 +61,10 @@ Observed results in this environment:
 - `baseline`: runtime path succeeded and produced typed `system`, `assistant`, and `result` messages with the real authenticated Claude environment
 - `structured`: runtime path succeeded once the smoke runner allowed `max_turns = 2`, which matches Claude's tool-mediated structured-output flow; the final result included `structured_output = {"answer": "4"}`
 - `partial`: runtime path succeeded and produced real `ClaudeStreamEvent` messages before the final `result`
+- `agents`: runtime path succeeded and the init `SystemMessage` exposed the SDK-defined `test-agent`, matching the upstream initialize-path agent registration expectation
+- `setting_sources_default`: runtime path succeeded and the init `SystemMessage` reported `output_style = "local-test-style"` from a temporary project-local `.claude/settings.local.json` with default CLI setting-source loading
+- `setting_sources_project_included`: runtime path succeeded and the init `SystemMessage` again reported `output_style = "local-test-style"` when `setting_sources = ["user", "project", "local"]`
+- `filesystem_agent_project`: runtime path succeeded and the init `SystemMessage` exposed the temporary filesystem `fs-test-agent`, while the response continued through `AssistantMessage` and `ResultMessage` instead of stalling after init
 - `auth probe` with the real user environment: reported `logged_in = true`
 - `auth probe` with isolated `HOME` and `XDG_*`: reported `error_code = "logged_out"` rather than misclassifying the issue as a transport failure
 - the earlier structured-output failure was a smoke configuration bug: the runner forced `max_turns = 1`, but Claude consumed one turn for the `StructuredOutput` tool call and finished on turn two

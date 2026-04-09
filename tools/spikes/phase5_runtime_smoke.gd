@@ -30,11 +30,9 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 		"filesystem_agent_project":
 			return await _run_filesystem_agent_project_smoke(args)
 		_:
-			return {
-				"mode": mode,
-				"ok": false,
-				"error": "Unknown smoke mode",
-			}
+			var failed := _empty_summary(mode)
+			failed["stream_error"] = "Unknown smoke mode"
+			return failed
 
 
 func _run_query_smoke(mode: String, args: Dictionary) -> Dictionary:
@@ -94,10 +92,15 @@ func _run_query_smoke(mode: String, args: Dictionary) -> Dictionary:
 
 func _run_setting_sources_default_smoke(args: Dictionary) -> Dictionary:
 	var project_dir := _create_temp_project_dir("setting-sources-default")
-	_write_text_file(
+	if not _write_text_file(
 		project_dir.path_join(".claude/settings.local.json"),
 		"{\"outputStyle\": \"%s\"}" % DEFAULT_OUTPUT_STYLE
-	)
+	):
+		var failed := _empty_summary("setting_sources_default")
+		failed["project_dir"] = project_dir
+		failed["expected_output_style"] = DEFAULT_OUTPUT_STYLE
+		failed["stream_error"] = "Could not write settings.local.json"
+		return failed
 	var options = ClaudeAgentOptionsScript.new({
 		"cli_path": str(args.get("claude_path", "claude")),
 		"model": "haiku",
@@ -114,10 +117,15 @@ func _run_setting_sources_default_smoke(args: Dictionary) -> Dictionary:
 
 func _run_setting_sources_project_included_smoke(args: Dictionary) -> Dictionary:
 	var project_dir := _create_temp_project_dir("setting-sources-project")
-	_write_text_file(
+	if not _write_text_file(
 		project_dir.path_join(".claude/settings.local.json"),
 		"{\"outputStyle\": \"%s\"}" % DEFAULT_OUTPUT_STYLE
-	)
+	):
+		var failed := _empty_summary("setting_sources_project_included")
+		failed["project_dir"] = project_dir
+		failed["expected_output_style"] = DEFAULT_OUTPUT_STYLE
+		failed["stream_error"] = "Could not write settings.local.json"
+		return failed
 	var options = ClaudeAgentOptionsScript.new({
 		"cli_path": str(args.get("claude_path", "claude")),
 		"model": "haiku",
@@ -135,7 +143,7 @@ func _run_setting_sources_project_included_smoke(args: Dictionary) -> Dictionary
 
 func _run_filesystem_agent_project_smoke(args: Dictionary) -> Dictionary:
 	var project_dir := _create_temp_project_dir("filesystem-agent-project")
-	_write_text_file(
+	if not _write_text_file(
 		project_dir.path_join(".claude/agents/%s.md" % FILESYSTEM_AGENT_NAME),
 		"""---
 name: fs-test-agent
@@ -147,7 +155,12 @@ tools: Read
 
 You are a simple test agent. When asked a question, provide a brief, helpful answer.
 """
-	)
+	):
+		var failed := _empty_summary("filesystem_agent_project")
+		failed["project_dir"] = project_dir
+		failed["expected_agent"] = FILESYSTEM_AGENT_NAME
+		failed["stream_error"] = "Could not write filesystem agent definition"
+		return failed
 	var options = ClaudeAgentOptionsScript.new({
 		"cli_path": str(args.get("claude_path", "claude")),
 		"model": "haiku",
@@ -167,18 +180,13 @@ func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
 	if not client.get_last_error().is_empty():
-		return {
-			"mode": mode,
-			"ok": false,
-			"error": client.get_last_error(),
-		}
+		var failed := _empty_summary(mode)
+		failed["stream_error"] = client.get_last_error()
+		return failed
 	client.query(prompt)
 	if not client.get_last_error().is_empty():
-		var failed := {
-			"mode": mode,
-			"ok": false,
-			"error": client.get_last_error(),
-		}
+		var failed := _empty_summary(mode)
+		failed["stream_error"] = client.get_last_error()
 		client.disconnect_client()
 		return failed
 	var summary := await _collect_stream_summary(mode, client.receive_response())
@@ -257,6 +265,28 @@ func _summary_has_agent(summary: Dictionary, agent_name: String) -> bool:
 	return agents.has(agent_name)
 
 
+func _empty_summary(mode: String) -> Dictionary:
+	return {
+		"mode": mode,
+		"ok": false,
+		"message_types": [],
+		"stream_error": "",
+		"saw_stream_event": false,
+		"init_present": false,
+		"init_agents": [],
+		"init_output_style": "",
+		"assistant_present": false,
+		"result_present": false,
+		"result_is_error": false,
+		"result_subtype": "",
+		"result_errors": [],
+		"result_num_turns": 0,
+		"structured_output_present": false,
+		"structured_output": null,
+		"result_text": "",
+	}
+
+
 func _variant_to_string_array(value: Variant) -> Array[String]:
 	var result: Array[String] = []
 	if value is not Array:
@@ -272,14 +302,15 @@ func _create_temp_project_dir(label: String) -> String:
 	return project_dir
 
 
-func _write_text_file(path: String, contents: String) -> void:
+func _write_text_file(path: String, contents: String) -> bool:
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		push_error("Could not open file for write: %s" % path)
-		return
+		return false
 	file.store_string(contents)
 	file.close()
+	return true
 
 
 func _parse_args(cmdline_args: PackedStringArray) -> Dictionary:
