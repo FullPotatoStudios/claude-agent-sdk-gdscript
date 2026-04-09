@@ -50,6 +50,7 @@ Use `ClaudeChatPanel` when:
 - you want a working Claude chat UI with auth-state, saved-session browsing, connect controls, transcript rendering, disconnected prompt/tool/MCP configuration editing, and a composer immediately
 - you want a reference implementation for custom UI work
 - you are happy with the panel owning its own internal `ClaudeClientNode`
+- you want to start an editor-dock workflow from the development-only example under `tools/examples/editor_plugin_demo/` without changing the main addon payload
 
 Because `Object` already defines `is_connected(signal_name, callable)`, the Godot-facing adapter layer uses `is_client_connected()` rather than `is_connected()`.
 
@@ -87,6 +88,7 @@ The integration layer is intentionally thin.
 - It does not add task-specific fanout signals
 - It does not add custom-tool or SDK-hosted MCP abstractions
 - It does not replace the reusable chat panel for users who want a drop-in UI
+- It does not ship editor-plugin wiring inside `addons/claude_agent_sdk/`; the current editor-dock workflow lives as a development-only example under `tools/examples/editor_plugin_demo/`
 - It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
 - agent definitions are also runtime-first and are sent through the initialize payload rather than through panel-specific configuration

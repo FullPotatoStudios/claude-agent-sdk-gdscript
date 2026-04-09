@@ -47,7 +47,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: remaining reference-panel UX expansion around multiple simultaneous sessions and editor-plugin workflows
+- Active roadmap slice: future decision-making around true multi-session panel UX and whether the development-only editor-dock example should remain example-only or grow into shipped editor tooling
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
@@ -135,6 +135,7 @@ The first public implementation target is the scene-free core conversation loop,
   - default-turn runtime-session promotion now binds once to the resolved runtime session ID instead of re-routing later foreign session traffic into `"default"`
   - aggregate plus per-session busy tracking on `ClaudeClientAdapter` and `ClaudeClientNode` through `is_busy()` and additive `is_session_busy(session_id)`
   - `ClaudeChatPanel` guardrails that keep one authoritative live session even if unrelated session traffic appears on the shared runtime stream
+  - development-only editor-plugin dock example under `tools/examples/editor_plugin_demo/`, keeping `ClaudeChatPanel` and the runtime APIs unchanged while documenting a Godot-native editor workflow starting point
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors

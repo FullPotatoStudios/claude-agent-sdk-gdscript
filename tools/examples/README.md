@@ -48,6 +48,15 @@ Available advanced examples:
 - `sdk_mcp_calculator_example.gd`
   Upstream parity target: `examples/mcp_calculator.py`
 
+## Copy-ready editor plugin example
+
+- `editor_plugin_demo/addons/claude_agent_sdk_editor_demo/`
+  Development-only Godot `EditorPlugin` example that mounts the shipped
+  `ClaudeChatPanel` in an editor dock without adding `plugin.cfg` to the main
+  addon payload.
+
+See `tools/examples/editor_plugin_demo/README.md` for copy/install steps.
+
 ## Fixtures
 
 `tools/examples/fixtures/` contains the local project fixtures used by the

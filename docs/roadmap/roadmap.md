@@ -334,6 +334,11 @@ Delivered in Phase 10AL:
 - `ClaudeChatPanel` guardrails that keep one authoritative live session even if unrelated session traffic appears on the shared runtime stream
 - docs and runtime/UI coverage updated to keep same-session overlap rejection explicit as a local determinism guard rather than a proven upstream parity claim
 
+Delivered in Phase 10AM:
+- development-only editor-plugin workflow expansion through a copy-ready `EditorPlugin` example under `tools/examples/editor_plugin_demo/`
+- example dock wrapper that mounts the shipped `ClaudeChatPanel`, scopes Claude to the current project root, and keeps editor defaults additive rather than widening runtime APIs
+- docs and coverage updates that keep `plugin.cfg` out of `addons/claude_agent_sdk/` while still documenting an editor-dock starting point
+
 Delivered in Phase 10Q:
 - `ClaudeChatPanel` task-aware transcript controls for typed `task_started`, `task_progress`, and `task_notification` messages
 - per-task `stop_task(task_id)` controls in the reference panel while a task is active
@@ -391,7 +396,7 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded MCP authoring slice and the lower-runtime multi-session overlap guardrail slice are now delivered. The next parity planning pass should target the remaining editor-plugin workflow expansion and any future decision about whether the shipped panel should ever surface true multi-session UX, while keeping the remaining Windows `user` caveat tracked separately.
+The current bounded MCP authoring slice, the lower-runtime multi-session overlap guardrail slice, and the first editor-plugin workflow example are now delivered. The next parity planning pass should target any future decision about whether the shipped panel should ever surface true multi-session UX or whether the development-only editor-dock example should graduate into shipped editor tooling, while keeping the remaining Windows `user` caveat tracked separately.
 
 ## Parity findings (2026-04-09)
 

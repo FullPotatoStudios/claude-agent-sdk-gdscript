@@ -125,7 +125,7 @@ The panel intentionally does not yet include:
 
 - multiple simultaneous in-flight sessions inside one panel instance
 - richer task dashboards beyond the current per-task transcript cards and stop control
-- editor-plugin workflows
+- shipped editor-plugin wiring inside the addon payload
 
 The lower runtime layers now allow overlapping turns for different
 `session_id` values on one connected client, but the shipped panel still keeps
@@ -136,6 +136,10 @@ When the live turn begins from `"default"`, the panel only adopts the resolved
 runtime session UUID that matches its current live target; unrelated foreign
 session traffic stays visible in the shared stream but does not retarget the
 composer.
+
+For a development-only editor-dock starting point that keeps `plugin.cfg` out
+of the distributable addon payload, see
+`tools/examples/editor_plugin_demo/README.md`.
 
 The built-in tool picker only covers Claude's built-in tools. SDK/external MCP
 tools still stay code-driven through `ClaudeMcp` and `ClaudeAgentOptions`.
