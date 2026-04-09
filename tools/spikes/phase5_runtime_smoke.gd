@@ -2,16 +2,40 @@ extends SceneTree
 
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
+const ClaudeHookMatcherScript := preload("res://addons/claude_agent_sdk/runtime/claude_hook_matcher.gd")
+const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
+const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_client.gd")
 const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.gd")
 
 const DEFAULT_OUTPUT_STYLE := "local-test-style"
 const FILESYSTEM_AGENT_NAME := "fs-test-agent"
 const SDK_AGENT_NAME := "test-agent"
+const SUPPORTED_MODES := [
+	"baseline",
+	"structured",
+	"partial",
+	"agents",
+	"setting_sources_default",
+	"setting_sources_project_included",
+	"filesystem_agent_project",
+	"stderr_debug",
+	"hook_pre_tool_use",
+	"tool_permission_bash_touch",
+]
+
+var _stderr_lines: Array[String] = []
+var _hook_invocations: Array[Dictionary] = []
+var _permission_invocations: Array[Dictionary] = []
 
 
 func _init() -> void:
 	var args := _parse_args(OS.get_cmdline_user_args())
+	if bool(args.get("list_modes", false)):
+		for mode in SUPPORTED_MODES:
+			print("MODE %s" % mode)
+		quit(0)
+		return
 	await process_frame
 	var summary: Dictionary = await _run_smoke(args)
 	print("SUMMARY %s" % JSON.stringify(summary))
@@ -29,6 +53,12 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_setting_sources_project_included_smoke(args)
 		"filesystem_agent_project":
 			return await _run_filesystem_agent_project_smoke(args)
+		"stderr_debug":
+			return await _run_stderr_debug_smoke(args)
+		"hook_pre_tool_use":
+			return await _run_hook_pre_tool_use_smoke(args)
+		"tool_permission_bash_touch":
+			return await _run_tool_permission_bash_touch_smoke(args)
 		_:
 			var failed := _empty_summary(mode)
 			failed["stream_error"] = "Unknown smoke mode"
@@ -176,6 +206,110 @@ You are a simple test agent. When asked a question, provide a brief, helpful ans
 	return summary
 
 
+func _run_stderr_debug_smoke(args: Dictionary) -> Dictionary:
+	_stderr_lines.clear()
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"max_turns": 1,
+		"stderr": Callable(self, "_on_stderr_line"),
+		"extra_args": {"debug-to-stderr": null},
+	})
+	var summary := await _collect_stream_summary(
+		"stderr_debug",
+		ClaudeQueryScript.query("What is 2 + 2? Answer only with the number.", options)
+	)
+	summary["stderr_line_count"] = _stderr_lines.size()
+	summary["stderr_debug_present"] = _lines_contain_substring(_stderr_lines, "[DEBUG]")
+	summary["ok"] = _summary_succeeded(summary) \
+		and int(summary.get("stderr_line_count", 0)) > 0 \
+		and bool(summary.get("stderr_debug_present", false))
+	return summary
+
+
+func _run_hook_pre_tool_use_smoke(args: Dictionary) -> Dictionary:
+	_hook_invocations.clear()
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"cwd": ProjectSettings.globalize_path("res://"),
+		"max_turns": 2,
+		"allowed_tools": ["Bash"],
+		"permission_mode": "bypassPermissions",
+		"hooks": {
+			"PreToolUse": [
+				ClaudeHookMatcherScript.new({
+					"matcher": "Bash",
+					"hooks": [Callable(self, "_smoke_pre_tool_use_hook")],
+					"timeout_sec": 10.0,
+				}),
+			],
+		},
+	})
+	var prompt := str(args.get(
+		"prompt",
+		"Use Bash to run: printf 'hook smoke\\n'. Then answer only with done."
+	))
+	var summary := await _collect_stream_summary(
+		"hook_pre_tool_use",
+		ClaudeQueryScript.query(prompt, options)
+	)
+	summary["hook_invocation_count"] = _hook_invocations.size()
+	summary["hook_tools"] = _collect_string_field(_hook_invocations, "tool_name")
+	summary["hook_tool_use_ids"] = _collect_string_field(_hook_invocations, "tool_use_id")
+	summary["hook_bash_seen"] = _collect_string_field(_hook_invocations, "tool_name").has("Bash")
+	summary["hook_tool_use_id_present"] = _any_non_empty_string(_collect_string_field(_hook_invocations, "tool_use_id"))
+	summary["ok"] = _summary_succeeded(summary) \
+		and int(summary.get("hook_invocation_count", 0)) > 0 \
+		and bool(summary.get("hook_bash_seen", false)) \
+		and bool(summary.get("hook_tool_use_id_present", false))
+	return summary
+
+
+func _run_tool_permission_bash_touch_smoke(args: Dictionary) -> Dictionary:
+	_permission_invocations.clear()
+	var project_dir := _create_temp_project_dir("tool-permission-bash-touch")
+	var touch_target := project_dir.path_join("permission-smoke-%d.txt" % Time.get_ticks_usec())
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"cwd": project_dir,
+		"max_turns": 2,
+		"allowed_tools": ["Bash"],
+		"can_use_tool": Callable(self, "_smoke_permission_callback"),
+	})
+	var prompt_stream = ClaudePromptStreamScript.new()
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {
+			"role": "user",
+			"content": "Use Bash to run: touch %s. Then answer only with done." % _shell_single_quote(touch_target),
+		},
+		"parent_tool_use_id": null,
+	})
+	prompt_stream.finish()
+	var summary := await _collect_stream_summary(
+		"tool_permission_bash_touch",
+		ClaudeQueryScript.query(prompt_stream, options)
+	)
+	summary["permission_invocation_count"] = _permission_invocations.size()
+	summary["permission_tools"] = _collect_string_field(_permission_invocations, "tool_name")
+	summary["permission_tool_use_ids"] = _collect_string_field(_permission_invocations, "tool_use_id")
+	summary["permission_bash_seen"] = _collect_string_field(_permission_invocations, "tool_name").has("Bash")
+	summary["permission_tool_use_id_present"] = _any_non_empty_string(_collect_string_field(_permission_invocations, "tool_use_id"))
+	summary["touched_file"] = touch_target
+	summary["touched_file_exists"] = FileAccess.file_exists(touch_target)
+	summary["ok"] = _summary_succeeded(summary) \
+		and int(summary.get("permission_invocation_count", 0)) > 0 \
+		and bool(summary.get("permission_bash_seen", false)) \
+		and bool(summary.get("permission_tool_use_id_present", false)) \
+		and bool(summary.get("touched_file_exists", false))
+	return summary
+
+
 func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
@@ -285,7 +419,75 @@ func _empty_summary(mode: String) -> Dictionary:
 		"structured_output_present": false,
 		"structured_output": null,
 		"result_text": "",
+		"stderr_line_count": 0,
+		"stderr_debug_present": false,
+		"hook_invocation_count": 0,
+		"hook_tools": [],
+		"hook_tool_use_ids": [],
+		"hook_bash_seen": false,
+		"hook_tool_use_id_present": false,
+		"permission_invocation_count": 0,
+		"permission_tools": [],
+		"permission_tool_use_ids": [],
+		"permission_bash_seen": false,
+		"permission_tool_use_id_present": false,
+		"touched_file": "",
+		"touched_file_exists": false,
 	}
+
+
+func _on_stderr_line(line: String) -> void:
+	_stderr_lines.append(line)
+
+
+func _smoke_pre_tool_use_hook(input_data: Dictionary, tool_use_id: Variant, _context) -> Dictionary:
+	_hook_invocations.append({
+		"tool_name": str(input_data.get("tool_name", "")),
+		"tool_use_id": str(tool_use_id),
+		"input": input_data.duplicate(true),
+	})
+	return {
+		"reason": "Live validation approved the Bash invocation.",
+		"hookSpecificOutput": {
+			"hookEventName": "PreToolUse",
+			"permissionDecision": "allow",
+			"permissionDecisionReason": "Smoke validation recorded the callback and allowed Bash to continue.",
+		},
+	}
+
+
+func _smoke_permission_callback(tool_name: String, input_data: Dictionary, context) -> Variant:
+	_permission_invocations.append({
+		"tool_name": tool_name,
+		"tool_use_id": str(context.tool_use_id) if context != null else "",
+		"input": input_data.duplicate(true),
+	})
+	return ClaudePermissionResultAllowScript.new()
+
+
+func _collect_string_field(entries: Array[Dictionary], key: String) -> Array[String]:
+	var values: Array[String] = []
+	for entry in entries:
+		values.append(str(entry.get(key, "")))
+	return values
+
+
+func _any_non_empty_string(values: Array[String]) -> bool:
+	for value in values:
+		if not value.is_empty():
+			return true
+	return false
+
+
+func _lines_contain_substring(lines: Array[String], needle: String) -> bool:
+	for line in lines:
+		if line.contains(needle):
+			return true
+	return false
+
+
+func _shell_single_quote(value: String) -> String:
+	return "'%s'" % value.replace("'", "'\"'\"'")
 
 
 func _variant_to_string_array(value: Variant) -> Array[String]:
@@ -320,7 +522,9 @@ func _parse_args(cmdline_args: PackedStringArray) -> Dictionary:
 		"claude_path": "claude",
 	}
 	for arg in cmdline_args:
-		if arg.begins_with("--mode="):
+		if arg == "--list-modes":
+			parsed["list_modes"] = true
+		elif arg.begins_with("--mode="):
 			parsed["mode"] = arg.trim_prefix("--mode=")
 		elif arg.begins_with("--claude-path="):
 			parsed["claude_path"] = arg.trim_prefix("--claude-path=")

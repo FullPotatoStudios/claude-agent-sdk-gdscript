@@ -103,21 +103,35 @@ Date reviewed: 2026-04-09
 
 The reusable authenticated smoke entrypoint under `tools/spikes/phase5_runtime_smoke.gd` has since been widened beyond the original Phase 5 trio.
 
-Additional validated modes:
+Additional implemented modes:
 
 - `agents`
 - `setting_sources_default`
 - `setting_sources_project_included`
 - `filesystem_agent_project`
+- `stderr_debug`
+- `hook_pre_tool_use`
+- `tool_permission_bash_touch`
 
-Observed results in this environment:
+Historically validated in this environment before the current auth regression:
 
 - `agents`: `ClaudeAgentOptions.agents` appeared in the init `SystemMessage` and the query still completed with assistant plus result messages
 - `setting_sources_default`: a temporary project-local `.claude/settings.local.json` was loaded when `setting_sources` was left unset, and init reported `output_style = "local-test-style"`
 - `setting_sources_project_included`: the same local settings file was loaded when `setting_sources = ["user", "project", "local"]`, again surfacing `output_style = "local-test-style"` in init
 - `filesystem_agent_project`: a temporary `.claude/agents/fs-test-agent.md` file was discovered when `setting_sources = ["project"]`; init listed `fs-test-agent`, and the session continued through assistant plus result messages instead of stopping at init-only
 
+Implemented assertions for the new smoke modes:
+
+- `stderr_debug`: requires the runtime `stderr` callback to capture at least one real Claude CLI `[DEBUG]` line when `extra_args = {"debug-to-stderr": null}`
+- `hook_pre_tool_use`: requires a `PreToolUse` hook to match a real Bash invocation, see a non-empty `tool_use_id`, and allow the request through `hookSpecificOutput.permissionDecision = "allow"`
+- `tool_permission_bash_touch`: requires a streamed `ClaudePromptStream` query to trigger a real Bash permission callback, see a non-empty `tool_use_id`, and create the prompted temporary file via `touch`
+
+Current local rerun status:
+
+- a fresh `./tools/release/validate_live_cli.sh` run on `2026-04-09` is currently blocked at the first `baseline` prompt because the live Claude API returns `401 Invalid authentication credentials`, even though `claude auth status --json` still reports the CLI as logged in
+- because the run stops at `baseline`, the widened `stderr_debug`, `hook_pre_tool_use`, and `tool_permission_bash_touch` modes were implemented but not re-validated end to end during this run
+
 Scope note:
 
-- this still only covers the first scripted live-parity expansion slice
-- dynamic control, hook/tool-permission, SDK MCP, stderr, session-forking, rewind/task, context/MCP diagnostics, `plugins`, and `user` coverage remain future follow-up work
+- this still only covers a bounded scripted live-parity slice rather than the full post-v1 surface
+- dynamic control, SDK MCP, session-forking, rewind/task, context/MCP diagnostics, and `plugins` / `user` coverage remain future follow-up work

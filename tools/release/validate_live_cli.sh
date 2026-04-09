@@ -78,15 +78,28 @@ then
 	exit 1
 fi
 
-for mode in \
-	baseline \
-	structured \
-	partial \
-	agents \
-	setting_sources_default \
-	setting_sources_project_included \
-	filesystem_agent_project
-do
+smoke_modes=()
+mode_list_log="${log_dir}/list-modes.log"
+while IFS= read -r mode; do
+	if [ -n "${mode}" ]; then
+		smoke_modes+=("${mode}")
+	fi
+done < <(
+	"${godot_binary}" \
+		--headless \
+		--log-file "${mode_list_log}" \
+		--path "${repo_root}" \
+		-s res://tools/spikes/phase5_runtime_smoke.gd \
+		-- --list-modes \
+	| sed -n 's/^MODE //p'
+)
+
+if [ "${#smoke_modes[@]}" -eq 0 ]; then
+	echo "Could not determine live smoke modes from tools/spikes/phase5_runtime_smoke.gd" >&2
+	exit 1
+fi
+
+for mode in "${smoke_modes[@]}"; do
 	echo "Running live Claude smoke: ${mode}"
 	log_file="${log_dir}/${mode}.log"
 	"${godot_binary}" \

@@ -25,6 +25,12 @@ This is the normal branch/push validation path. It installs GdUnit4 if needed, r
 
 This is the local-only authenticated runtime smoke. It now covers the original `baseline`, `structured`, and `partial` modes plus first-slice parity checks for `agents`, default `setting_sources`, explicit project/local `setting_sources`, and filesystem agents loaded from `.claude/agents/`, all against the real installed Claude CLI using the real local environment.
 
+It also now exercises bounded authenticated parity coverage for:
+
+- `stderr` diagnostics via `debug-to-stderr`
+- `PreToolUse` hook callbacks on real Bash tool use
+- `can_use_tool` permission callbacks on a streamed Bash `touch` prompt
+
 ### Release prep
 
 - `./tools/release/verify_release_metadata.sh`
