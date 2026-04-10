@@ -500,9 +500,16 @@ func test_tag_session_validates_sanitizes_clears_and_updates_visible_tag() -> vo
 		return
 	assert_str(str(normalized_info.tag)).is_equal("kg")
 
+	assert_int(ClaudeSessions.tag_session(session_id, "A\u200b\u030A", project_path)).is_equal(OK)
+	var recomposed_info = ClaudeSessions.get_session_info(session_id, project_path)
+	assert_object(recomposed_info).is_not_null()
+	if recomposed_info == null:
+		return
+	assert_str(str(recomposed_info.tag)).is_equal("Å")
+
 	lines = FileAccess.get_file_as_string(session_file).strip_edges().split("\n", false)
 	assert_str(lines[-1]).is_equal(
-		'{"type":"tag","tag":"kg","sessionId":"%s"}' % session_id
+		'{"type":"tag","tag":"Å","sessionId":"%s"}' % session_id
 	)
 
 
@@ -620,7 +627,7 @@ func test_delete_session_surfaces_lookup_permission_failure() -> void:
 	assert_str(ClaudeSessions.get_last_error()).contains(session_file)
 
 
-func test_tag_sanitization_handles_compatibility_characters() -> void:
+func test_tag_sanitization_matches_upstream_whole_string_normalization() -> void:
 	assert_str(ClaudeSessionsScript._sanitize_tag("Ⓐ①ﬃ")).is_equal("A1ffi")
 	assert_str(ClaudeSessionsScript._sanitize_tag("Ⅳ")).is_equal("IV")
 	assert_str(ClaudeSessionsScript._sanitize_tag("a\u2066Ⓑ\u2069")).is_equal("aB")
@@ -632,6 +639,11 @@ func test_tag_sanitization_handles_compatibility_characters() -> void:
 	assert_str(ClaudeSessionsScript._sanitize_tag("㉑")).is_equal("21")
 	assert_str(ClaudeSessionsScript._sanitize_tag("ʰ")).is_equal("h")
 	assert_str(ClaudeSessionsScript._sanitize_tag("ſ")).is_equal("s")
+	assert_str(ClaudeSessionsScript._sanitize_tag("A\u030A")).is_equal("Å")
+	assert_str(ClaudeSessionsScript._sanitize_tag("e\u0301")).is_equal("é")
+	assert_str(ClaudeSessionsScript._sanitize_tag("한")).is_equal("한")
+	assert_str(ClaudeSessionsScript._sanitize_tag("A\u200b\u030A")).is_equal("Å")
+	assert_str(ClaudeSessionsScript._sanitize_tag("e\u2066\u0301\u2069")).is_equal("é")
 
 
 func test_scoped_mutation_falls_through_primary_access_error_to_worktree_session() -> void:

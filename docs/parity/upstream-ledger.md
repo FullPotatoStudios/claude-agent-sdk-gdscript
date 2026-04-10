@@ -129,7 +129,7 @@ The first public implementation target is the scene-free core conversation loop,
   - transport-only `ClaudeAgentOptions.max_buffer_size` parity with a local default in `ClaudeSubprocessCLITransport`
   - subprocess transport shutdown grace parity after stdin EOF, with a 5-second wait before forced kill so final session-file flushes are less likely to be lost
   - malformed known-message payloads now fail loudly through `ClaudeMessageParser.parse_message_result()` and fatal `ClaudeQuerySession` stream/session errors, while unknown top-level message types still skip forward-compatibly
-  - broader session-tag Unicode compatibility normalization through generated upstream-derived single-codepoint NFKC rewrite data plus iterative stripping of format/private-use/unassigned codepoint ranges
+  - session-tag Unicode sanitization parity through generated whole-string normalization tables that now mirror upstream iterative Unicode normalization/composition plus format/private-use/unassigned stripping
   - additive different-session overlap compatibility on connected clients through per-session active-turn tracking in `ClaudeQuerySession`, matching upstream's shared receive stream and lack of a client-wide busy guard without claiming explicit upstream overlap tests
   - additive `receive_response_for_session(session_id)` on `ClaudeQuerySession` and `ClaudeSDKClient`, while `receive_response()` now follows upstream global first-result convenience semantics
   - default-turn runtime-session promotion now binds once to the resolved runtime session ID instead of re-routing later foreign session traffic into `"default"`
@@ -144,7 +144,6 @@ The first public implementation target is the scene-free core conversation loop,
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
   - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
   - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
-  - session-tag sanitization now mirrors a broader upstream-derived compatibility/strip set, but it still stops short of upstream whole-string Unicode normalization/composition parity
   - same-session overlap now stays serialized locally as a determinism/truthfulness guard, even though upstream's shared-stream client does not currently add an explicit same-session query guard
 
 ## Update process

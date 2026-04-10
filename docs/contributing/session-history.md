@@ -128,7 +128,7 @@ Basic mutation behavior:
 - `delete_session()` hard-deletes the session `.jsonl` file
 - missing sessions return `ERR_DOES_NOT_EXIST`
 - invalid UUIDs and empty title/tag inputs return `ERR_INVALID_PARAMETER`
-- tag sanitization now uses generated upstream-derived single-codepoint NFKC compatibility rewrites plus iterative stripping of format/private-use/unassigned codepoint ranges; full multi-codepoint Unicode normalization/composition still remains narrower than upstream Python's `unicodedata` pipeline
+- tag sanitization now uses generated local Unicode tables to match upstream whole-string iterative Unicode normalization/composition plus stripping of format/private-use/unassigned codepoint ranges
 
 ## Example
 
