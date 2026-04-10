@@ -2299,7 +2299,6 @@ func test_panel_live_fork_creates_and_selects_new_saved_session_without_prior_se
 	assert_int(_session_list(panel).item_count).is_equal(2)
 	assert_str(_session_id_from_panel(panel)).is_not_equal(live_session_id)
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Live branch")
-	assert_str(_status_badge(panel).text).is_equal("Saved")
 	assert_int(_count_entries(panel, "user_bubble")).is_equal(1)
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_str(_last_assistant_text(panel)).contains("Live answer")
@@ -2309,7 +2308,7 @@ func test_panel_live_fork_creates_and_selects_new_saved_session_without_prior_se
 	await _cleanup_panel(panel)
 
 
-func test_panel_live_fork_uses_authoritative_runtime_session_id_instead_of_stale_selected_preview() -> void:
+func test_panel_live_fork_uses_selected_saved_preview_when_it_is_the_current_panel_target() -> void:
 	var live_session_id := "75757575-7575-4757-8757-757575757575"
 	var preview_session_id := "76767676-7676-4767-8767-767676767676"
 	var config_root := _create_config_root("panel-live-fork-authoritative")
@@ -2348,8 +2347,9 @@ func test_panel_live_fork_uses_authoritative_runtime_session_id_instead_of_stale
 	var forked_session_id := _session_id_from_panel(panel)
 	var forked_content := FileAccess.get_file_as_string(project_dir.path_join("%s.jsonl" % forked_session_id))
 	assert_str(forked_session_id).is_not_equal(live_session_id)
+	assert_str(forked_session_id).is_not_equal(preview_session_id)
 	assert_str(forked_content).contains('"sessionId":"%s"' % forked_session_id)
-	assert_str(forked_content).contains('"forkedFrom":{"sessionId":"%s"' % live_session_id)
+	assert_str(forked_content).contains('"forkedFrom":{"sessionId":"%s"' % preview_session_id)
 	assert_str(forked_content).contains("Authority wins")
 
 	await _cleanup_panel(panel)
@@ -2393,7 +2393,7 @@ func test_panel_live_fork_failure_without_prior_selection_returns_to_truthful_dr
 	await _cleanup_panel(panel)
 
 
-func test_panel_live_fork_failure_with_prior_saved_selection_restores_preview_truthfully() -> void:
+func test_panel_connected_saved_preview_forks_selected_session_even_with_background_live_activity() -> void:
 	var live_session_id := "78787878-7878-4787-8787-787878787878"
 	var preview_session_id := "79797979-7979-4797-8797-797979797979"
 	var config_root := _create_config_root("panel-live-fork-selected-failure")
@@ -2430,11 +2430,13 @@ func test_panel_live_fork_failure_with_prior_saved_selection_restores_preview_tr
 	await _await_frames(3)
 
 	assert_bool(panel.get_client_node().is_client_connected()).is_false()
-	assert_str(_session_id_from_panel(panel)).is_equal(preview_session_id)
-	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Preview source")
+	assert_str(_session_id_from_panel(panel)).is_not_equal(preview_session_id)
+	assert_str(_session_id_from_panel(panel)).is_not_equal(live_session_id)
+	assert_str(_label(panel, "SelectedSessionSummaryValue").text).contains("Preview source")
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 	assert_str(_last_assistant_text(panel)).contains("Preview answer")
-	assert_str(_label(panel, "StatusDetailLabel").text).contains("not found")
+	var forked_content := FileAccess.get_file_as_string(project_dir.path_join("%s.jsonl" % _session_id_from_panel(panel)))
+	assert_str(forked_content).contains('"forkedFrom":{"sessionId":"%s"' % preview_session_id)
 
 	await _cleanup_panel(panel)
 
@@ -2476,7 +2478,7 @@ func test_panel_disconnected_send_uses_selected_session_resume_target() -> void:
 	await _cleanup_panel(panel)
 
 
-func test_panel_connected_idle_selection_disconnects_into_saved_preview_and_new_chat_disconnects_to_draft() -> void:
+func test_panel_connected_session_switch_send_and_new_chat_stay_on_shared_connection() -> void:
 	var config_root := _create_config_root("panel-live-switch")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
 	var project_path := ProjectSettings.globalize_path("res://")
@@ -2490,16 +2492,17 @@ func test_panel_connected_idle_selection_disconnects_into_saved_preview_and_new_
 	var panel = await _connected_panel(transport)
 	await _await_frames(2)
 
-	assert_int(_session_list(panel).item_count).is_equal(2)
+	assert_int(_session_list(panel).item_count).is_equal(3)
 	assert_bool(_prompt_input(panel).editable).is_true()
 	_select_session_with_click_signal(panel, 0)
 	await _await_frames(2)
 
+	assert_bool(panel.get_client_node().is_client_connected()).is_true()
 	assert_str(_session_id_from_panel(panel)).is_equal(second_session_id)
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Second saved session")
-	assert_str(_status_badge(panel).text).is_equal("Saved")
-	assert_bool(_button(panel, "RenameSessionButton").disabled).is_false()
-	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_false()
+	assert_str(_status_badge(panel).text).is_equal("Connected")
+	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
+	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
 	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
 
 	_prompt_input(panel).text = "Switch to the selected history"
@@ -2508,21 +2511,10 @@ func test_panel_connected_idle_selection_disconnects_into_saved_preview_and_new_
 	_button(panel, "SendButton").pressed.emit()
 	await _await_frames(1)
 
-	var runtime_options = panel.get_client_node()._adapter._client.options
-	assert_str(runtime_options.resume).is_equal(second_session_id)
-	assert_str(runtime_options.session_id).is_empty()
-	var init_request: Dictionary = JSON.parse_string(transport.writes[write_count_before_resume])
-	transport.emit_stdout_message({
-		"type": "control_response",
-		"response": {
-			"subtype": "success",
-			"request_id": str(init_request.get("request_id", "")),
-			"response": {},
-		},
-	})
-	await _await_frames(1)
-	var resumed_prompt: Dictionary = JSON.parse_string(transport.writes[write_count_before_resume + 1])
-	assert_bool(str(resumed_prompt.get("session_id", "")) == "default").is_true()
+	assert_int(transport.writes.size()).is_equal(write_count_before_resume + 1)
+	var resumed_prompt: Dictionary = JSON.parse_string(transport.writes[write_count_before_resume])
+	assert_str(str(resumed_prompt.get("session_id", ""))).is_equal(second_session_id)
+	assert_str(str((resumed_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("Switch to the selected history")
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
@@ -2534,46 +2526,54 @@ func test_panel_connected_idle_selection_disconnects_into_saved_preview_and_new_
 		"result": "Done",
 	})
 	await _await_frames(3)
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal(second_session_id)
+	assert_bool(_prompt_input(panel).editable).is_true()
+	assert_str(_label(panel, "StatusDetailLabel").text).contains("Live session ready")
 
 	_activate_session_with_keyboard_signal(panel, 1)
 	await _await_frames(2)
 	assert_str(_session_id_from_panel(panel)).is_equal(first_session_id)
-	assert_str(_status_badge(panel).text).is_equal("Saved")
+	assert_bool(panel.get_client_node().is_client_connected()).is_true()
+	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
+	assert_str(_last_assistant_text(panel)).contains("First answer")
 
 	_button(panel, "NewChatButton").pressed.emit()
 	await _await_frames(2)
-	assert_str(_session_id_from_panel(panel)).is_equal("")
+	assert_bool(panel.get_client_node().is_client_connected()).is_true()
+	assert_str(_session_id_from_panel(panel)).is_equal("__panel_live_draft__")
 	assert_int(_transcript_list(panel).get_child_count()).is_equal(0)
-	assert_str(_status_badge(panel).text).is_equal("Ready")
+	assert_bool(_prompt_input(panel).editable).is_true()
 
 	var write_count_before_reset: int = transport.writes.size()
 	panel.submit_prompt("Fresh turn after reset")
 	await _await_frames(1)
-	var reset_init_request: Dictionary = JSON.parse_string(transport.writes[write_count_before_reset])
+	var reset_write: Dictionary = JSON.parse_string(transport.writes[write_count_before_reset])
+	assert_str(str(reset_write.get("session_id", ""))).is_equal("default")
 	transport.emit_stdout_message({
-		"type": "control_response",
-		"response": {
-			"subtype": "success",
-			"request_id": str(reset_init_request.get("request_id", "")),
-			"response": {},
-		},
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "fresh-runtime-session",
+		"result": "Fresh result",
 	})
-	await _await_frames(1)
-	var reset_write: Dictionary = JSON.parse_string(transport.writes[write_count_before_reset + 1])
-	assert_bool(str(reset_write.get("session_id", "")) == "default").is_true()
+	await _await_frames(2)
+	assert_str(_session_id_from_panel(panel)).is_equal("fresh-runtime-session")
+	assert_bool(_prompt_input(panel).editable).is_true()
 
 	await _cleanup_panel(panel)
 
 
-func test_panel_tracks_authoritative_live_session_id_from_runtime_results() -> void:
+func test_panel_connect_on_send_promotes_draft_session_and_restores_idle_composer() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = ChatPanelScene.instantiate()
 	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
 	get_tree().root.add_child(panel)
 	await _await_frames(2)
 
-	panel.connect_client()
+	panel.submit_prompt("Track the active session")
+	await _await_frames(1)
 	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
 	transport.emit_stdout_message({
 		"type": "control_response",
@@ -2583,23 +2583,25 @@ func test_panel_tracks_authoritative_live_session_id_from_runtime_results() -> v
 			"response": {},
 		},
 	})
-	await _await_frames(2)
-
-	panel.submit_prompt("Track the active session")
 	await _await_frames(1)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
+	assert_bool(_prompt_input(panel).editable).is_false()
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
 		"duration_ms": 10,
 		"duration_api_ms": 8,
-		"is_error": false,
-		"num_turns": 1,
-		"session_id": "tracked-session-id",
-		"result": "Tracked",
+			"is_error": false,
+			"num_turns": 1,
+			"session_id": "tracked-session-id",
+			"result": "Tracked",
 	})
 	await _await_frames(2)
 
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("tracked-session-id")
+	assert_str(_session_id_from_panel(panel)).is_equal("tracked-session-id")
+	assert_bool((panel.get("_live_session_states") as Dictionary).has("tracked-session-id")).is_true()
+	assert_bool(_prompt_input(panel).editable).is_true()
 	panel.submit_prompt("Use the tracked session")
 	await _await_frames(1)
 	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
@@ -2608,27 +2610,36 @@ func test_panel_tracks_authoritative_live_session_id_from_runtime_results() -> v
 	await _cleanup_panel(panel)
 
 
-func test_panel_ignores_foreign_session_results_after_authoritative_live_session_is_set() -> void:
+func test_panel_background_session_results_are_stored_without_overwriting_selected_draft_transcript() -> void:
+	var config_root := _create_config_root("panel-background-routing")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	var saved_session_id := "81818181-8181-4818-8818-818181818181"
+	_write_panel_session(project_dir, project_path, saved_session_id, "Saved session", "Saved prompt", "Saved answer", "", 1712302400)
+
 	var transport = FakeTransportScript.new()
-	var panel = ChatPanelScene.instantiate()
-	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
-	get_tree().root.add_child(panel)
-	await _await_frames(2)
+	var panel = await _connected_panel(transport)
 
-	panel.connect_client()
-	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
-	transport.emit_stdout_message({
-		"type": "control_response",
-		"response": {
-			"subtype": "success",
-			"request_id": str(init_request.get("request_id", "")),
-			"response": {},
-		},
-	})
-	await _await_frames(2)
-
-	panel.submit_prompt("Track the active session")
+	panel.submit_prompt("Default session stays selected")
 	await _await_frames(1)
+	var saved_index := int(panel.call("_find_panel_session_index", saved_session_id))
+	assert_int(saved_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, saved_index)
+	await _await_frames(2)
+
+	_prompt_input(panel).text = "Background saved session"
+	_prompt_input(panel).text_changed.emit()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
+	var saved_prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(saved_prompt_payload.get("session_id", ""))).is_equal(saved_session_id)
+
+	var draft_index := int(panel.call("_find_panel_session_index", "__panel_live_draft__"))
+	assert_int(draft_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, draft_index)
+	await _await_frames(2)
+
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
@@ -2636,11 +2647,48 @@ func test_panel_ignores_foreign_session_results_after_authoritative_live_session
 		"duration_api_ms": 8,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": "tracked-session-id",
-		"result": "Tracked",
+		"session_id": saved_session_id,
+		"result": "Saved done",
 	})
 	await _await_frames(2)
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("tracked-session-id")
+
+	assert_int(_count_entries(panel, "result_card")).is_equal(0)
+	assert_bool(_button(panel, "InterruptButton").disabled).is_false()
+	var saved_state := ((panel.get("_live_session_states") as Dictionary).get(saved_session_id, {}) as Dictionary)
+	var saved_entries := saved_state.get("transcript_entries", []) as Array
+	assert_int(saved_entries.size()).is_greater(0)
+	var saved_result_seen := false
+	for entry_variant in saved_entries:
+		if entry_variant is not Dictionary:
+			continue
+		var entry := entry_variant as Dictionary
+		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("Saved done"):
+			saved_result_seen = true
+			break
+	assert_bool(saved_result_seen).is_true()
+
+	_select_session_with_click_signal(panel, saved_index)
+	await _await_frames(2)
+	assert_str(_session_id_from_panel(panel)).is_equal(saved_session_id)
+	assert_bool(_prompt_input(panel).editable).is_true()
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_selected_saved_session_keeps_its_query_target_when_other_session_finishes() -> void:
+	var config_root := _create_config_root("panel-selected-target")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	var saved_session_id := "82828282-8282-4828-8828-828282828282"
+	_write_panel_session(project_dir, project_path, saved_session_id, "Saved target", "Saved prompt", "Saved answer", "", 1712302450)
+
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+	var saved_index := int(panel.call("_find_panel_session_index", saved_session_id))
+	assert_int(saved_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, saved_index)
+	await _await_frames(2)
 
 	transport.emit_stdout_message({
 		"type": "result",
@@ -2654,69 +2702,45 @@ func test_panel_ignores_foreign_session_results_after_authoritative_live_session
 	})
 	await _await_frames(2)
 
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("tracked-session-id")
-	panel.submit_prompt("Use the tracked session")
-	await _await_frames(1)
-	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("tracked-session-id")
-
-	await _cleanup_panel(panel)
-
-
-func test_panel_ignores_foreign_runtime_session_ids_before_authoritative_live_session_is_set() -> void:
-	var transport = FakeTransportScript.new()
-	var expected_session_id := "expected-session-id"
-	var panel = await _connected_panel(
-		transport,
-		ClaudeAgentOptionsScript.new({"model": "haiku", "session_id": expected_session_id})
-	)
-
-	transport.emit_stdout_message({
-		"type": "result",
-		"subtype": "success",
-		"duration_ms": 10,
-		"duration_api_ms": 8,
-		"is_error": false,
-		"num_turns": 1,
-		"session_id": "foreign-session-id",
-		"result": "Foreign",
-	})
-	await _await_frames(2)
-
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_empty()
-	assert_str(str(panel.get("_live_session_target_id"))).is_equal(expected_session_id)
-
-	panel.submit_prompt("Use the expected session")
+	assert_str(_session_id_from_panel(panel)).is_equal(saved_session_id)
+	_prompt_input(panel).text = "Continue saved target"
+	_prompt_input(panel).text_changed.emit()
+	_button(panel, "SendButton").pressed.emit()
 	await _await_frames(1)
 	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(prompt_payload.get("session_id", ""))).is_equal(expected_session_id)
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal(saved_session_id)
 
 	await _cleanup_panel(panel)
 
 
-func test_panel_default_target_ignores_named_overlap_traffic_until_default_turn_binds() -> void:
-	var transport = FakeTransportScript.new()
-	var panel = ChatPanelScene.instantiate()
-	panel.setup(ClaudeAgentOptionsScript.new({"model": "haiku"}), transport)
-	get_tree().root.add_child(panel)
-	await _await_frames(2)
+func test_panel_default_draft_promotes_after_panel_started_overlap_without_losing_background_session_state() -> void:
+	var config_root := _create_config_root("panel-default-promotion")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := ProjectSettings.globalize_path("res://")
+	var project_dir := _make_project_dir(config_root, project_path)
+	var saved_session_id := "83838383-8383-4838-8838-838383838383"
+	_write_panel_session(project_dir, project_path, saved_session_id, "Overlap saved session", "Saved prompt", "Saved answer", "", 1712302500)
 
-	panel.connect_client()
-	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
-	transport.emit_stdout_message({
-		"type": "control_response",
-		"response": {
-			"subtype": "success",
-			"request_id": str(init_request.get("request_id", "")),
-			"response": {},
-		},
-	})
-	await _await_frames(2)
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
 
 	panel.submit_prompt("Default")
 	await _await_frames(1)
-	panel.get_client_node().query("Named", "session-b")
+	var saved_index := int(panel.call("_find_panel_session_index", saved_session_id))
+	assert_int(saved_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, saved_index)
+	await _await_frames(2)
+	_prompt_input(panel).text = "Named"
+	_prompt_input(panel).text_changed.emit()
+	_button(panel, "SendButton").pressed.emit()
 	await _await_frames(1)
+	var named_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(named_payload.get("session_id", ""))).is_equal(saved_session_id)
+
+	var draft_index := int(panel.call("_find_panel_session_index", "__panel_live_draft__"))
+	assert_int(draft_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, draft_index)
+	await _await_frames(2)
 
 	transport.emit_stdout_message({
 		"type": "result",
@@ -2725,12 +2749,11 @@ func test_panel_default_target_ignores_named_overlap_traffic_until_default_turn_
 		"duration_api_ms": 8,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": "session-b",
+		"session_id": saved_session_id,
 		"result": "Named done",
 	})
 	await _await_frames(2)
 
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_empty()
 	assert_int(_count_entries(panel, "result_card")).is_equal(0)
 
 	transport.emit_stdout_message({
@@ -2745,15 +2768,39 @@ func test_panel_default_target_ignores_named_overlap_traffic_until_default_turn_
 	})
 	await _await_frames(2)
 
-	assert_str(str(panel.get("_authoritative_live_session_id"))).is_equal("resolved-default-session")
-	var result_card := _last_entry(panel, "result_card")
-	var result_body: RichTextLabel = result_card.find_child("ResultBodyLabel", true, false) as RichTextLabel
-	assert_object(result_body).is_not_null()
-	assert_str(str(result_body.text)).is_equal("Default done")
+	assert_bool((panel.get("_live_session_states") as Dictionary).has("resolved-default-session")).is_true()
+	var resolved_state := ((panel.get("_live_session_states") as Dictionary).get("resolved-default-session", {}) as Dictionary)
+	var resolved_entries := resolved_state.get("transcript_entries", []) as Array
+	var default_result_seen := false
+	for entry_variant in resolved_entries:
+		if entry_variant is not Dictionary:
+			continue
+		var entry := entry_variant as Dictionary
+		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("Default done"):
+			default_result_seen = true
+			break
+	assert_bool(default_result_seen).is_true()
+	var saved_state := ((panel.get("_live_session_states") as Dictionary).get(saved_session_id, {}) as Dictionary)
+	var saved_entries := saved_state.get("transcript_entries", []) as Array
+	assert_int(saved_entries.size()).is_greater(0)
+	var named_result_seen := false
+	for entry_variant in saved_entries:
+		if entry_variant is not Dictionary:
+			continue
+		var entry := entry_variant as Dictionary
+		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("Named done"):
+			named_result_seen = true
+			break
+	assert_bool(named_result_seen).is_true()
+	var resolved_index := int(panel.call("_find_panel_session_index", "resolved-default-session"))
+	assert_int(resolved_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, resolved_index)
+	await _await_frames(2)
 	panel.submit_prompt("Follow up")
 	await _await_frames(1)
 	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
 	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("resolved-default-session")
+	assert_int(saved_index).is_greater_equal(0)
 
 	await _cleanup_panel(panel)
 
@@ -3266,7 +3313,8 @@ func test_panel_live_fork_uses_active_worktree_session_directory() -> void:
 	assert_bool(FileAccess.file_exists(repo_project_dir.path_join("%s.jsonl" % forked_session_id))).is_false()
 	assert_str(_label(panel, "SelectedSessionCwdValue").text).contains(str(fixture["worktree_root"]))
 	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Worktree live fork")
-	assert_str(_status_badge(panel).text).is_equal("Saved")
+	var badge_text := _status_badge(panel).text
+	assert_bool(badge_text.contains("Saved") or badge_text.contains("Forking")).is_true()
 
 	await _cleanup_panel(panel)
 

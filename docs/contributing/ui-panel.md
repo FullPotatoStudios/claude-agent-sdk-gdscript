@@ -123,19 +123,22 @@ Live transcript detail uses the same normalized transcript model as saved-sessio
 
 The panel intentionally does not yet include:
 
-- multiple simultaneous in-flight sessions inside one panel instance
 - richer task dashboards beyond the current per-task transcript cards and stop control
 - shipped editor-plugin wiring inside the addon payload
 
-The lower runtime layers now allow overlapping turns for different
-`session_id` values on one connected client, but the shipped panel still keeps
-one authoritative live session and does not surface that concurrency as panel UX.
 The lower runtime still rejects same-session overlap so one live conversation
-does not race itself inside the shared panel state.
-When the live turn begins from `"default"`, the panel only adopts the resolved
-runtime session UUID that matches its current live target; unrelated foreign
-session traffic stays visible in the shared stream but does not retarget the
-composer.
+does not race itself inside the shared panel state, but the shipped panel now
+surfaces different-session overlap directly:
+
+- one connected panel can keep multiple live sessions active at once
+- selecting a saved or live session swaps the transcript/composer immediately
+- `New chat` while connected selects a fresh live draft session instead of
+  disconnecting
+- background messages, results, task cards, and draft-to-resolved-session
+  promotion are tracked per session without overwriting the selected transcript
+- composer send/edit enablement is scoped to the selected session's busy state,
+  while `Interrupt` remains connection-global and stays available when any live
+  session is busy
 
 For a development-only editor-dock starting point that keeps `plugin.cfg` out
 of the distributable addon payload, see

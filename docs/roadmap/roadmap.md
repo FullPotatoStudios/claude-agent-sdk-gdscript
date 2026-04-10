@@ -331,10 +331,14 @@ Delivered in Phase 10AL:
 - additive different-session overlap compatibility on connected clients through per-session active-turn tracking in `ClaudeQuerySession`
 - additive `receive_response_for_session(session_id)` on `ClaudeQuerySession` and `ClaudeSDKClient`, while `receive_response()` keeps the upstream-like global first-result convenience semantics from the call site
 - aggregate plus per-session busy tracking on `ClaudeClientAdapter` and `ClaudeClientNode` through `is_busy()` and additive `is_session_busy(session_id)`
-- `ClaudeChatPanel` guardrails that keep one authoritative live session even if unrelated session traffic appears on the shared runtime stream
 - docs and runtime/UI coverage updated to keep same-session overlap rejection explicit as a local determinism guard rather than a proven upstream parity claim
 
 Delivered in Phase 10AM:
+- `ClaudeChatPanel` now keeps per-session live transcript state so one connected panel can host multiple active sessions at once
+- saved-session selection and `New chat` now switch immediately on the shared connection instead of forcing disconnect-and-reconnect handoff
+- connect-on-send draft turns now promote cleanly from the panel draft key to the resolved runtime session id, restoring idle composer state after results while preserving background session transcripts
+
+Delivered in Phase 10AN:
 - development-only editor-plugin workflow expansion through a copy-ready `EditorPlugin` example under `tools/examples/editor_plugin_demo/`
 - example dock wrapper that mounts the shipped `ClaudeChatPanel`, scopes Claude to the current project root, and keeps editor defaults additive rather than widening runtime APIs
 - docs and coverage updates that keep `plugin.cfg` out of `addons/claude_agent_sdk/` while still documenting an editor-dock starting point
@@ -396,7 +400,7 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The current bounded MCP authoring slice, the lower-runtime multi-session overlap guardrail slice, and the first editor-plugin workflow example are now delivered. The next parity planning pass should target any future decision about whether the shipped panel should ever surface true multi-session UX or whether the development-only editor-dock example should graduate into shipped editor tooling, while keeping the remaining Windows `user` caveat tracked separately.
+The bounded MCP authoring slice, lower-runtime overlap support, shipped-panel multi-session UX, and the first editor-plugin workflow example are now delivered. The next planning pass should focus on follow-up panel polish, editor-tooling graduation decisions, or remaining runtime/platform gaps such as the Windows `user` caveat rather than revisiting whether the shipped panel should support concurrent sessions.
 
 ## Parity findings (2026-04-09)
 

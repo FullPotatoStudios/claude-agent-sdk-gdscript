@@ -25,6 +25,7 @@ const COLOR_WARNING := Color("ffbf69")
 const COLOR_ERROR := Color("ff7b86")
 const COLOR_USER := Color("ff9966")
 const COLOR_ASSISTANT := Color("5db3ff")
+const LIVE_DRAFT_SESSION_KEY := "__panel_live_draft__"
 const PANEL_VIEW_CHAT := 0
 const PANEL_VIEW_SETTINGS := 1
 const SYSTEM_PROMPT_MODE_VANILLA := 0
@@ -58,7 +59,8 @@ var _selected_session_messages: Array[ClaudeSessionMessage] = []
 var _selected_session_transcript: Array[ClaudeSessionTranscriptEntry] = []
 var _delete_confirm_armed := false
 var _live_session_target_id := "default"
-var _authoritative_live_session_id := ""
+var _live_session_states: Dictionary = {}
+var _default_live_session_key := ""
 var _pending_live_fork: Dictionary = {}
 var _clear_transcript_after_disconnect := false
 var _last_cli_diagnostic_line := ""
@@ -84,6 +86,7 @@ var _live_mcp_status: ClaudeMcpStatusResponse = null
 var _live_mcp_status_error := ""
 var _mcp_status_refresh_pending := false
 var _mcp_server_action_pending: Dictionary = {}
+var _suppress_transcript_view_updates := false
 var _uuid_regex: RegEx = null
 
 @onready var _shell: PanelContainer = $Shell
@@ -213,8 +216,12 @@ func _start_connect(prompt = null) -> bool:
 	_apply_preconnect_controls_to_options()
 	_apply_session_target_to_options()
 	_rebuild_client_node()
-	_authoritative_live_session_id = ""
 	_live_session_target_id = _effective_connect_session_target_id()
+	_default_live_session_key = _selected_session_id if _has_selected_saved_session() else LIVE_DRAFT_SESSION_KEY
+	if not _has_selected_saved_session():
+		_selected_session_id = LIVE_DRAFT_SESSION_KEY
+		_selected_session_info = null
+		_ensure_live_session_state(LIVE_DRAFT_SESSION_KEY)
 	_clear_transcript_after_disconnect = false
 	_is_connecting = true
 	_clear_live_session_diagnostics()
@@ -254,25 +261,49 @@ func submit_prompt(prompt: String) -> void:
 		if not bool(_last_auth_status.get("logged_in", false)):
 			_emit_error("Claude CLI must be authenticated before sending a prompt")
 			return
-		_begin_new_live_turn()
-		_append_pending_user_prompt(trimmed)
+		var connect_session_key := _selected_session_id if _has_selected_saved_session() else LIVE_DRAFT_SESSION_KEY
+		if _is_draft_session_key(connect_session_key):
+			_selected_session_id = connect_session_key
+			_selected_session_info = null
+		_default_live_session_key = connect_session_key
+		_with_live_session_state(connect_session_key, func():
+			_begin_new_live_turn()
+			_append_pending_user_prompt(trimmed)
+		)
+		if _selected_session_id == connect_session_key:
+			_display_selected_content()
 		prompt_submitted.emit(trimmed)
 		if _start_connect(trimmed):
 			_prompt_input.text = ""
 			_refresh_composer_state()
 		else:
-			_discard_pending_prompt_echo_entry()
+			_with_live_session_state(connect_session_key, func():
+				_discard_pending_prompt_echo_entry()
+			)
+			if _selected_session_id == connect_session_key:
+				_display_selected_content()
 		return
-	if _client_node.is_busy():
-		_emit_error("Wait for the current turn to finish before sending another prompt")
+	var target_session_id := _current_live_query_session_id()
+	if _client_node.is_session_busy(target_session_id):
+		_emit_error("Wait for the current session turn to finish before sending another prompt")
 		return
 
-	_begin_new_live_turn()
-	_append_pending_user_prompt(trimmed)
+	var target_session_key := _live_session_key_for_query_target()
+	if _is_draft_session_key(target_session_key):
+		_default_live_session_key = target_session_key
+		_selected_session_id = target_session_key
+		_selected_session_info = null
+	_with_live_session_state(target_session_key, func():
+		_begin_new_live_turn()
+		_append_pending_user_prompt(trimmed)
+	)
 	_prompt_input.text = ""
-	_refresh_composer_state()
+	if _selected_session_id == target_session_key:
+		_display_selected_content()
+	else:
+		_refresh_composer_state()
 	prompt_submitted.emit(trimmed)
-	_client_node.query(trimmed, _current_live_query_session_id())
+	_client_node.query(trimmed, target_session_id)
 
 	if not _client_node.get_last_error().is_empty():
 		_emit_error(_client_node.get_last_error())
@@ -291,12 +322,7 @@ func refresh_auth_status() -> void:
 
 
 func clear_transcript() -> void:
-	_transcript_entries.clear()
-	_task_entry_ids.clear()
-	_tool_use_names.clear()
-	_pending_prompt_echo = ""
-	_pending_prompt_entry_id = -1
-	_rewind_pending_entry_id = -1
+	_set_fresh_transcript_state()
 	_clear_transcript_views()
 	_begin_new_live_turn()
 
@@ -626,7 +652,7 @@ func _apply_preconnect_controls_to_options() -> void:
 
 
 func _apply_session_target_to_options() -> void:
-	if _has_selected_session():
+	if _has_selected_saved_session():
 		_configured_options.resume = _selected_session_id
 		_configured_options.session_id = _base_session_id
 	else:
@@ -635,7 +661,7 @@ func _apply_session_target_to_options() -> void:
 
 
 func _effective_connect_session_target_id() -> String:
-	if _has_selected_session():
+	if _has_selected_saved_session():
 		return _selected_session_id
 	if not _base_resume.is_empty():
 		return _base_resume
@@ -645,19 +671,17 @@ func _effective_connect_session_target_id() -> String:
 
 
 func _current_live_query_session_id() -> String:
-	if not _authoritative_live_session_id.is_empty():
-		return _authoritative_live_session_id
-	if not _live_session_target_id.is_empty():
-		return _live_session_target_id
+	if _has_selected_saved_session():
+		return _selected_session_id
 	return "default"
 
 
 func _active_session_reference_id() -> String:
 	var current_session_id := _current_live_query_session_id()
-	if current_session_id != "default":
+	if current_session_id != "default" and not _is_draft_session_key(current_session_id):
 		return current_session_id
-	if not _live_session_target_id.is_empty() and _live_session_target_id != "default":
-		return _live_session_target_id
+	if not _default_live_session_key.is_empty() and not _is_draft_session_key(_default_live_session_key):
+		return _default_live_session_key
 	return current_session_id
 
 
@@ -671,7 +695,7 @@ func _current_live_fork_source_directory() -> String:
 	if _has_pending_live_fork():
 		return str(_pending_live_fork.get("source_directory", ""))
 	var active_session_id := _active_session_reference_id()
-	if _has_selected_session() and _selected_session_id == active_session_id:
+	if _has_selected_saved_session() and _selected_session_id == active_session_id:
 		return _selected_session_directory()
 	return _session_scope_directory if not _session_scope_directory.is_empty() else _resolve_session_scope_directory()
 
@@ -757,6 +781,191 @@ func _refresh_mcp_summary() -> void:
 
 func _current_mcp_authoring_locked() -> bool:
 	return _session_live or _is_connecting or _has_pending_live_fork()
+
+
+func _is_draft_session_key(session_key: String) -> bool:
+	return session_key == LIVE_DRAFT_SESSION_KEY
+
+
+func _has_selected_saved_session() -> bool:
+	return not _selected_session_id.is_empty() and not _is_draft_session_key(_selected_session_id)
+
+
+func _current_displayed_live_session_key() -> String:
+	if _selected_session_id.is_empty():
+		return ""
+	if _live_session_states.has(_selected_session_id):
+		return _selected_session_id
+	return ""
+
+
+func _new_live_session_state() -> Dictionary:
+	var transcript_entries: Array[Dictionary] = []
+	return {
+		"transcript_entries": transcript_entries,
+		"task_entry_ids": {},
+		"tool_use_names": {},
+		"next_transcript_entry_id": 1,
+		"current_assistant_entry_id": -1,
+		"current_thinking_entry_id": -1,
+		"pending_prompt_echo": "",
+		"pending_prompt_entry_id": -1,
+		"rewind_pending_entry_id": -1,
+	}
+
+
+func _ensure_live_session_state(session_key: String) -> Dictionary:
+	if session_key.is_empty():
+		return {}
+	if not _live_session_states.has(session_key):
+		_live_session_states[session_key] = _new_live_session_state()
+	return _live_session_states.get(session_key, {}) as Dictionary
+
+
+func _capture_transcript_state() -> Dictionary:
+	return {
+		"transcript_entries": _transcript_entries,
+		"task_entry_ids": _task_entry_ids,
+		"tool_use_names": _tool_use_names,
+		"next_transcript_entry_id": _next_transcript_entry_id,
+		"current_assistant_entry_id": _current_assistant_entry_id,
+		"current_thinking_entry_id": _current_thinking_entry_id,
+		"pending_prompt_echo": _pending_prompt_echo,
+		"pending_prompt_entry_id": _pending_prompt_entry_id,
+		"rewind_pending_entry_id": _rewind_pending_entry_id,
+	}
+
+
+func _apply_transcript_state(state: Dictionary) -> void:
+	var transcript_entries: Array[Dictionary] = []
+	var raw_entries: Array = state.get("transcript_entries", []) if state.get("transcript_entries", []) is Array else []
+	for entry_variant in raw_entries:
+		if entry_variant is Dictionary:
+			transcript_entries.append(entry_variant)
+	_transcript_entries = transcript_entries
+	_task_entry_ids = state.get("task_entry_ids", {}) as Dictionary
+	_tool_use_names = state.get("tool_use_names", {}) as Dictionary
+	_next_transcript_entry_id = int(state.get("next_transcript_entry_id", 1))
+	_current_assistant_entry_id = int(state.get("current_assistant_entry_id", -1))
+	_current_thinking_entry_id = int(state.get("current_thinking_entry_id", -1))
+	_pending_prompt_echo = str(state.get("pending_prompt_echo", ""))
+	_pending_prompt_entry_id = int(state.get("pending_prompt_entry_id", -1))
+	_rewind_pending_entry_id = int(state.get("rewind_pending_entry_id", -1))
+
+
+func _set_fresh_transcript_state() -> void:
+	_apply_transcript_state(_new_live_session_state())
+
+
+func _save_current_live_session_state() -> void:
+	var session_key := _current_displayed_live_session_key()
+	if session_key.is_empty():
+		return
+	_live_session_states[session_key] = _capture_transcript_state()
+
+
+func _load_live_session_state(session_key: String) -> void:
+	var state := _ensure_live_session_state(session_key)
+	_apply_transcript_state(state)
+
+
+func _with_live_session_state(session_key: String, callback: Callable) -> void:
+	if session_key.is_empty():
+		return
+	var displayed_key := _current_displayed_live_session_key()
+	if displayed_key == session_key:
+		callback.call()
+		_live_session_states[session_key] = _capture_transcript_state()
+		return
+	var prior_state := _capture_transcript_state()
+	var prior_suppress := _suppress_transcript_view_updates
+	_suppress_transcript_view_updates = true
+	_load_live_session_state(session_key)
+	callback.call()
+	_live_session_states[session_key] = _capture_transcript_state()
+	_suppress_transcript_view_updates = prior_suppress
+	_apply_transcript_state(prior_state)
+
+
+func _display_selected_content() -> void:
+	var live_session_key := _current_displayed_live_session_key()
+	if not live_session_key.is_empty():
+		_load_live_session_state(live_session_key)
+		_render_transcript_entries()
+		_refresh_selected_session_metadata()
+		_refresh_session_controls()
+		_update_status_from_state()
+		_refresh_composer_state()
+		_refresh_transcript_entry_views_visibility()
+		return
+	if _has_selected_saved_session():
+		_reload_selected_session_transcript()
+	else:
+		_set_fresh_transcript_state()
+		_render_transcript_entries()
+		_refresh_selected_session_metadata()
+		_refresh_session_controls()
+		_update_status_from_state()
+		_refresh_composer_state()
+		_refresh_transcript_entry_views_visibility()
+
+
+func _live_session_key_for_query_target() -> String:
+	if _selected_session_id.is_empty():
+		return LIVE_DRAFT_SESSION_KEY
+	return _selected_session_id
+
+
+func _selected_session_list_key() -> String:
+	return _selected_session_id
+
+
+func _session_key_for_runtime_message(session_id: String) -> String:
+	var normalized := session_id.strip_edges()
+	if normalized.is_empty():
+		return ""
+	if normalized == "default":
+		if not _default_live_session_key.is_empty():
+			return _default_live_session_key
+		return LIVE_DRAFT_SESSION_KEY
+	if _live_session_states.has(normalized):
+		return normalized
+	return normalized
+
+
+func _should_promote_default_live_session(resolved_session_id: String) -> bool:
+	var normalized := resolved_session_id.strip_edges()
+	if normalized.is_empty() or normalized == "default" or _default_live_session_key.is_empty():
+		return false
+	if _live_session_states.has(normalized):
+		return normalized == _default_live_session_key
+	return true
+
+
+func _promote_default_live_session_if_needed(resolved_session_id: String) -> String:
+	var normalized := resolved_session_id.strip_edges()
+	if normalized.is_empty() or normalized == "default":
+		return _default_live_session_key
+	var source_key := _default_live_session_key
+	if source_key.is_empty() or source_key == normalized or not _live_session_states.has(source_key):
+		_default_live_session_key = ""
+		return normalized
+	var destination_state := _ensure_live_session_state(normalized)
+	if destination_state.get("transcript_entries", []).is_empty():
+		_live_session_states[normalized] = _live_session_states[source_key]
+	else:
+		var merged_entries := destination_state.get("transcript_entries", []) as Array
+		for entry in (_live_session_states[source_key].get("transcript_entries", []) as Array):
+			merged_entries.append(entry)
+		destination_state["transcript_entries"] = merged_entries
+		_live_session_states[normalized] = destination_state
+	_live_session_states.erase(source_key)
+	if _selected_session_id == source_key:
+		_selected_session_id = normalized
+		if _selected_session_info == null:
+			_selected_session_info = _client_node.get_session_info(normalized, _session_scope_directory)
+	_default_live_session_key = ""
+	return normalized
 
 
 func _rebuild_mcp_authoring_rows() -> void:
@@ -1451,7 +1660,7 @@ func _reload_sessions(preserve_selection: bool = true) -> void:
 	_populate_session_list()
 
 	if not prior_selected_id.is_empty():
-		var selected_index := _find_session_index(prior_selected_id)
+		var selected_index := _find_panel_session_index(prior_selected_id)
 		if selected_index >= 0:
 			_select_session_by_index(selected_index)
 		elif not _session_live and not _is_connecting:
@@ -1464,54 +1673,72 @@ func _reload_sessions(preserve_selection: bool = true) -> void:
 
 func _populate_session_list() -> void:
 	_session_list.clear()
+	var rendered_keys := {}
 	for index in range(_session_infos.size()):
 		var info := _session_infos[index]
-		_session_list.add_item(_session_list_label(info))
-		_session_list.set_item_metadata(index, info.session_id)
-		if info.session_id == _selected_session_id:
+		var live_state: Dictionary = _live_session_states.get(info.session_id, {}) if _live_session_states.get(info.session_id, {}) is Dictionary else {}
+		_session_list.add_item(_session_list_label(info, live_state))
+		_session_list.set_item_metadata(index, {
+			"session_key": info.session_id,
+			"saved": true,
+		})
+		rendered_keys[info.session_id] = true
+		if info.session_id == _selected_session_list_key():
 			_session_list.select(index)
+	for session_key_variant in _live_session_states.keys():
+		var session_key := str(session_key_variant)
+		if rendered_keys.has(session_key):
+			continue
+		var state: Dictionary = _live_session_states.get(session_key, {}) if _live_session_states.get(session_key, {}) is Dictionary else {}
+		var row_title := "New draft"
+		var detail_parts: Array[String] = ["Live"]
+		if _client_node != null and _client_node.is_session_busy("default" if _is_draft_session_key(session_key) else session_key):
+			detail_parts.append("Busy")
+		if _is_draft_session_key(session_key):
+			detail_parts.append("Draft")
+		elif not state.get("transcript_entries", []).is_empty():
+			row_title = "Live session"
+		else:
+			row_title = "Live session · %s" % session_key
+		var row_text := "%s\n%s" % [row_title, " · ".join(detail_parts)]
+		var row_index := _session_list.item_count
+		_session_list.add_item(row_text)
+		_session_list.set_item_metadata(row_index, {
+			"session_key": session_key,
+			"saved": false,
+		})
+		if session_key == _selected_session_list_key():
+			_session_list.select(row_index)
 
 
-func _find_session_index(session_id: String) -> int:
-	for index in range(_session_infos.size()):
-		if _session_infos[index].session_id == session_id:
+func _find_panel_session_index(session_key: String) -> int:
+	for index in range(_session_list.item_count):
+		var metadata := _session_list.get_item_metadata(index)
+		if metadata is Dictionary and str((metadata as Dictionary).get("session_key", "")) == session_key:
 			return index
 	return -1
 
 
 func _select_session_by_index(index: int) -> void:
-	if index < 0 or index >= _session_infos.size():
+	if index < 0 or index >= _session_list.item_count:
 		return
-	var info := _session_infos[index]
-	var was_live := _session_live
-	var prior_selected_id := _selected_session_id
-	_selected_session_id = info.session_id
-	_selected_session_info = info
+	_save_current_live_session_state()
+	var metadata := _session_list.get_item_metadata(index)
+	if metadata is not Dictionary:
+		return
+	var metadata_dict := metadata as Dictionary
+	var session_key := str(metadata_dict.get("session_key", ""))
+	var is_saved := bool(metadata_dict.get("saved", false))
+	_selected_session_id = session_key
+	_selected_session_info = _session_info_for_id(session_key) if is_saved else null
 	_delete_confirm_armed = false
 	_session_list.select(index)
 	_refresh_selected_session_fields()
-	if was_live:
-		var active_session_id := _active_session_reference_id()
-		if prior_selected_id == info.session_id and active_session_id == info.session_id:
-			_refresh_selected_session_metadata()
-			_refresh_session_controls()
-			_update_status_from_state()
-			_refresh_composer_state()
-			_refresh_transcript_entry_views_visibility()
-			return
-		_client_node.disconnect_client()
-		return
-	if _can_switch_sessions():
-		_reload_selected_session_transcript()
-	else:
-		_refresh_selected_session_metadata()
-	_refresh_session_controls()
-	_update_status_from_state()
-	_refresh_composer_state()
-	_refresh_transcript_entry_views_visibility()
+	_display_selected_content()
 
 
 func _clear_selected_session(clear_transcript_too: bool) -> void:
+	_save_current_live_session_state()
 	_selected_session_id = ""
 	_selected_session_info = null
 	_selected_session_messages.clear()
@@ -1521,7 +1748,8 @@ func _clear_selected_session(clear_transcript_too: bool) -> void:
 	_session_list.deselect_all()
 	_refresh_selected_session_fields()
 	if clear_transcript_too:
-		clear_transcript()
+		_set_fresh_transcript_state()
+		_clear_transcript_views()
 	_refresh_selected_session_metadata()
 	_refresh_session_controls()
 	_update_status_from_state()
@@ -1530,7 +1758,7 @@ func _clear_selected_session(clear_transcript_too: bool) -> void:
 
 
 func _reload_selected_session_transcript() -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var session_info = _client_node.get_session_info(_selected_session_id, _selected_session_directory())
 	if session_info == null:
@@ -1545,16 +1773,29 @@ func _reload_selected_session_transcript() -> void:
 
 
 func _render_selected_session_transcript() -> void:
-	clear_transcript()
+	_set_fresh_transcript_state()
+	_clear_transcript_views()
 	for entry in _selected_session_transcript:
 		_append_saved_transcript_entry(entry)
 
 
-func _session_list_label(info: ClaudeSessionInfo) -> String:
+func _session_list_label(info: ClaudeSessionInfo, live_state: Dictionary = {}) -> String:
 	var label := info.summary
 	if info.tag != null and not str(info.tag).is_empty():
 		label += "  #%s" % str(info.tag)
-	return "%s\n%s" % [label, _format_timestamp(info.last_modified)]
+	var detail_parts: Array[String] = [_format_timestamp(info.last_modified)]
+	if not live_state.is_empty():
+		detail_parts.append("Live")
+		if _client_node != null and _client_node.is_session_busy(info.session_id):
+			detail_parts.append("Busy")
+	return "%s\n%s" % [label, " · ".join(detail_parts)]
+
+
+func _session_info_for_id(session_id: String) -> ClaudeSessionInfo:
+	for info in _session_infos:
+		if info.session_id == session_id:
+			return info
+	return null
 
 
 func _refresh_selected_session_fields() -> void:
@@ -1575,12 +1816,20 @@ func _refresh_selected_session_metadata() -> void:
 		if _session_live or _has_pending_live_fork():
 			var live_session_id := _current_live_fork_source_session_id()
 			var live_directory := _current_live_fork_source_directory()
-			_selected_session_summary.text = "Current live session"
-			_selected_session_meta.text = (
-				"Disconnecting and restoring the new saved fork."
-				if _has_pending_live_fork()
-				else "Disconnect to create a saved fork of the active session."
-			)
+			if _is_draft_session_key(_selected_session_id):
+				_selected_session_summary.text = "Live draft"
+				_selected_session_meta.text = (
+					"Disconnecting and restoring the new saved fork."
+					if _has_pending_live_fork()
+					else "Start a new live conversation on this shared connection."
+				)
+			else:
+				_selected_session_summary.text = "Current live session"
+				_selected_session_meta.text = (
+					"Disconnecting and restoring the new saved fork."
+					if _has_pending_live_fork()
+					else "Disconnect to create a saved fork of the active session."
+				)
 			_selected_session_branch.text = "Session: %s" % live_session_id if _looks_like_session_uuid(live_session_id) else ""
 			_selected_session_cwd.text = "Directory: %s" % live_directory if not live_directory.is_empty() else ""
 			return
@@ -1605,11 +1854,11 @@ func _refresh_selected_session_metadata() -> void:
 func _refresh_session_controls() -> void:
 	var has_selection := _has_selected_session()
 	var switching_locked := not _can_switch_sessions()
-	var saved_mutations_available := has_selection and not _session_live and not _is_connecting and not _has_pending_live_fork()
+	var saved_mutations_available := _has_selected_saved_session() and not _session_live and not _is_connecting and not _has_pending_live_fork()
 	var live_fork_available := _can_fork_live_session()
 	var delete_locked := _session_live or _is_connecting or _has_pending_live_fork()
 	_session_refresh_button.disabled = switching_locked
-	_new_chat_button.disabled = switching_locked or (not has_selection and _transcript_list.get_child_count() == 0)
+	_new_chat_button.disabled = switching_locked or (_session_live and _selected_session_id == LIVE_DRAFT_SESSION_KEY and _transcript_list.get_child_count() == 0)
 	_session_list.mouse_filter = Control.MOUSE_FILTER_IGNORE if switching_locked else Control.MOUSE_FILTER_STOP
 	_session_list.focus_mode = Control.FOCUS_NONE if switching_locked else Control.FOCUS_ALL
 	_session_title_input.editable = saved_mutations_available
@@ -1639,27 +1888,22 @@ func _selected_session_directory() -> String:
 func _can_switch_sessions() -> bool:
 	if _has_pending_live_fork():
 		return false
-	if _is_connecting:
-		return false
-	if not _session_live:
-		return true
-	return _client_node != null and not _client_node.is_busy()
+	return not _is_connecting
 
 
 func _restore_disconnected_view() -> void:
 	_is_connecting = false
 	_session_live = false
-	_authoritative_live_session_id = ""
+	_live_session_states.clear()
+	_default_live_session_key = ""
 	_live_session_target_id = _effective_connect_session_target_id()
-	_pending_prompt_echo = ""
-	_pending_prompt_entry_id = -1
-	_rewind_pending_entry_id = -1
+	_set_fresh_transcript_state()
 	_clear_live_session_diagnostics()
-	_begin_new_live_turn()
-	if _has_selected_session():
+	if _has_selected_saved_session():
 		_reload_selected_session_transcript()
 	elif _clear_transcript_after_disconnect:
-		clear_transcript()
+		_set_fresh_transcript_state()
+		_clear_transcript_views()
 	_clear_transcript_after_disconnect = false
 	_update_status_from_state()
 	_refresh_composer_state()
@@ -1673,10 +1917,18 @@ func _on_client_session_ready(server_info: Dictionary) -> void:
 	_did_connect_once = true
 	_session_live = true
 	_is_connecting = false
+	if _selected_session_id.is_empty():
+		_selected_session_id = LIVE_DRAFT_SESSION_KEY
+		_selected_session_info = null
+		_ensure_live_session_state(LIVE_DRAFT_SESSION_KEY)
+	if _is_draft_session_key(_selected_session_id):
+		_ensure_live_session_state(_selected_session_id)
 	_status_issue_message = ""
 	_update_status_from_state(server_info)
 	_refresh_composer_state()
 	_refresh_session_controls()
+	_populate_session_list()
+	_display_selected_content()
 	_refresh_transcript_entry_views_visibility()
 	Callable(self, "_refresh_live_session_diagnostics_after_connect").call_deferred()
 
@@ -1689,72 +1941,90 @@ func _on_client_busy_changed(_is_busy: bool) -> void:
 
 
 func _on_client_message_received(message: Variant) -> void:
-	var message_session_id := _message_session_id(message)
-	if _should_ignore_foreign_live_message(message_session_id):
-		return
-	_note_runtime_session_id(message_session_id)
-	message_received.emit(message)
-	if message is ClaudeRateLimitEvent:
-		_handle_rate_limit_event(message)
-		return
-	if message is ClaudeTaskStartedMessage:
-		_handle_task_started_message(message)
-		return
-	if message is ClaudeTaskProgressMessage:
-		_handle_task_progress_message(message)
-		return
-	if message is ClaudeTaskNotificationMessage:
-		_handle_task_notification_message(message)
-		return
-	if message is ClaudeSystemMessage:
-		if message.subtype != "init":
-			_append_transcript_entry("system", {
-				"title": "System · %s" % message.subtype.capitalize(),
-				"text": _json_pretty(message.raw_data),
-				"raw_data": message.raw_data,
-				"collapsed": false,
-			})
-		return
-
-	if message is ClaudeUserMessage:
-		_handle_user_message(message)
-		return
-
-	if message is ClaudeAssistantMessage:
-		_handle_assistant_message(message)
-		return
-
-	if message is ClaudeStreamEvent:
-		_handle_stream_event(message)
-		return
-
+	var message_session_key := _session_key_for_runtime_message(_message_session_id(message))
 	if message is ClaudeResultMessage:
-		_handle_result_message(message)
+		var result_session_id := (message as ClaudeResultMessage).session_id
+		if _should_promote_default_live_session(result_session_id):
+			message_session_key = _promote_default_live_session_if_needed(result_session_id)
+		else:
+			message_session_key = _session_key_for_runtime_message(result_session_id)
+	elif message is ClaudeAssistantMessage:
+		var assistant_session_id := (message as ClaudeAssistantMessage).session_id
+		if _should_promote_default_live_session(assistant_session_id):
+			message_session_key = _promote_default_live_session_if_needed(assistant_session_id)
+		elif message_session_key == LIVE_DRAFT_SESSION_KEY and _default_live_session_key.is_empty():
+			_default_live_session_key = LIVE_DRAFT_SESSION_KEY
+	if message_session_key.is_empty():
+		message_session_key = _current_displayed_live_session_key()
+	message_received.emit(message)
+	_with_live_session_state(message_session_key, func():
+		if message is ClaudeRateLimitEvent:
+			_handle_rate_limit_event(message)
+			return
+		if message is ClaudeTaskStartedMessage:
+			_handle_task_started_message(message)
+			return
+		if message is ClaudeTaskProgressMessage:
+			_handle_task_progress_message(message)
+			return
+		if message is ClaudeTaskNotificationMessage:
+			_handle_task_notification_message(message)
+			return
+		if message is ClaudeSystemMessage:
+			if message.subtype != "init":
+				_append_transcript_entry("system", {
+					"title": "System · %s" % message.subtype.capitalize(),
+					"text": _json_pretty(message.raw_data),
+					"raw_data": message.raw_data,
+					"collapsed": false,
+				})
+			return
+		if message is ClaudeUserMessage:
+			_handle_user_message(message)
+			return
+		if message is ClaudeAssistantMessage:
+			_handle_assistant_message(message)
+			return
+		if message is ClaudeStreamEvent:
+			_handle_stream_event(message)
+			return
+		if message is ClaudeResultMessage:
+			_handle_result_message(message)
+			_begin_new_live_turn()
+	)
+	_populate_session_list()
+	if _selected_session_id == message_session_key:
+		_refresh_selected_session_metadata()
+		_refresh_session_controls()
+		_update_status_from_state()
+		_refresh_composer_state()
 
 
 func _on_client_turn_finished(result_message: ClaudeResultMessage) -> void:
-	if (
-		_authoritative_live_session_id.is_empty()
-		and _live_session_target_id == "default"
-		and result_message.session_id != "default"
-		and _client_node != null
-		and _client_node.is_session_busy("default")
-	):
-		return
-	_note_runtime_session_id(result_message.session_id)
-	_begin_new_live_turn()
+	var resolved_session_key := _promote_default_live_session_if_needed(result_message.session_id)
+	_populate_session_list()
+	if _selected_session_id == resolved_session_key:
+		_refresh_selected_session_metadata()
+		_refresh_session_controls()
+		_update_status_from_state()
+		_refresh_composer_state()
 	Callable(self, "_refresh_context_usage_async").call_deferred()
 	turn_finished.emit(result_message)
 
 
 func _on_client_error_occurred(message: String) -> void:
 	_is_connecting = false
-	if not _session_live:
-		_discard_pending_prompt_echo_entry()
-	else:
-		_pending_prompt_echo = ""
-		_pending_prompt_entry_id = -1
-	_rewind_pending_entry_id = -1
+	var error_session_key := _default_live_session_key if not _default_live_session_key.is_empty() else _current_displayed_live_session_key()
+	if not error_session_key.is_empty():
+		_with_live_session_state(error_session_key, func():
+			if not _session_live:
+				_discard_pending_prompt_echo_entry()
+			else:
+				_pending_prompt_echo = ""
+				_pending_prompt_entry_id = -1
+			_rewind_pending_entry_id = -1
+		)
+	_default_live_session_key = ""
 	_last_error = message
 	if not _session_live:
 		_clear_live_session_diagnostics()
@@ -1764,6 +2034,7 @@ func _on_client_error_occurred(message: String) -> void:
 	_refresh_composer_state()
 	_refresh_session_controls()
 	_refresh_transcript_entry_views_visibility()
+	_populate_session_list()
 	error_occurred.emit(message)
 
 
@@ -1891,7 +2162,6 @@ func _handle_stream_event(message: ClaudeStreamEvent) -> void:
 
 
 func _handle_result_message(message: ClaudeResultMessage) -> void:
-	_note_runtime_session_id(message.session_id)
 	_append_transcript_entry("result", {
 		"title": "Result · %s" % ("Error" if message.is_error else "Success"),
 		"text": message.result,
@@ -2244,7 +2514,8 @@ func _append_transcript_entry(kind: String, data: Dictionary) -> int:
 	entry["kind"] = kind
 	_next_transcript_entry_id += 1
 	_transcript_entries.append(entry)
-	_ensure_transcript_entry_view(entry)
+	if not _suppress_transcript_view_updates:
+		_ensure_transcript_entry_view(entry)
 	return int(entry.get("id", -1))
 
 
@@ -2268,7 +2539,8 @@ func _set_transcript_entry(entry_id: int, updated_entry: Dictionary) -> void:
 	for index in range(_transcript_entries.size()):
 		if int(_transcript_entries[index].get("id", -1)) == entry_id:
 			_transcript_entries[index] = updated_entry
-			_update_transcript_entry_view(updated_entry)
+			if not _suppress_transcript_view_updates:
+				_update_transcript_entry_view(updated_entry)
 			return
 
 
@@ -2283,6 +2555,8 @@ func _discard_pending_prompt_echo_entry() -> void:
 			continue
 		_transcript_entries.remove_at(index)
 		break
+	if _suppress_transcript_view_updates:
+		return
 	var view: Dictionary = _transcript_entry_views.get(entry_id, {})
 	if not view.is_empty():
 		var container := view.get("container") as Control
@@ -2302,6 +2576,8 @@ func _render_transcript_entry(entry: Dictionary) -> void:
 
 
 func _ensure_transcript_entry_view(entry: Dictionary) -> void:
+	if _suppress_transcript_view_updates:
+		return
 	var entry_id := int(entry.get("id", -1))
 	if entry_id < 0:
 		return
@@ -2329,6 +2605,8 @@ func _ensure_transcript_entry_view(entry: Dictionary) -> void:
 
 
 func _refresh_transcript_entry_view(entry: Dictionary) -> void:
+	if _suppress_transcript_view_updates:
+		return
 	var entry_id := int(entry.get("id", -1))
 	var view: Dictionary = _transcript_entry_views.get(entry_id, {})
 	if view.is_empty():
@@ -2357,6 +2635,8 @@ func _refresh_transcript_entry_view(entry: Dictionary) -> void:
 
 
 func _update_transcript_entry_view(entry: Dictionary) -> void:
+	if _suppress_transcript_view_updates:
+		return
 	var entry_id := int(entry.get("id", -1))
 	if entry_id < 0:
 		return
@@ -2368,6 +2648,8 @@ func _update_transcript_entry_view(entry: Dictionary) -> void:
 
 
 func _refresh_transcript_entry_views_visibility() -> void:
+	if _suppress_transcript_view_updates:
+		return
 	for entry in _transcript_entries:
 		_refresh_transcript_entry_view(entry)
 
@@ -2459,7 +2741,7 @@ func _should_show_saved_fork_action(entry: Dictionary) -> bool:
 		return false
 	if _session_live or _is_connecting:
 		return false
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return false
 	if str(entry.get("uuid", "")).strip_edges().is_empty():
 		return false
@@ -2509,63 +2791,6 @@ func _message_session_id(message: Variant) -> String:
 	if message is ClaudeUserMessage:
 		return str(message.raw_data.get("session_id", ""))
 	return ""
-
-
-func _should_ignore_foreign_live_message(session_id: String) -> bool:
-	var normalized := session_id.strip_edges()
-	if normalized.is_empty():
-		return false
-	var authoritative_live_session_id := _authoritative_live_session_id.strip_edges()
-	if (
-		not authoritative_live_session_id.is_empty()
-		and authoritative_live_session_id != "default"
-		and normalized != authoritative_live_session_id
-	):
-		return true
-	var expected_live_session_id := _live_session_target_id.strip_edges()
-	if (
-		not expected_live_session_id.is_empty()
-		and expected_live_session_id != "default"
-		and normalized != "default"
-		and normalized != expected_live_session_id
-	):
-		return true
-	if (
-		expected_live_session_id == "default"
-		and authoritative_live_session_id.is_empty()
-		and normalized != "default"
-		and _client_node != null
-		and _client_node.is_session_busy("default")
-		and _client_node.is_session_busy(normalized)
-	):
-		return true
-	return false
-
-
-func _note_runtime_session_id(session_id: String) -> void:
-	var normalized := session_id.strip_edges()
-	if normalized.is_empty():
-		return
-	var expected_live_session_id := _live_session_target_id.strip_edges()
-	if (
-		not _authoritative_live_session_id.is_empty()
-		and _authoritative_live_session_id != "default"
-		and normalized != _authoritative_live_session_id
-	):
-		return
-	if (
-		expected_live_session_id != ""
-		and expected_live_session_id != "default"
-		and normalized != "default"
-		and normalized != expected_live_session_id
-	):
-		return
-	if normalized != "default":
-		_authoritative_live_session_id = normalized
-		_live_session_target_id = normalized
-		return
-	if _authoritative_live_session_id.is_empty() and _live_session_target_id == "default":
-		_authoritative_live_session_id = normalized
 
 
 func _handle_cli_stderr_line(line: String) -> void:
@@ -2625,6 +2850,8 @@ func _clear_transcript_list_children() -> void:
 
 
 func _clear_transcript_views() -> void:
+	if _suppress_transcript_view_updates:
+		return
 	_transcript_entry_views.clear()
 	_clear_transcript_list_children()
 
@@ -3073,7 +3300,7 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 			_set_status_badge("Logged out", COLOR_WARNING)
 			_status_title.text = "Claude CLI is not logged in"
 			_status_detail.text = "Run claude auth login in a terminal, then refresh auth."
-		elif _has_selected_session():
+		elif _has_selected_saved_session():
 			_set_status_badge("Saved", COLOR_ACCENT)
 			_status_title.text = "Saved session selected"
 			_status_detail.text = "Connect to resume this saved transcript, or start a new chat."
@@ -3090,11 +3317,13 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 
 func _refresh_composer_state() -> void:
 	var logged_in := bool(_last_auth_status.get("logged_in", false))
-	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in and not _client_node.is_busy()
+	var selected_session_id := _current_live_query_session_id()
+	var selected_session_busy: bool = _client_node != null and _client_node.is_session_busy(selected_session_id)
+	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in and not selected_session_busy
 	var can_send: bool = can_draft and not _prompt_input.text.strip_edges().is_empty()
 	_prompt_input.editable = can_draft
 	_send_button.disabled = not can_send
-	_interrupt_button.disabled = not _session_live or not _client_node.is_busy()
+	_interrupt_button.disabled = not _session_live or _client_node == null or not _client_node.is_busy()
 	_composer_hint.text = _composer_hint_text()
 
 
@@ -3106,17 +3335,22 @@ func _composer_hint_text() -> String:
 	if not bool(_last_auth_status.get("logged_in", false)):
 		return "Connect the authenticated Claude CLI to start chatting."
 	if not _session_live:
-		if _has_selected_session():
+		if _has_selected_saved_session():
 			if _prompt_input.text.strip_edges().is_empty():
 				return "Draft a prompt here to reconnect and continue the selected saved session."
 			return "Send the prompt to reconnect and continue the selected saved session."
 		if _prompt_input.text.strip_edges().is_empty():
 			return "Draft a prompt here, or use Connect to open an empty session."
 		return "Send the prompt to connect and start a new chat."
-	if _client_node.is_busy():
-		return "Claude is responding. You can interrupt the active turn if needed."
-	if _has_selected_session():
-		return "You are connected. Select a saved session to reconnect into it after this live session closes."
+	var selected_session_id := _current_live_query_session_id()
+	if _client_node != null and _client_node.is_session_busy(selected_session_id):
+		return "Claude is responding in the selected session."
+	if _client_node != null and _client_node.is_busy():
+		return "Another live session is busy. You can still work in this selected session, or interrupt the shared connection."
+	if _has_selected_saved_session():
+		return "You are connected. Sending now continues the selected saved session on this shared connection."
+	if _is_draft_session_key(_selected_session_id):
+		return "You are connected. This draft will resolve into a new live session after the first reply."
 	if _prompt_input.text.strip_edges().is_empty():
 		return "Draft a prompt here. The panel renders typed runtime messages and partial output."
 	return "Send the prompt to Claude."
@@ -3320,6 +3554,8 @@ func _card_title(title: String, collapsed: bool) -> String:
 
 
 func _scroll_to_bottom_deferred() -> void:
+	if _suppress_transcript_view_updates:
+		return
 	Callable(self, "_scroll_to_bottom").call_deferred()
 
 
@@ -3603,17 +3839,17 @@ func _on_new_chat_pressed() -> void:
 	if not _can_switch_sessions():
 		return
 	if _session_live:
-		_selected_session_id = ""
+		_save_current_live_session_state()
+		_selected_session_id = LIVE_DRAFT_SESSION_KEY
 		_selected_session_info = null
 		_selected_session_messages.clear()
 		_selected_session_transcript.clear()
 		_delete_confirm_armed = false
-		_live_session_target_id = _effective_connect_session_target_id()
-		_session_list.deselect_all()
+		_ensure_live_session_state(LIVE_DRAFT_SESSION_KEY)
+		_live_session_target_id = "default"
 		_refresh_selected_session_fields()
-		_refresh_selected_session_metadata()
-		_clear_transcript_after_disconnect = true
-		_client_node.disconnect_client()
+		_populate_session_list()
+		_display_selected_content()
 		return
 	_clear_selected_session(true)
 
@@ -3631,7 +3867,7 @@ func _on_session_list_item_activated(index: int) -> void:
 
 
 func _on_rename_session_pressed() -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var result: int = _client_node.rename_session(_selected_session_id, _session_title_input.text, _selected_session_directory())
 	if result != OK:
@@ -3643,7 +3879,7 @@ func _on_rename_session_pressed() -> void:
 
 
 func _on_apply_tag_pressed() -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var result: int = _client_node.tag_session(_selected_session_id, _session_tag_input.text, _selected_session_directory())
 	if result != OK:
@@ -3655,7 +3891,7 @@ func _on_apply_tag_pressed() -> void:
 
 
 func _on_clear_tag_pressed() -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var result: int = _client_node.tag_session(_selected_session_id, null, _selected_session_directory())
 	if result != OK:
@@ -3667,14 +3903,14 @@ func _on_clear_tag_pressed() -> void:
 
 
 func _on_delete_session_pressed() -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	_delete_confirm_armed = true
 	_refresh_session_controls()
 
 
 func _on_confirm_delete_pressed() -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var deleted_session_id := _selected_session_id
 	var result: int = _client_node.delete_session(deleted_session_id, _selected_session_directory())
@@ -3697,7 +3933,7 @@ func _on_fork_session_pressed() -> void:
 
 
 func _on_saved_transcript_fork_pressed(entry_id: int) -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var entry := _get_transcript_entry(entry_id)
 	if entry.is_empty() or not _should_show_saved_fork_action(entry):
@@ -3709,7 +3945,7 @@ func _on_saved_transcript_fork_pressed(entry_id: int) -> void:
 
 
 func _fork_selected_session(up_to_message_id: String = "") -> void:
-	if not _has_selected_session():
+	if not _has_selected_saved_session():
 		return
 	var fork_result: Variant = _client_node.fork_session(
 		_selected_session_id,
@@ -3725,7 +3961,7 @@ func _fork_selected_session(up_to_message_id: String = "") -> void:
 	_status_issue_message = ""
 	var forked_session_id: String = fork_result.session_id
 	_reload_sessions(false)
-	var forked_index := _find_session_index(forked_session_id)
+	var forked_index := _find_panel_session_index(forked_session_id)
 	if forked_index >= 0:
 		_select_session_by_index(forked_index)
 	else:
@@ -3740,7 +3976,7 @@ func _begin_live_fork_handoff() -> void:
 		"source_session_id": _current_live_fork_source_session_id(),
 		"source_directory": _current_live_fork_source_directory(),
 		"title": _fork_title_input.text,
-		"had_selected_session": _has_selected_session(),
+		"had_selected_session": _has_selected_saved_session(),
 	}
 	_clear_transcript_after_disconnect = not bool(_pending_live_fork.get("had_selected_session", false))
 	_status_issue_message = ""
@@ -3771,7 +4007,7 @@ func _complete_pending_live_fork_handoff() -> void:
 	_status_issue_message = ""
 	_reload_sessions(false)
 	var forked_session_id: String = fork_result.session_id
-	var forked_index := _find_session_index(forked_session_id)
+	var forked_index := _find_panel_session_index(forked_session_id)
 	if forked_index >= 0:
 		_select_session_by_index(forked_index)
 	else:
