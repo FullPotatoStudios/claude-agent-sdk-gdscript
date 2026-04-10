@@ -45,6 +45,7 @@ const WRAPPER_MODES := [
 ]
 const DIAGNOSTIC_MODES := [
 	"stop_task_probe",
+	"external_mcp_toggle_probe",
 ]
 
 var _stderr_lines: Array[String] = []
@@ -113,6 +114,8 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_external_mcp_reconnect_smoke(args)
 		"stop_task_probe":
 			return await _run_stop_task_probe_smoke(args)
+		"external_mcp_toggle_probe":
+			return await _run_external_mcp_toggle_probe_smoke(args)
 		"sdk_mcp_tool_execution":
 			return await _run_sdk_mcp_tool_execution_smoke(args)
 		"sdk_mcp_permission_enforcement":
@@ -996,6 +999,107 @@ func _run_external_mcp_reconnect_smoke(args: Dictionary) -> Dictionary:
 	return summary
 
 
+func _run_external_mcp_toggle_probe_smoke(args: Dictionary) -> Dictionary:
+	var server_name := "externaltoggle"
+	var prepared := _prepare_external_mcp_fixture("external_mcp_toggle_probe", server_name, false)
+	var summary: Dictionary = prepared.get("summary", _empty_summary("external_mcp_toggle_probe"))
+	summary["diagnostic_only"] = true
+	summary["external_mcp_toggle_server_name"] = server_name
+	if not bool(prepared.get("ok", false)):
+		return summary
+
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"cwd": str(prepared.get("project_dir", "")),
+		"max_turns": 2,
+		"mcp_servers": {
+			server_name: prepared.get("server_config", {}),
+		},
+		"allowed_tools": ["mcp__%s__%s" % [server_name, EXTERNAL_MCP_TOOL_NAME]],
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	summary = await _wait_for_client_initialize("external_mcp_toggle_probe", client)
+	summary["diagnostic_only"] = true
+	summary["external_mcp_toggle_server_name"] = server_name
+	_merge_external_mcp_prepared_summary(summary, prepared)
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var control_errors: Array[String] = []
+	var before_status := await _poll_mcp_tool_availability(client, server_name, true)
+	_append_client_error(control_errors, client)
+	var baseline_log_count_before := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+	var baseline_turn := await _run_connected_client_turn(
+		client,
+		"external_mcp_toggle_probe_baseline_turn",
+		"If the mcp__%s__%s tool is available, use it exactly once with text 'baseline-toggle'. Otherwise answer only with unavailable." % [server_name, EXTERNAL_MCP_TOOL_NAME]
+	)
+	var baseline_log_count_after := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+
+	client.toggle_mcp_server(server_name, false)
+	await process_frame
+	var disable_error := client.get_last_error()
+	if not disable_error.is_empty():
+		control_errors.append(disable_error)
+	var after_disable_status := await _poll_mcp_tool_availability(client, server_name, false, true)
+	_append_client_error(control_errors, client)
+	var disable_log_count_before := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+	var disabled_turn := await _run_connected_client_turn(
+		client,
+		"external_mcp_toggle_probe_disabled_turn",
+		"If the mcp__%s__%s tool is available, use it exactly once with text 'after-disable'. Otherwise answer only with unavailable." % [server_name, EXTERNAL_MCP_TOOL_NAME]
+	)
+	var disable_log_count_after := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+
+	client.toggle_mcp_server(server_name, true)
+	await process_frame
+	var enable_error := client.get_last_error()
+	var after_enable_status := await _poll_mcp_tool_availability(client, server_name, true)
+	var enable_log_count_before := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+	var reenabled_turn := await _run_connected_client_turn(
+		client,
+		"external_mcp_toggle_probe_reenabled_turn",
+		"If the mcp__%s__%s tool is available, use it exactly once with text 'after-enable'. Otherwise answer only with unavailable." % [server_name, EXTERNAL_MCP_TOOL_NAME]
+	)
+	var enable_log_count_after := _read_external_mcp_invocations(str(prepared.get("log_path", ""))).size()
+	client.disconnect_client()
+
+	summary["control_errors"] = control_errors
+	summary["turn_summaries"] = [baseline_turn, disabled_turn, reenabled_turn]
+	summary["external_mcp_toggle_status_before"] = before_status
+	summary["external_mcp_toggle_status_after_disable"] = after_disable_status
+	summary["external_mcp_toggle_status_after_enable"] = after_enable_status
+	summary["external_mcp_toggle_tool_names_before"] = before_status.get("tool_names", [])
+	summary["external_mcp_toggle_tool_names_after_disable"] = after_disable_status.get("tool_names", [])
+	summary["external_mcp_toggle_tool_names_after_enable"] = after_enable_status.get("tool_names", [])
+	summary["external_mcp_toggle_log_count_before_baseline"] = baseline_log_count_before
+	summary["external_mcp_toggle_log_count_after_baseline"] = baseline_log_count_after
+	summary["external_mcp_toggle_log_count_before_disable_turn"] = disable_log_count_before
+	summary["external_mcp_toggle_log_count_after_disable_turn"] = disable_log_count_after
+	summary["external_mcp_toggle_log_count_before_enable_turn"] = enable_log_count_before
+	summary["external_mcp_toggle_log_count_after_enable_turn"] = enable_log_count_after
+	summary["external_mcp_toggle_disable_error"] = disable_error
+	summary["external_mcp_toggle_enable_error"] = enable_error
+	summary["external_mcp_toggle_disable_still_executed"] = disable_log_count_after > disable_log_count_before
+	summary["external_mcp_toggle_reenable_attempted"] = true
+	summary["external_mcp_toggle_reenable_executed"] = enable_log_count_after > enable_log_count_before
+	summary["external_mcp_toggle_baseline_turn"] = baseline_turn
+	summary["external_mcp_toggle_disabled_turn"] = disabled_turn
+	summary["external_mcp_toggle_reenabled_turn"] = reenabled_turn
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and bool(before_status.get("tool_available", false)) \
+		and baseline_log_count_after > baseline_log_count_before \
+		and disable_error.is_empty() \
+		and bool(after_disable_status.get("server_seen", false)) \
+		and _turn_summary_succeeded(baseline_turn) \
+		and _turn_summary_succeeded(disabled_turn)
+	return summary
+
+
 func _run_client_smoke(mode: String, options: ClaudeAgentOptions, prompt: String) -> Dictionary:
 	var client = ClaudeSDKClientScript.new(options)
 	client.connect_client()
@@ -1679,6 +1783,27 @@ func _empty_summary(mode: String) -> Dictionary:
 		"external_mcp_reconnect_log_count_before": 0,
 		"external_mcp_reconnect_log_count_after": 0,
 		"external_mcp_fail_sentinel_removed": false,
+		"external_mcp_toggle_server_name": "",
+		"external_mcp_toggle_status_before": {},
+		"external_mcp_toggle_status_after_disable": {},
+		"external_mcp_toggle_status_after_enable": {},
+		"external_mcp_toggle_tool_names_before": [],
+		"external_mcp_toggle_tool_names_after_disable": [],
+		"external_mcp_toggle_tool_names_after_enable": [],
+		"external_mcp_toggle_log_count_before_baseline": 0,
+		"external_mcp_toggle_log_count_after_baseline": 0,
+		"external_mcp_toggle_log_count_before_disable_turn": 0,
+		"external_mcp_toggle_log_count_after_disable_turn": 0,
+		"external_mcp_toggle_log_count_before_enable_turn": 0,
+		"external_mcp_toggle_log_count_after_enable_turn": 0,
+		"external_mcp_toggle_disable_error": "",
+		"external_mcp_toggle_enable_error": "",
+		"external_mcp_toggle_disable_still_executed": false,
+		"external_mcp_toggle_reenable_attempted": false,
+		"external_mcp_toggle_reenable_executed": false,
+		"external_mcp_toggle_baseline_turn": {},
+		"external_mcp_toggle_disabled_turn": {},
+		"external_mcp_toggle_reenabled_turn": {},
 		"plugin_fixture_path": "",
 		"plugin_detected": false,
 		"plugin_detected_via_commands": false,
