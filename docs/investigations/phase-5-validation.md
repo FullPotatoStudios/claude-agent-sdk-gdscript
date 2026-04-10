@@ -127,6 +127,10 @@ Additional implemented modes:
 - `sdk_mcp_multiple_tools`
 - `sdk_mcp_without_permissions`
 
+Manual diagnostic-only live mode (excluded from the canonical wrapper by default):
+
+- `stop_task_probe`
+
 Validated in this environment during authenticated live runs:
 
 - `agents`: `ClaudeAgentOptions.agents` appeared in the init `SystemMessage` and the query still completed with assistant plus result messages
@@ -157,6 +161,7 @@ Implemented assertions for the new smoke modes:
 - `sdk_mcp_permission_enforcement`: connects a real `ClaudeSDKClient`, exposes `greet` plus `echo` SDK MCP tools, allows only `greet`, explicitly disallows `echo`, and requires that the allowed handler executes while the disallowed handler never runs
 - `sdk_mcp_multiple_tools`: connects a real `ClaudeSDKClient`, exposes `echo` plus `greet` SDK MCP tools, allows both, and requires that both local handlers execute during the same bounded turn budget
 - `sdk_mcp_without_permissions`: connects a real `ClaudeSDKClient`, exposes an `echo` SDK MCP tool without `allowed_tools`, and requires that no local SDK MCP handler executes while the turn avoids local query or stream failures
+- `stop_task_probe`: connects a real `ClaudeSDKClient` with a repo-owned `slow-agent` definition, sends one real `stop_task(task_id)` control request against the first observed `task_started` id, and records the observed task ids, notification statuses, and final result shape without requiring a `status = "stopped"` outcome
 
 Current local rerun status:
 
@@ -180,6 +185,7 @@ Current local rerun status:
 - those direct SDK MCP reruns only passed after a transport parity fix made local `--mcp-config` emission match upstream by including SDK server metadata while stripping the runtime-only `instance`
 - deterministic runtime coverage now also proves `ClaudeSDKClient.reconnect_mcp_server()` and `toggle_mcp_server()` emit the same wire keys as upstream (`subtype = "mcp_reconnect"` / `"mcp_toggle"` with camelCase `serverName`), with direct adapter/node passthrough coverage on top
 - a same-environment `2026-04-10` repro against both the local GDScript runtime and the sibling pinned Python SDK showed that the explored Bash-based live `rewind_files()` flow is not yet a passing parity proof at `v0.1.54`: rewinding to the plain-string replayed `UserMessage.uuid` resolves but leaves the edited file unchanged, while rewinding to the replayed top-level `tool_result` `UserMessage.uuid` returns `No file checkpoint found for this message.`
+- same-environment `2026-04-10` stop-task probes now show the current truthful bound for authenticated live `stop_task()` work: the sibling pinned Python SDK can emit nested delegated task ids (`local_agent` plus `local_bash`) for a slow agent-driven Bash flow, but a stable `task_notification status = "stopped"` proof was not reproduced; in the local GDScript diagnostic run, `stop_task_probe` observed a real `local_agent` task id, sent one successful `stop_task()` control request against that first task id, and still completed with `status = "completed"` plus the output file present
 - a same-environment `2026-04-09` repro against both the local GDScript runtime and the sibling pinned Python SDK showed that live SDK-hosted `toggle_mcp_server()` semantics are currently blocked by upstream Claude CLI behavior at `v0.1.54`: after disable, `get_mcp_status()` can report the SDK server with `tools: []` while the SDK tool handler still executes, and re-enable raises `SDK servers should be handled in print.ts`
 - a same-environment `2026-04-10` repro against both the local GDScript runtime and the sibling pinned Python SDK showed that live external `toggle_mcp_server()` is also not yet truthful at the pinned baseline even with a real MCP-SDK-backed Node fixture: after disable, `get_mcp_status()` can report `status = "disabled"` with no tools while the external `echo` tool still executes and increments the invocation log
 
@@ -189,7 +195,7 @@ Scope note:
 - the live `fork_session_resume` mode intentionally proves only the externally observable transport behavior of `ClaudeAgentOptions.fork_session` on resumed sessions; it does not claim that the CLI-authored saved-session file matches the deeper deterministic JSONL structure produced by local `ClaudeSessions.fork_session()`
 - the new `user` live modes only prove the local POSIX same-user relaunch path for the host's current account; they do not prove arbitrary cross-user support, and Windows remains unsupported for `ClaudeAgentOptions.user` in the shell-backed runtime
 - live `rewind_files()` coverage remains future follow-up work even though deterministic `rewind_files(user_message_id)` parity is already delivered; the explored authenticated Bash edit flow currently reproduces the same non-restoring/no-checkpoint behavior in both local GDScript and the sibling pinned Python SDK
-- live `stop_task()` coverage remains future follow-up work
+- live `stop_task()` wrapper coverage remains future follow-up work; the new `stop_task_probe` mode is intentionally diagnostic-only and excluded from the default wrapper until the sibling Python SDK yields a stable upstream-backed `status = "stopped"` proof
 - live SDK-hosted `toggle_mcp_server()` / `reconnect_mcp_server()` coverage is not in the passing wrapper because the pinned upstream Python SDK reproduces the same runtime limitation
 - live external `toggle_mcp_server()` is also not in the passing wrapper because the pinned upstream Python SDK reproduces the same disabled-but-still-executes behavior with the same repo-owned external Node fixture
-- `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run while new parity slices are being developed or debugged
+- `./tools/release/validate_live_cli.sh` now accepts repeatable `--mode <name>` filters so later targeted smokes can still run while new parity slices are being developed or debugged; it defaults to wrapper modes only, while diagnostic-only probes like `stop_task_probe` require explicit `--mode`

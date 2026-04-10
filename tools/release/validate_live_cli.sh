@@ -83,32 +83,41 @@ then
 	exit 1
 fi
 
+list_smoke_modes() {
+	local list_flag="$1"
+	local log_name="$2"
+	"${godot_binary}" \
+		--headless \
+		--log-file "${log_dir}/${log_name}" \
+		--path "${repo_root}" \
+		-s res://tools/spikes/phase5_runtime_smoke.gd \
+		-- "${list_flag}" \
+	| sed -n 's/^MODE //p'
+}
+
 smoke_modes=()
-mode_list_log="${log_dir}/list-modes.log"
 while IFS= read -r mode; do
 	if [ -n "${mode}" ]; then
 		smoke_modes+=("${mode}")
 	fi
-done < <(
-	"${godot_binary}" \
-		--headless \
-		--log-file "${mode_list_log}" \
-		--path "${repo_root}" \
-		-s res://tools/spikes/phase5_runtime_smoke.gd \
-		-- --list-modes \
-	| sed -n 's/^MODE //p'
-)
+done < <(list_smoke_modes --list-wrapper-modes list-wrapper-modes.log)
 
 if [ "${#smoke_modes[@]}" -eq 0 ]; then
-	echo "Could not determine live smoke modes from tools/spikes/phase5_runtime_smoke.gd" >&2
+	echo "Could not determine live wrapper smoke modes from tools/spikes/phase5_runtime_smoke.gd" >&2
 	exit 1
 fi
 
 if [ "${#requested_modes[@]}" -gt 0 ]; then
+	all_modes=()
+	while IFS= read -r mode; do
+		if [ -n "${mode}" ]; then
+			all_modes+=("${mode}")
+		fi
+	done < <(list_smoke_modes --list-modes list-all-modes.log)
 	filtered_modes=()
 	for requested_mode in "${requested_modes[@]}"; do
 		found=0
-		for mode in "${smoke_modes[@]}"; do
+		for mode in "${all_modes[@]}"; do
 			if [ "${mode}" = "${requested_mode}" ]; then
 				filtered_modes+=("${mode}")
 				found=1

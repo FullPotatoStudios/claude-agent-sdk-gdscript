@@ -17,7 +17,7 @@ const FILESYSTEM_AGENT_NAME := "fs-test-agent"
 const PLUGIN_COMMAND_NAME := "greet"
 const PLUGIN_FIXTURE_NAME := "demo-plugin"
 const SDK_AGENT_NAME := "test-agent"
-const SUPPORTED_MODES := [
+const WRAPPER_MODES := [
 	"baseline",
 	"structured",
 	"partial",
@@ -43,6 +43,9 @@ const SUPPORTED_MODES := [
 	"sdk_mcp_multiple_tools",
 	"sdk_mcp_without_permissions",
 ]
+const DIAGNOSTIC_MODES := [
+	"stop_task_probe",
+]
 
 var _stderr_lines: Array[String] = []
 var _hook_invocations: Array[Dictionary] = []
@@ -53,7 +56,17 @@ var _sdk_mcp_executions: Array[String] = []
 func _init() -> void:
 	var args := _parse_args(OS.get_cmdline_user_args())
 	if bool(args.get("list_modes", false)):
-		for mode in SUPPORTED_MODES:
+		for mode in _all_modes():
+			print("MODE %s" % mode)
+		quit(0)
+		return
+	if bool(args.get("list_wrapper_modes", false)):
+		for mode in WRAPPER_MODES:
+			print("MODE %s" % mode)
+		quit(0)
+		return
+	if bool(args.get("list_diagnostic_modes", false)):
+		for mode in DIAGNOSTIC_MODES:
 			print("MODE %s" % mode)
 		quit(0)
 		return
@@ -98,6 +111,8 @@ func _run_smoke(args: Dictionary) -> Dictionary:
 			return await _run_fork_session_resume_smoke(args)
 		"external_mcp_reconnect":
 			return await _run_external_mcp_reconnect_smoke(args)
+		"stop_task_probe":
+			return await _run_stop_task_probe_smoke(args)
 		"sdk_mcp_tool_execution":
 			return await _run_sdk_mcp_tool_execution_smoke(args)
 		"sdk_mcp_permission_enforcement":
@@ -553,6 +568,89 @@ func _run_dynamic_interrupt_smoke(args: Dictionary) -> Dictionary:
 		and query_error.is_empty() \
 		and interrupt_error.is_empty() \
 		and str(turn_summary.get("stream_error", "")).is_empty()
+	return summary
+
+
+func _run_stop_task_probe_smoke(args: Dictionary) -> Dictionary:
+	var project_dir := _create_temp_project_dir("stop_task_probe")
+	var sentinel_path := project_dir.path_join("slow-task-finished.txt")
+	var options = ClaudeAgentOptionsScript.new({
+		"cli_path": str(args.get("claude_path", "claude")),
+		"model": "haiku",
+		"effort": "low",
+		"cwd": project_dir,
+		"max_turns": 8,
+		"permission_mode": "bypassPermissions",
+		"agents": {
+			"slow-agent": ClaudeAgentDefinitionScript.new({
+				"description": "Runs deliberate long-lived Bash-backed tasks for stop_task diagnostics.",
+				"prompt": "You are a careful assistant that can use Bash for long-running task diagnostics.",
+				"tools": ["Bash"],
+				"model": "sonnet",
+			}),
+		},
+	})
+	var client = ClaudeSDKClientScript.new(options)
+	client.connect_client()
+	var summary := await _wait_for_client_initialize("stop_task_probe", client)
+	summary["diagnostic_only"] = true
+	summary["project_dir"] = project_dir
+	summary["stop_task_probe_sentinel_path"] = sentinel_path
+	if not bool(summary.get("ok", false)):
+		client.disconnect_client()
+		return summary
+
+	var prompt := (
+		"Use the slow-agent agent to run a bash command that sleeps for 20 seconds " +
+		"and then writes DONE to %s. You must use the slow-agent agent."
+	) % sentinel_path
+	client.query(prompt)
+	var query_error := client.get_last_error()
+	var probe_summary := await _collect_stop_task_probe_summary("stop_task_probe_turn", client.receive_response(), client)
+	client.disconnect_client()
+
+	for key in [
+		"message_types",
+		"saw_stream_event",
+		"assistant_present",
+		"result_present",
+		"result_is_error",
+		"result_subtype",
+		"result_errors",
+		"result_num_turns",
+		"result_session_id",
+		"structured_output_present",
+		"structured_output",
+		"result_text",
+		"stream_error",
+		"stop_task_probe_task_events",
+		"stop_task_probe_notifications",
+		"stop_task_probe_task_ids",
+		"stop_task_probe_outer_task_ids",
+		"stop_task_probe_nested_task_ids",
+		"stop_task_probe_selected_task_id",
+		"stop_task_probe_selected_task_type",
+		"stop_task_probe_selected_task_reason",
+		"stop_task_probe_sent",
+		"stop_task_probe_error",
+		"stop_task_probe_task_count",
+		"stop_task_probe_notification_count",
+		"stop_task_probe_notification_statuses",
+	]:
+		summary[key] = probe_summary.get(key, summary.get(key))
+
+	summary["query_error"] = query_error
+	summary["turn_summary"] = probe_summary
+	summary["turn_summaries"] = [probe_summary]
+	summary["stop_task_probe_sentinel_exists"] = FileAccess.file_exists(sentinel_path)
+	summary["ok"] = bool(summary.get("init_present", false)) \
+		and query_error.is_empty() \
+		and str(summary.get("stream_error", "")).is_empty() \
+		and bool(summary.get("result_present", false)) \
+		and int(summary.get("stop_task_probe_task_count", 0)) > 0 \
+		and bool(summary.get("stop_task_probe_sent", false)) \
+		and str(summary.get("stop_task_probe_error", "")).is_empty() \
+		and int(summary.get("stop_task_probe_notification_count", 0)) > 0
 	return summary
 
 
@@ -1033,6 +1131,110 @@ func _append_client_error(errors: Array[String], client: ClaudeSDKClient) -> voi
 		errors.append(message)
 
 
+func _collect_stop_task_probe_summary(mode: String, stream, client: ClaudeSDKClient) -> Dictionary:
+	var summary := _empty_summary(mode)
+	var task_events: Array[Dictionary] = []
+	var notifications: Array[Dictionary] = []
+	var task_ids: Array[String] = []
+	var outer_task_ids: Array[String] = []
+	var nested_task_ids: Array[String] = []
+	var notification_statuses: Array[String] = []
+
+	while true:
+		var message: Variant = await stream.next_message()
+		if message == null:
+			break
+		var subtype := str(message.get("subtype")) if message is Object else ""
+		if message is Object:
+			(summary["message_types"] as Array).append(str(message.get("message_type")))
+		if message is ClaudeSystemMessage and subtype == "init":
+			var init_payload: Dictionary = message.raw_data if message.raw_data is Dictionary else {}
+			summary["init_present"] = true
+			summary["init_output_style"] = str(init_payload.get("output_style", ""))
+			summary["init_commands"] = _extract_command_names(init_payload.get("commands", []))
+			summary["init_command_names"] = _normalize_command_names(summary.get("init_commands", []))
+			summary["init_plugins"] = _extract_plugin_names(init_payload.get("plugins", []))
+			summary["init_agents"] = _variant_to_string_array(init_payload.get("agents", []))
+		if message is ClaudeAssistantMessage:
+			summary["assistant_present"] = true
+		if message is ClaudeStreamEvent:
+			summary["saw_stream_event"] = true
+		if subtype == "task_started":
+			var task_id := str(message.get("task_id"))
+			var task_type := str(message.get("task_type"))
+			var task_event := {
+				"phase": "started",
+				"task_id": task_id,
+				"task_type": task_type,
+				"description": str(message.get("description")),
+				"tool_use_id": str(message.get("tool_use_id")),
+			}
+			task_events.append(task_event)
+			if not task_id.is_empty():
+				task_ids.append(task_id)
+			if task_type == "local_agent" and not task_id.is_empty():
+				outer_task_ids.append(task_id)
+			elif not task_type.is_empty() and not task_id.is_empty():
+				nested_task_ids.append(task_id)
+			if not bool(summary.get("stop_task_probe_sent", false)) and not task_id.is_empty():
+				summary["stop_task_probe_selected_task_id"] = task_id
+				summary["stop_task_probe_selected_task_type"] = task_type
+				summary["stop_task_probe_selected_task_reason"] = "first task_started"
+				await client.stop_task(task_id)
+				summary["stop_task_probe_sent"] = true
+				summary["stop_task_probe_error"] = client.get_last_error()
+		elif subtype == "task_progress":
+			task_events.append({
+				"phase": "progress",
+				"task_id": str(message.get("task_id")),
+				"task_type": "",
+				"description": str(message.get("description")),
+				"tool_use_id": str(message.get("tool_use_id")),
+				"last_tool_name": str(message.get("last_tool_name")),
+				"usage": _variant_to_dictionary(message.get("usage")),
+			})
+		elif subtype == "task_notification":
+			var notification := {
+				"task_id": str(message.get("task_id")),
+				"status": str(message.get("status")),
+				"summary": str(message.get("summary")),
+				"output_file": str(message.get("output_file")),
+				"tool_use_id": str(message.get("tool_use_id")),
+				"usage": _variant_to_dictionary(message.get("usage")),
+			}
+			notifications.append(notification)
+			notification_statuses.append(str(notification.get("status", "")))
+			task_events.append({
+				"phase": "notification",
+				"task_id": str(notification.get("task_id", "")),
+				"task_type": "",
+				"description": str(notification.get("summary", "")),
+				"tool_use_id": str(notification.get("tool_use_id", "")),
+				"status": str(notification.get("status", "")),
+			})
+		if message is ClaudeResultMessage:
+			summary["result_present"] = true
+			summary["result_is_error"] = bool(message.is_error)
+			summary["result_subtype"] = str(message.subtype)
+			summary["result_errors"] = message.errors.duplicate(true)
+			summary["result_num_turns"] = int(message.num_turns)
+			summary["result_session_id"] = str(message.session_id)
+			summary["structured_output_present"] = message.structured_output != null
+			summary["structured_output"] = message.structured_output
+			summary["result_text"] = str(message.result)
+
+	summary["stream_error"] = stream.get_error()
+	summary["stop_task_probe_task_events"] = task_events
+	summary["stop_task_probe_notifications"] = notifications
+	summary["stop_task_probe_task_ids"] = task_ids
+	summary["stop_task_probe_outer_task_ids"] = outer_task_ids
+	summary["stop_task_probe_nested_task_ids"] = nested_task_ids
+	summary["stop_task_probe_task_count"] = task_ids.size()
+	summary["stop_task_probe_notification_count"] = notifications.size()
+	summary["stop_task_probe_notification_statuses"] = notification_statuses
+	return summary
+
+
 func _collect_stream_summary(mode: String, stream) -> Dictionary:
 	var message_types: Array[String] = []
 	var init_agents: Array[String] = []
@@ -1407,6 +1609,8 @@ func _empty_summary(mode: String) -> Dictionary:
 	return {
 		"mode": mode,
 		"ok": false,
+		"diagnostic_only": false,
+		"project_dir": "",
 		"message_types": [],
 		"stream_error": "",
 		"saw_stream_event": false,
@@ -1499,6 +1703,21 @@ func _empty_summary(mode: String) -> Dictionary:
 		"fork_session_file_differs_from_source": false,
 		"fork_session_file_contains_prompt": false,
 		"fork_session_file_contains_result_text": false,
+		"stop_task_probe_task_events": [],
+		"stop_task_probe_notifications": [],
+		"stop_task_probe_task_ids": [],
+		"stop_task_probe_outer_task_ids": [],
+		"stop_task_probe_nested_task_ids": [],
+		"stop_task_probe_selected_task_id": "",
+		"stop_task_probe_selected_task_type": "",
+		"stop_task_probe_selected_task_reason": "",
+		"stop_task_probe_sent": false,
+		"stop_task_probe_error": "",
+		"stop_task_probe_task_count": 0,
+		"stop_task_probe_notification_count": 0,
+		"stop_task_probe_notification_statuses": [],
+		"stop_task_probe_sentinel_path": "",
+		"stop_task_probe_sentinel_exists": false,
 	}
 
 
@@ -1692,6 +1911,15 @@ func _write_text_file(path: String, contents: String) -> bool:
 	return true
 
 
+func _all_modes() -> Array[String]:
+	var modes: Array[String] = []
+	for mode in WRAPPER_MODES:
+		modes.append(mode)
+	for mode in DIAGNOSTIC_MODES:
+		modes.append(mode)
+	return modes
+
+
 func _parse_args(cmdline_args: PackedStringArray) -> Dictionary:
 	var parsed := {
 		"mode": "baseline",
@@ -1700,6 +1928,10 @@ func _parse_args(cmdline_args: PackedStringArray) -> Dictionary:
 	for arg in cmdline_args:
 		if arg == "--list-modes":
 			parsed["list_modes"] = true
+		elif arg == "--list-wrapper-modes":
+			parsed["list_wrapper_modes"] = true
+		elif arg == "--list-diagnostic-modes":
+			parsed["list_diagnostic_modes"] = true
 		elif arg.begins_with("--mode="):
 			parsed["mode"] = arg.trim_prefix("--mode=")
 		elif arg.begins_with("--claude-path="):
