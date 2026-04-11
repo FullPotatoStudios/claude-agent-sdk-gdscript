@@ -6,3 +6,8 @@ addons/gdUnit4/
 reports/
 .artifacts/
 .codex-tmp/
+
+# Keep the checked-in settings-source example fixture tracked even when a
+# developer has a global ignore for Claude local settings files.
+!tools/examples/fixtures/setting_sources_workspace/.claude/
+!tools/examples/fixtures/setting_sources_workspace/.claude/settings.local.json
