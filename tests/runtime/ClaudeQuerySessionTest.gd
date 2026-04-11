@@ -1432,6 +1432,35 @@ func test_receive_response_finishes_on_first_result_across_overlapping_sessions(
 	assert_that(await response_stream.next_message()).is_null()
 
 
+func test_unlabeled_assistant_routes_to_only_active_session_stream() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Only")
+	var response_stream = session.receive_response_for_session("default")
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Unlabeled"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done"))
+
+	var assistant_message = await response_stream.next_message()
+	assert_object(assistant_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((assistant_message as ClaudeAssistantMessage).session_id).is_equal("")
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+
+
 func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_active() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)

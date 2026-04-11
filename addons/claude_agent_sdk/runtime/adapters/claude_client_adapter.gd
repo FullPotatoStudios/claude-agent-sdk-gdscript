@@ -5,6 +5,7 @@ signal session_ready(server_info: Dictionary)
 signal turn_started(prompt: String, session_id: String)
 signal message_received(message: Variant)
 signal turn_message_received(message: Variant)
+signal turn_message_received_for_session(message: Variant, session_id: String)
 signal turn_finished(result_message: ClaudeResultMessage)
 signal busy_changed(is_busy: bool)
 signal error_occurred(message: String)
@@ -211,6 +212,11 @@ func _run_message_drain(token: int, stream) -> void:
 		var active_turn_session_id := _active_turn_session_key_for_message(message)
 		if not active_turn_session_id.is_empty():
 			turn_message_received.emit(message)
+			if _message_session_id(message).is_empty():
+				turn_message_received_for_session.emit(
+					message,
+					_session_reference_id_for_routed_message(active_turn_session_id, message)
+				)
 			if message is ClaudeResultMessage:
 				_clear_active_turn(active_turn_session_id)
 				turn_finished.emit(message)
@@ -330,7 +336,7 @@ func _is_message_for_active_turn(message: Variant) -> bool:
 func _active_turn_session_key_for_message(message: Variant) -> String:
 	var session_id := _message_session_id(message)
 	if session_id.is_empty():
-		return ""
+		return _fallback_active_turn_session_key_for_unlabeled_message()
 	if _active_turns_by_session.has(session_id):
 		return session_id
 	if session_id != "default":
@@ -344,6 +350,25 @@ func _active_turn_session_key_for_message(message: Variant) -> String:
 				_active_turns_by_session["default"] = default_turn_state
 				return "default"
 	return ""
+
+
+func _fallback_active_turn_session_key_for_unlabeled_message() -> String:
+	if _active_turns_by_session.size() != 1:
+		return ""
+	return str(_active_turns_by_session.keys()[0])
+
+
+func _session_reference_id_for_routed_message(active_turn_session_id: String, message: Variant) -> String:
+	if active_turn_session_id != "default":
+		return active_turn_session_id
+	var message_session_id := _message_session_id(message)
+	if not message_session_id.is_empty() and message_session_id != "default":
+		return message_session_id
+	var default_turn_state: Dictionary = _active_turns_by_session.get("default", {}) if _active_turns_by_session.get("default", {}) is Dictionary else {}
+	var promoted_session_id := str(default_turn_state.get("promoted_session_id", ""))
+	if not promoted_session_id.is_empty():
+		return promoted_session_id
+	return active_turn_session_id
 
 
 func _can_promote_default_turn_to_session(session_id: String) -> bool:

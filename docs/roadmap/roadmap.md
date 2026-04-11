@@ -335,7 +335,7 @@ Delivered in Phase 10AL:
 
 Delivered in Phase 10AM:
 - `ClaudeChatPanel` now keeps per-session live transcript state so one connected panel can host multiple active sessions at once
-- saved-session selection and `New chat` now switch immediately on the shared connection instead of forcing disconnect-and-reconnect handoff
+- `New chat` now switches immediately on the shared connection, while saved historical sessions still require disconnect-and-resume handoff unless they were started in the current live connection
 - connect-on-send draft turns now promote cleanly from the panel draft key to the resolved runtime session id, restoring idle composer state after results while preserving background session transcripts
 
 Delivered in Phase 10AN:

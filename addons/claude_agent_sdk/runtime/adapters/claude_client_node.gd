@@ -5,6 +5,7 @@ signal session_ready(server_info: Dictionary)
 signal turn_started(prompt: String, session_id: String)
 signal message_received(message: Variant)
 signal turn_message_received(message: Variant)
+signal turn_message_received_for_session(message: Variant, session_id: String)
 signal turn_finished(result_message: ClaudeResultMessage)
 signal busy_changed(is_busy: bool)
 signal error_occurred(message: String)
@@ -166,6 +167,7 @@ func _bind_adapter_signals() -> void:
 	_adapter.turn_started.connect(_on_adapter_turn_started)
 	_adapter.message_received.connect(_on_adapter_message_received)
 	_adapter.turn_message_received.connect(_on_adapter_turn_message_received)
+	_adapter.turn_message_received_for_session.connect(_on_adapter_turn_message_received_for_session)
 	_adapter.turn_finished.connect(_on_adapter_turn_finished)
 	_adapter.busy_changed.connect(_on_adapter_busy_changed)
 	_adapter.error_occurred.connect(_on_adapter_error_occurred)
@@ -186,6 +188,10 @@ func _on_adapter_message_received(message: Variant) -> void:
 
 func _on_adapter_turn_message_received(message: Variant) -> void:
 	turn_message_received.emit(message)
+
+
+func _on_adapter_turn_message_received_for_session(message: Variant, session_id: String) -> void:
+	turn_message_received_for_session.emit(message, session_id)
 
 
 func _on_adapter_turn_finished(result_message: ClaudeResultMessage) -> void:

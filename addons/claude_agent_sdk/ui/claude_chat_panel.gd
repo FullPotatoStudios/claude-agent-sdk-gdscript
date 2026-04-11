@@ -289,6 +289,9 @@ func submit_prompt(prompt: String) -> void:
 		return
 
 	var target_session_key := _live_session_key_for_query_target()
+	if _selected_session_requires_disconnect_handoff(target_session_key):
+		_emit_error("Disconnect and resume to continue a saved session; shared live overlap only covers sessions started in this connection")
+		return
 	if _is_draft_session_key(target_session_key):
 		_default_live_session_key = target_session_key
 		_selected_session_id = target_session_key
@@ -623,6 +626,7 @@ func _connect_client_signals(client_node: ClaudeClientNode) -> void:
 	client_node.session_ready.connect(_on_client_session_ready)
 	client_node.busy_changed.connect(_on_client_busy_changed)
 	client_node.message_received.connect(_on_client_message_received)
+	client_node.turn_message_received_for_session.connect(_on_client_turn_message_received_for_session)
 	client_node.turn_finished.connect(_on_client_turn_finished)
 	client_node.error_occurred.connect(_on_client_error_occurred)
 	client_node.session_closed.connect(_on_client_session_closed)
@@ -635,6 +639,8 @@ func _disconnect_client_signals(client_node: ClaudeClientNode) -> void:
 		client_node.busy_changed.disconnect(_on_client_busy_changed)
 	if client_node.message_received.is_connected(_on_client_message_received):
 		client_node.message_received.disconnect(_on_client_message_received)
+	if client_node.turn_message_received_for_session.is_connected(_on_client_turn_message_received_for_session):
+		client_node.turn_message_received_for_session.disconnect(_on_client_turn_message_received_for_session)
 	if client_node.turn_finished.is_connected(_on_client_turn_finished):
 		client_node.turn_finished.disconnect(_on_client_turn_finished)
 	if client_node.error_occurred.is_connected(_on_client_error_occurred):
@@ -799,6 +805,14 @@ func _current_displayed_live_session_key() -> String:
 	return ""
 
 
+func _selected_session_requires_disconnect_handoff(session_key: String) -> bool:
+	if not _session_live or session_key.is_empty() or _is_draft_session_key(session_key):
+		return false
+	if not _has_selected_saved_session():
+		return false
+	return not _live_session_states.has(session_key)
+
+
 func _new_live_session_state() -> Dictionary:
 	var transcript_entries: Array[Dictionary] = []
 	return {
@@ -931,6 +945,45 @@ func _session_key_for_runtime_message(session_id: String) -> String:
 	if _live_session_states.has(normalized):
 		return normalized
 	return normalized
+
+
+func _is_session_scoped_runtime_message(message: Variant) -> bool:
+	return (
+		message is ClaudeUserMessage or
+		message is ClaudeAssistantMessage or
+		message is ClaudeStreamEvent or
+		message is ClaudeResultMessage or
+		message is ClaudeRateLimitEvent or
+		message is ClaudeTaskStartedMessage or
+		message is ClaudeTaskProgressMessage or
+		message is ClaudeTaskNotificationMessage
+	)
+
+
+func _session_key_for_routed_turn_message(message: Variant, session_id: String) -> String:
+	var message_session_key := _session_key_for_runtime_message(session_id)
+	if message is ClaudeResultMessage:
+		var result_session_id := (message as ClaudeResultMessage).session_id
+		if _should_promote_default_live_session(result_session_id):
+			return _promote_default_live_session_if_needed(result_session_id)
+		return _session_key_for_runtime_message(result_session_id) if not result_session_id.is_empty() else message_session_key
+	if message is ClaudeAssistantMessage:
+		var assistant_session_id := (message as ClaudeAssistantMessage).session_id
+		if _should_promote_default_live_session(assistant_session_id):
+			return _promote_default_live_session_if_needed(assistant_session_id)
+		if message_session_key == LIVE_DRAFT_SESSION_KEY and _default_live_session_key.is_empty():
+			_default_live_session_key = LIVE_DRAFT_SESSION_KEY
+		if not assistant_session_id.is_empty():
+			return _session_key_for_runtime_message(assistant_session_id)
+	return message_session_key
+
+
+func _fallback_live_session_key_for_unlabeled_message() -> String:
+	if not _default_live_session_key.is_empty():
+		return _default_live_session_key
+	if _live_session_states.size() == 1:
+		return str(_live_session_states.keys()[0])
+	return ""
 
 
 func _should_promote_default_live_session(resolved_session_id: String) -> bool:
@@ -1941,21 +1994,54 @@ func _on_client_busy_changed(_is_busy: bool) -> void:
 
 
 func _on_client_message_received(message: Variant) -> void:
-	var message_session_key := _session_key_for_runtime_message(_message_session_id(message))
-	if message is ClaudeResultMessage:
-		var result_session_id := (message as ClaudeResultMessage).session_id
-		if _should_promote_default_live_session(result_session_id):
-			message_session_key = _promote_default_live_session_if_needed(result_session_id)
-		else:
-			message_session_key = _session_key_for_runtime_message(result_session_id)
-	elif message is ClaudeAssistantMessage:
-		var assistant_session_id := (message as ClaudeAssistantMessage).session_id
-		if _should_promote_default_live_session(assistant_session_id):
-			message_session_key = _promote_default_live_session_if_needed(assistant_session_id)
-		elif message_session_key == LIVE_DRAFT_SESSION_KEY and _default_live_session_key.is_empty():
-			_default_live_session_key = LIVE_DRAFT_SESSION_KEY
+	if _is_session_scoped_runtime_message(message):
+		var message_session_id := _message_session_id(message).strip_edges()
+		if message_session_id.is_empty():
+			if _client_node != null and _client_node.is_busy():
+				return
+			var fallback_session_key := _fallback_live_session_key_for_unlabeled_message()
+			if not fallback_session_key.is_empty():
+				_apply_runtime_message_to_live_session(message, fallback_session_key)
+			return
+		var message_session_key := _session_key_for_routed_turn_message(message, message_session_id)
+		if message_session_key.is_empty():
+			return
+		_apply_runtime_message_to_live_session(message, message_session_key)
+		return
+	var fallback_session_key := _fallback_live_session_key_for_unlabeled_message()
+	if message is ClaudeSystemMessage and message.subtype != "init" and not fallback_session_key.is_empty():
+		message_received.emit(message)
+		_with_live_session_state(fallback_session_key, func():
+			_append_transcript_entry("system", {
+				"title": "System · %s" % message.subtype.capitalize(),
+				"text": _json_pretty(message.raw_data),
+				"raw_data": message.raw_data,
+				"collapsed": false,
+			})
+		)
+	else:
+		message_received.emit(message)
+		if message is ClaudeSystemMessage and message.subtype != "init":
+			_append_transcript_entry("system", {
+				"title": "System · %s" % message.subtype.capitalize(),
+				"text": _json_pretty(message.raw_data),
+				"raw_data": message.raw_data,
+				"collapsed": false,
+			})
+	_refresh_selected_session_metadata()
+	_refresh_session_controls()
+	_update_status_from_state()
+	_refresh_composer_state()
+
+
+func _on_client_turn_message_received_for_session(message: Variant, session_id: String) -> void:
+	var message_session_key := _session_key_for_routed_turn_message(message, session_id)
 	if message_session_key.is_empty():
-		message_session_key = _current_displayed_live_session_key()
+		return
+	_apply_runtime_message_to_live_session(message, message_session_key)
+
+
+func _apply_runtime_message_to_live_session(message: Variant, message_session_key: String) -> void:
 	message_received.emit(message)
 	_with_live_session_state(message_session_key, func():
 		if message is ClaudeRateLimitEvent:
@@ -1969,15 +2055,6 @@ func _on_client_message_received(message: Variant) -> void:
 			return
 		if message is ClaudeTaskNotificationMessage:
 			_handle_task_notification_message(message)
-			return
-		if message is ClaudeSystemMessage:
-			if message.subtype != "init":
-				_append_transcript_entry("system", {
-					"title": "System · %s" % message.subtype.capitalize(),
-					"text": _json_pretty(message.raw_data),
-					"raw_data": message.raw_data,
-					"collapsed": false,
-				})
 			return
 		if message is ClaudeUserMessage:
 			_handle_user_message(message)
@@ -3319,8 +3396,9 @@ func _refresh_composer_state() -> void:
 	var logged_in := bool(_last_auth_status.get("logged_in", false))
 	var selected_session_id := _current_live_query_session_id()
 	var selected_session_busy: bool = _client_node != null and _client_node.is_session_busy(selected_session_id)
+	var requires_disconnect_handoff := _selected_session_requires_disconnect_handoff(_live_session_key_for_query_target())
 	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in and not selected_session_busy
-	var can_send: bool = can_draft and not _prompt_input.text.strip_edges().is_empty()
+	var can_send: bool = can_draft and not requires_disconnect_handoff and not _prompt_input.text.strip_edges().is_empty()
 	_prompt_input.editable = can_draft
 	_send_button.disabled = not can_send
 	_interrupt_button.disabled = not _session_live or _client_node == null or not _client_node.is_busy()
@@ -3347,8 +3425,10 @@ func _composer_hint_text() -> String:
 		return "Claude is responding in the selected session."
 	if _client_node != null and _client_node.is_busy():
 		return "Another live session is busy. You can still work in this selected session, or interrupt the shared connection."
+	if _selected_session_requires_disconnect_handoff(_live_session_key_for_query_target()):
+		return "Disconnect and resume to continue this saved session. Shared overlap only covers sessions started in the current connection."
 	if _has_selected_saved_session():
-		return "You are connected. Sending now continues the selected saved session on this shared connection."
+		return "You are connected. Sending now continues the selected live session on this shared connection."
 	if _is_draft_session_key(_selected_session_id):
 		return "You are connected. This draft will resolve into a new live session after the first reply."
 	if _prompt_input.text.strip_edges().is_empty():

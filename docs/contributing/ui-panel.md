@@ -134,6 +134,8 @@ surfaces different-session overlap directly:
 - selecting a saved or live session swaps the transcript/composer immediately
 - `New chat` while connected selects a fresh live draft session instead of
   disconnecting
+- continuing a saved historical session still requires a disconnect-and-resume
+  handoff unless that session was started in the current live connection
 - background messages, results, task cards, and draft-to-resolved-session
   promotion are tracked per session without overwriting the selected transcript
 - composer send/edit enablement is scoped to the selected session's busy state,

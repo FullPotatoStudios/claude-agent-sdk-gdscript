@@ -650,7 +650,7 @@ func _message_session_id(message: Variant) -> String:
 
 func _active_turn_session_key_for_message(message_session_id: String) -> String:
 	if message_session_id.is_empty():
-		return ""
+		return _fallback_active_turn_session_key_for_unlabeled_message()
 	if _active_turns_by_session.has(message_session_id):
 		return message_session_id
 	if message_session_id != "default":
@@ -664,6 +664,12 @@ func _active_turn_session_key_for_message(message_session_id: String) -> String:
 				_active_turns_by_session["default"] = default_state
 				return "default"
 	return ""
+
+
+func _fallback_active_turn_session_key_for_unlabeled_message() -> String:
+	if _active_turns_by_session.size() != 1:
+		return ""
+	return str(_active_turns_by_session.keys()[0])
 
 
 func _can_promote_default_turn_to_session(message_session_id: String) -> bool:

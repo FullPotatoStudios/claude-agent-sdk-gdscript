@@ -184,6 +184,44 @@ func test_node_exposes_session_busy_passthrough_for_overlapping_turns() -> void:
 	await _await_frames(2)
 
 
+func test_node_reemits_routed_turn_session_id_for_unlabeled_assistant_when_only_one_turn_is_active() -> void:
+	var transport = FakeTransportScript.new()
+	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)
+	var routed_sessions: Array[String] = []
+
+	node.turn_message_received_for_session.connect(func(_message, session_id: String): routed_sessions.append(session_id))
+
+	get_tree().root.add_child(node)
+	await get_tree().process_frame
+
+	node.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	node.query("Only")
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Unlabeled"}]},
+	})
+	await _await_frames(2)
+
+	assert_array(routed_sessions).is_equal(["default"])
+
+	node.disconnect_client()
+	await _await_frames(2)
+	get_tree().root.remove_child(node)
+	node.queue_free()
+	await _await_frames(2)
+
+
 func test_node_reconnect_reemits_ready_and_prompt_turn_signals() -> void:
 	var transport = FakeTransportScript.new()
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), transport)

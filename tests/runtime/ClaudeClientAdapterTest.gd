@@ -251,6 +251,37 @@ func test_adapter_tracks_overlapping_different_session_turns_and_aggregate_busy(
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_emits_routed_turn_session_id_for_unlabeled_assistant_when_only_one_turn_is_active() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var routed_sessions: Array[String] = []
+
+	adapter.turn_message_received_for_session.connect(func(_message, session_id: String): routed_sessions.append(session_id))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("Only")
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Unlabeled"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done"))
+	await _await_frames(2)
+
+	assert_array(routed_sessions).is_equal(["default"])
+	await _cleanup_adapter(adapter)
+
+
 func test_adapter_ignores_foreign_session_messages_after_default_turn_binds_runtime_session_id() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)

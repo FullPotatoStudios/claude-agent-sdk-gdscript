@@ -2478,43 +2478,15 @@ func test_panel_disconnected_send_uses_selected_session_resume_target() -> void:
 	await _cleanup_panel(panel)
 
 
-func test_panel_connected_session_switch_send_and_new_chat_stay_on_shared_connection() -> void:
-	var config_root := _create_config_root("panel-live-switch")
-	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
-	var project_path := ProjectSettings.globalize_path("res://")
-	var project_dir := _make_project_dir(config_root, project_path)
-	var first_session_id := "51515151-5151-4515-8515-515151515151"
-	var second_session_id := "61616161-6161-4616-8616-616161616161"
-	_write_panel_session(project_dir, project_path, first_session_id, "First saved session", "First prompt", "First answer", "alpha", 1712302200)
-	_write_panel_session(project_dir, project_path, second_session_id, "Second saved session", "Second prompt", "Second answer", "beta", 1712302300)
-
+func test_panel_connected_live_sessions_started_in_current_connection_can_overlap_and_switch() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
 	await _await_frames(2)
 
-	assert_int(_session_list(panel).item_count).is_equal(3)
-	assert_bool(_prompt_input(panel).editable).is_true()
-	_select_session_with_click_signal(panel, 0)
-	await _await_frames(2)
-
-	assert_bool(panel.get_client_node().is_client_connected()).is_true()
-	assert_str(_session_id_from_panel(panel)).is_equal(second_session_id)
-	assert_str(_label(panel, "SelectedSessionSummaryValue").text).is_equal("Second saved session")
-	assert_str(_status_badge(panel).text).is_equal("Connected")
-	assert_bool(_button(panel, "RenameSessionButton").disabled).is_true()
-	assert_bool(_button(panel, "DeleteSessionButton").disabled).is_true()
-	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
-
-	_prompt_input(panel).text = "Switch to the selected history"
-	_prompt_input(panel).text_changed.emit()
-	var write_count_before_resume: int = transport.writes.size()
-	_button(panel, "SendButton").pressed.emit()
+	panel.submit_prompt("First live turn")
 	await _await_frames(1)
-
-	assert_int(transport.writes.size()).is_equal(write_count_before_resume + 1)
-	var resumed_prompt: Dictionary = JSON.parse_string(transport.writes[write_count_before_resume])
-	assert_str(str(resumed_prompt.get("session_id", ""))).is_equal(second_session_id)
-	assert_str(str((resumed_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("Switch to the selected history")
+	var first_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(first_write.get("session_id", ""))).is_equal("default")
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
@@ -2522,32 +2494,18 @@ func test_panel_connected_session_switch_send_and_new_chat_stay_on_shared_connec
 		"duration_api_ms": 8,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": second_session_id,
-		"result": "Done",
+		"session_id": "live-session-a",
+		"result": "First result",
 	})
-	await _await_frames(3)
-	assert_bool(_prompt_input(panel).editable).is_true()
-	assert_str(_label(panel, "StatusDetailLabel").text).contains("Live session ready")
-
-	_activate_session_with_keyboard_signal(panel, 1)
 	await _await_frames(2)
-	assert_str(_session_id_from_panel(panel)).is_equal(first_session_id)
-	assert_bool(panel.get_client_node().is_client_connected()).is_true()
-	assert_int(_count_entries(panel, "assistant_bubble")).is_equal(1)
-	assert_str(_last_assistant_text(panel)).contains("First answer")
 
 	_button(panel, "NewChatButton").pressed.emit()
 	await _await_frames(2)
-	assert_bool(panel.get_client_node().is_client_connected()).is_true()
 	assert_str(_session_id_from_panel(panel)).is_equal("__panel_live_draft__")
-	assert_int(_transcript_list(panel).get_child_count()).is_equal(0)
-	assert_bool(_prompt_input(panel).editable).is_true()
-
-	var write_count_before_reset: int = transport.writes.size()
-	panel.submit_prompt("Fresh turn after reset")
+	panel.submit_prompt("Second live turn")
 	await _await_frames(1)
-	var reset_write: Dictionary = JSON.parse_string(transport.writes[write_count_before_reset])
-	assert_str(str(reset_write.get("session_id", ""))).is_equal("default")
+	var second_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(second_write.get("session_id", ""))).is_equal("default")
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
@@ -2555,12 +2513,31 @@ func test_panel_connected_session_switch_send_and_new_chat_stay_on_shared_connec
 		"duration_api_ms": 8,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": "fresh-runtime-session",
-		"result": "Fresh result",
+		"session_id": "live-session-b",
+		"result": "Second result",
 	})
 	await _await_frames(2)
-	assert_str(_session_id_from_panel(panel)).is_equal("fresh-runtime-session")
-	assert_bool(_prompt_input(panel).editable).is_true()
+
+	var first_index := int(panel.call("_find_panel_session_index", "live-session-a"))
+	var second_index := int(panel.call("_find_panel_session_index", "live-session-b"))
+	assert_int(first_index).is_greater_equal(0)
+	assert_int(second_index).is_greater_equal(0)
+
+	_select_session_with_click_signal(panel, first_index)
+	await _await_frames(2)
+	assert_str(_session_id_from_panel(panel)).is_equal("live-session-a")
+	panel.submit_prompt("Follow first")
+	await _await_frames(1)
+	var follow_first_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(follow_first_write.get("session_id", ""))).is_equal("live-session-a")
+
+	_select_session_with_click_signal(panel, second_index)
+	await _await_frames(2)
+	assert_str(_session_id_from_panel(panel)).is_equal("live-session-b")
+	panel.submit_prompt("Follow second")
+	await _await_frames(1)
+	var follow_second_write: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(follow_second_write.get("session_id", ""))).is_equal("live-session-b")
 
 	await _cleanup_panel(panel)
 
@@ -2610,35 +2587,63 @@ func test_panel_connect_on_send_promotes_draft_session_and_restores_idle_compose
 	await _cleanup_panel(panel)
 
 
-func test_panel_background_session_results_are_stored_without_overwriting_selected_draft_transcript() -> void:
-	var config_root := _create_config_root("panel-background-routing")
+func test_panel_connected_saved_session_requires_disconnect_handoff_before_resume() -> void:
+	var config_root := _create_config_root("panel-saved-handoff")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
 	var project_path := ProjectSettings.globalize_path("res://")
 	var project_dir := _make_project_dir(config_root, project_path)
-	var saved_session_id := "81818181-8181-4818-8818-818181818181"
-	_write_panel_session(project_dir, project_path, saved_session_id, "Saved session", "Saved prompt", "Saved answer", "", 1712302400)
+	var saved_session_id := "71717171-7171-4717-8717-717171717171"
+	_write_panel_session(project_dir, project_path, saved_session_id, "Saved session", "Saved prompt", "Saved answer", "", 1712302350)
 
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
-
-	panel.submit_prompt("Default session stays selected")
-	await _await_frames(1)
 	var saved_index := int(panel.call("_find_panel_session_index", saved_session_id))
 	assert_int(saved_index).is_greater_equal(0)
 	_select_session_with_click_signal(panel, saved_index)
 	await _await_frames(2)
 
-	_prompt_input(panel).text = "Background saved session"
+	var write_count_before: int = transport.writes.size()
+	_prompt_input(panel).text = "Resume saved on shared connection"
 	_prompt_input(panel).text_changed.emit()
-	_button(panel, "SendButton").pressed.emit()
+	assert_bool(_button(panel, "SendButton").disabled).is_true()
 	await _await_frames(1)
-	var saved_prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(saved_prompt_payload.get("session_id", ""))).is_equal(saved_session_id)
 
-	var draft_index := int(panel.call("_find_panel_session_index", "__panel_live_draft__"))
-	assert_int(draft_index).is_greater_equal(0)
-	_select_session_with_click_signal(panel, draft_index)
+	assert_int(transport.writes.size()).is_equal(write_count_before)
+	assert_str(_label(panel, "ComposerHintLabel").text).contains("Disconnect and resume")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_background_live_session_results_are_stored_without_overwriting_selected_draft_transcript() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Create live session")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "live-session-a",
+		"result": "Created",
+	})
 	await _await_frames(2)
+
+	var live_index := int(panel.call("_find_panel_session_index", "live-session-a"))
+	assert_int(live_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, live_index)
+	await _await_frames(2)
+	panel.submit_prompt("Background live session")
+	await _await_frames(1)
+	var live_prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(live_prompt_payload.get("session_id", ""))).is_equal("live-session-a")
+
+	_button(panel, "NewChatButton").pressed.emit()
+	await _await_frames(2)
+	assert_str(_session_id_from_panel(panel)).is_equal("__panel_live_draft__")
 
 	transport.emit_stdout_message({
 		"type": "result",
@@ -2647,99 +2652,118 @@ func test_panel_background_session_results_are_stored_without_overwriting_select
 		"duration_api_ms": 8,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": saved_session_id,
-		"result": "Saved done",
+		"session_id": "live-session-a",
+		"result": "Live done",
 	})
 	await _await_frames(2)
 
 	assert_int(_count_entries(panel, "result_card")).is_equal(0)
-	assert_bool(_button(panel, "InterruptButton").disabled).is_false()
-	var saved_state := ((panel.get("_live_session_states") as Dictionary).get(saved_session_id, {}) as Dictionary)
-	var saved_entries := saved_state.get("transcript_entries", []) as Array
-	assert_int(saved_entries.size()).is_greater(0)
-	var saved_result_seen := false
-	for entry_variant in saved_entries:
+	assert_bool(_button(panel, "InterruptButton").disabled).is_true()
+	var live_state := ((panel.get("_live_session_states") as Dictionary).get("live-session-a", {}) as Dictionary)
+	var live_entries := live_state.get("transcript_entries", []) as Array
+	assert_int(live_entries.size()).is_greater(0)
+	var live_result_seen := false
+	for entry_variant in live_entries:
 		if entry_variant is not Dictionary:
 			continue
 		var entry := entry_variant as Dictionary
-		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("Saved done"):
-			saved_result_seen = true
+		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("Live done"):
+			live_result_seen = true
 			break
-	assert_bool(saved_result_seen).is_true()
+	assert_bool(live_result_seen).is_true()
 
-	_select_session_with_click_signal(panel, saved_index)
+	_select_session_with_click_signal(panel, live_index)
 	await _await_frames(2)
-	assert_str(_session_id_from_panel(panel)).is_equal(saved_session_id)
+	assert_str(_session_id_from_panel(panel)).is_equal("live-session-a")
 	assert_bool(_prompt_input(panel).editable).is_true()
 
 	await _cleanup_panel(panel)
 
 
-func test_panel_selected_saved_session_keeps_its_query_target_when_other_session_finishes() -> void:
-	var config_root := _create_config_root("panel-selected-target")
+func test_panel_unlabeled_assistant_reply_stays_with_only_busy_live_session_while_browsing_saved_history() -> void:
+	var config_root := _create_config_root("panel-unlabeled-assistant-routing")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
 	var project_path := ProjectSettings.globalize_path("res://")
 	var project_dir := _make_project_dir(config_root, project_path)
-	var saved_session_id := "82828282-8282-4828-8828-828282828282"
-	_write_panel_session(project_dir, project_path, saved_session_id, "Saved target", "Saved prompt", "Saved answer", "", 1712302450)
+	var saved_session_id := "84848484-8484-4848-8848-848484848484"
+	_write_panel_session(project_dir, project_path, saved_session_id, "Saved session", "Saved prompt", "Saved answer", "", 1712302480)
 
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
+	panel.submit_prompt("Live turn")
+	await _await_frames(1)
+
 	var saved_index := int(panel.call("_find_panel_session_index", saved_session_id))
 	assert_int(saved_index).is_greater_equal(0)
 	_select_session_with_click_signal(panel, saved_index)
 	await _await_frames(2)
 
 	transport.emit_stdout_message({
-		"type": "result",
-		"subtype": "success",
-		"duration_ms": 10,
-		"duration_api_ms": 8,
-		"is_error": false,
-		"num_turns": 1,
-		"session_id": "foreign-session-id",
-		"result": "Foreign",
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Background live answer"}]},
 	})
 	await _await_frames(2)
 
-	assert_str(_session_id_from_panel(panel)).is_equal(saved_session_id)
-	_prompt_input(panel).text = "Continue saved target"
-	_prompt_input(panel).text_changed.emit()
-	_button(panel, "SendButton").pressed.emit()
-	await _await_frames(1)
-	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(prompt_payload.get("session_id", ""))).is_equal(saved_session_id)
+	assert_str(_last_assistant_text(panel)).contains("Saved answer")
+	var draft_state := ((panel.get("_live_session_states") as Dictionary).get("__panel_live_draft__", {}) as Dictionary)
+	var draft_entries := draft_state.get("transcript_entries", []) as Array
+	var live_reply_seen := false
+	for entry_variant in draft_entries:
+		if entry_variant is not Dictionary:
+			continue
+		var entry := entry_variant as Dictionary
+		if str(entry.get("kind", "")) == "assistant" and str(entry.get("text", "")).contains("Background live answer"):
+			live_reply_seen = true
+			break
+	assert_bool(live_reply_seen).is_true()
 
 	await _cleanup_panel(panel)
 
 
-func test_panel_default_draft_promotes_after_panel_started_overlap_without_losing_background_session_state() -> void:
-	var config_root := _create_config_root("panel-default-promotion")
-	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
-	var project_path := ProjectSettings.globalize_path("res://")
-	var project_dir := _make_project_dir(config_root, project_path)
-	var saved_session_id := "83838383-8383-4838-8838-838383838383"
-	_write_panel_session(project_dir, project_path, saved_session_id, "Overlap saved session", "Saved prompt", "Saved answer", "", 1712302500)
-
+func test_panel_selected_live_session_keeps_its_query_target_when_other_live_session_finishes() -> void:
 	var transport = FakeTransportScript.new()
 	var panel = await _connected_panel(transport)
 
-	panel.submit_prompt("Default")
+	panel.submit_prompt("Create A")
 	await _await_frames(1)
-	var saved_index := int(panel.call("_find_panel_session_index", saved_session_id))
-	assert_int(saved_index).is_greater_equal(0)
-	_select_session_with_click_signal(panel, saved_index)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "live-session-a",
+		"result": "A created",
+	})
 	await _await_frames(2)
-	_prompt_input(panel).text = "Named"
-	_prompt_input(panel).text_changed.emit()
-	_button(panel, "SendButton").pressed.emit()
-	await _await_frames(1)
-	var named_payload: Dictionary = JSON.parse_string(transport.writes[-1])
-	assert_str(str(named_payload.get("session_id", ""))).is_equal(saved_session_id)
 
-	var draft_index := int(panel.call("_find_panel_session_index", "__panel_live_draft__"))
-	assert_int(draft_index).is_greater_equal(0)
-	_select_session_with_click_signal(panel, draft_index)
+	_button(panel, "NewChatButton").pressed.emit()
+	await _await_frames(2)
+	panel.submit_prompt("Create B")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "live-session-b",
+		"result": "B created",
+	})
+	await _await_frames(2)
+
+	var first_index := int(panel.call("_find_panel_session_index", "live-session-a"))
+	var second_index := int(panel.call("_find_panel_session_index", "live-session-b"))
+	assert_int(first_index).is_greater_equal(0)
+	assert_int(second_index).is_greater_equal(0)
+
+	_select_session_with_click_signal(panel, second_index)
+	await _await_frames(2)
+	panel.submit_prompt("Background B")
+	await _await_frames(1)
+	_select_session_with_click_signal(panel, first_index)
 	await _await_frames(2)
 
 	transport.emit_stdout_message({
@@ -2749,8 +2773,63 @@ func test_panel_default_draft_promotes_after_panel_started_overlap_without_losin
 		"duration_api_ms": 8,
 		"is_error": false,
 		"num_turns": 1,
-		"session_id": saved_session_id,
-		"result": "Named done",
+		"session_id": "live-session-b",
+		"result": "B done",
+	})
+	await _await_frames(2)
+
+	assert_str(_session_id_from_panel(panel)).is_equal("live-session-a")
+	_prompt_input(panel).text = "Continue A"
+	_prompt_input(panel).text_changed.emit()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
+	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("live-session-a")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_default_draft_promotes_after_overlap_without_losing_background_live_session_state() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Create A")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "live-session-a",
+		"result": "A created",
+	})
+	await _await_frames(2)
+
+	var live_index := int(panel.call("_find_panel_session_index", "live-session-a"))
+	assert_int(live_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, live_index)
+	await _await_frames(2)
+	panel.submit_prompt("Background A")
+	await _await_frames(1)
+	var named_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(named_payload.get("session_id", ""))).is_equal("live-session-a")
+
+	_button(panel, "NewChatButton").pressed.emit()
+	await _await_frames(2)
+	panel.submit_prompt("Default")
+	await _await_frames(1)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "live-session-a",
+		"result": "A done",
 	})
 	await _await_frames(2)
 
@@ -2780,18 +2859,18 @@ func test_panel_default_draft_promotes_after_panel_started_overlap_without_losin
 			default_result_seen = true
 			break
 	assert_bool(default_result_seen).is_true()
-	var saved_state := ((panel.get("_live_session_states") as Dictionary).get(saved_session_id, {}) as Dictionary)
-	var saved_entries := saved_state.get("transcript_entries", []) as Array
-	assert_int(saved_entries.size()).is_greater(0)
-	var named_result_seen := false
-	for entry_variant in saved_entries:
+	var live_state := ((panel.get("_live_session_states") as Dictionary).get("live-session-a", {}) as Dictionary)
+	var live_entries := live_state.get("transcript_entries", []) as Array
+	assert_int(live_entries.size()).is_greater(0)
+	var live_result_seen := false
+	for entry_variant in live_entries:
 		if entry_variant is not Dictionary:
 			continue
 		var entry := entry_variant as Dictionary
-		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("Named done"):
-			named_result_seen = true
+		if str(entry.get("kind", "")) == "result" and str(entry.get("text", "")).contains("A done"):
+			live_result_seen = true
 			break
-	assert_bool(named_result_seen).is_true()
+	assert_bool(live_result_seen).is_true()
 	var resolved_index := int(panel.call("_find_panel_session_index", "resolved-default-session"))
 	assert_int(resolved_index).is_greater_equal(0)
 	_select_session_with_click_signal(panel, resolved_index)
@@ -2800,7 +2879,6 @@ func test_panel_default_draft_promotes_after_panel_started_overlap_without_losin
 	await _await_frames(1)
 	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
 	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("resolved-default-session")
-	assert_int(saved_index).is_greater_equal(0)
 
 	await _cleanup_panel(panel)
 
