@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- reference-panel UX expansion planning after the session-lifecycle truthfulness bugfix slice
+- post-`0.2.0` follow-up planning around bounded panel polish, editor-tooling graduation decisions, and remaining runtime/platform gaps after the truthful multi-session routing fix
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility
@@ -400,7 +400,7 @@ Delivered in Phase 10Z:
 
 ## Current focus
 
-The bounded MCP authoring slice, lower-runtime overlap support, shipped-panel multi-session UX, and the first editor-plugin workflow example are now delivered. The next planning pass should focus on follow-up panel polish, editor-tooling graduation decisions, or remaining runtime/platform gaps such as the Windows `user` caveat rather than revisiting whether the shipped panel should support concurrent sessions.
+The bounded MCP authoring slice, lower-runtime overlap support, shipped-panel multi-session UX, its routing/truthfulness follow-up, and the first editor-plugin workflow example are now delivered. The next planning pass should focus on bounded panel polish, editor-tooling graduation decisions, or remaining runtime/platform gaps such as the Windows `user` caveat and upstream-blocked live wrapper gaps rather than revisiting whether the shipped panel should support concurrent sessions.
 
 ## Parity findings (2026-04-09)
 

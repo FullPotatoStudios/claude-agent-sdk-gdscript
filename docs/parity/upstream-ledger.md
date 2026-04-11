@@ -32,22 +32,23 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Local release baseline
 
-- Local addon version: `0.1.0`
+- Local addon version: `0.2.0`
 - Release channels:
   - GitHub Release ZIP
   - Godot Asset Library via custom download provider pointing at that ZIP
-- Release-prep reviewed on: `2026-04-04`
+- Release-prep reviewed on: `2026-04-11`
 - Compatibility/support claim:
   - Godot `4.6`
   - desktop/editor workflows supported
   - exported macOS support limited to currently validated unsandboxed scenarios
 - Deferred beyond release prep:
   - custom tool hosting
-  - deeper upstream parity slices beyond the current runtime/UI surface
+  - upstream-blocked live wrapper promotion for `rewind_files()` / `stop_task()` and truthful external MCP toggle disable semantics
+  - Windows `ClaudeAgentOptions.user` support
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: future decision-making around true multi-session panel UX and whether the development-only editor-dock example should remain example-only or grow into shipped editor tooling
+- Active roadmap slice: post-`0.2.0` follow-up planning around bounded panel polish, editor-tooling graduation decisions, and remaining runtime/platform gaps rather than new foundational session UX work
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`

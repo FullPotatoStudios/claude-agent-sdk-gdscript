@@ -6,34 +6,30 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-11
+
 ### Added
 
-- read-only local session history support through `ClaudeSessions`, including session listing, metadata lookup, and transcript reading
-- basic `ClaudeSessions` mutation helpers for rename, tag, delete, and mutation error reporting
-- session-history and mutation convenience methods on `ClaudeClientAdapter` and `ClaudeClientNode`
-- saved-session browsing, transcript restoration, resume, and basic session-management controls in `ClaudeChatPanel` and the shipped demo
-- scene-free `ClaudeMcp` SDK-hosted MCP tool/server builders with runtime JSON-RPC bridging through `ClaudeAgentOptions.mcp_servers`
-- richer `ClaudeAgentOptions.system_prompt` variants and upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
-- disconnected `ClaudeChatPanel` controls for prompt/tool configuration, plus read-only MCP environment summary
-- scene-free `ClaudeBuiltInToolCatalog` helper plus a grouped built-in tool picker in the reference panel, with advanced allow/deny passthrough preserved behind a collapsed section
-- `ClaudeSessionTranscriptEntry` plus richer normalized transcript-detail reading through `ClaudeSessions.get_session_transcript()`
-- transcript-detail convenience passthroughs on `ClaudeClientAdapter` and `ClaudeClientNode`
-- `ClaudeForkSessionResult` plus runtime-first saved-session forking through `ClaudeSessions.fork_session()`, `ClaudeClientAdapter.fork_session()`, and `ClaudeClientNode.fork_session()`
-- `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` parity through `ClaudeAgentOptions`
-- transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
-- transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
-- transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and best-effort `ClaudeAgentOptions.stderr` callback delivery
-- transport-first local-plugin and `fork_session` option parity through `ClaudeAgentOptions.plugins` and `ClaudeAgentOptions.fork_session`
+- scene-free local session history support through `ClaudeSessions`, including session listing, metadata lookup, normalized transcript reading, rename/tag/delete mutation helpers, and runtime-first session forking
+- session-history, transcript-detail, and mutation convenience methods on `ClaudeClientAdapter` and `ClaudeClientNode`
+- richer upstream parity across `ClaudeAgentOptions`, including `agents`, `setting_sources`, `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, `task_budget`, `settings`, `sandbox`, `extra_args`, `stderr`, `plugins`, `fork_session`, `enable_file_checkpointing`, and POSIX `user`
+- scene-free SDK-hosted MCP builders, typed MCP/context diagnostics models, typed task and rate-limit message models, `ClaudePromptStream`, and runtime `rewind_files()` / `stop_task()` controls
+- expanded authenticated live validation covering bounded post-v1 parity slices such as agents, settings sources, hooks, tool permissions, same-user `user`, dynamic controls, plugin discovery, resumed-session forking, and external MCP reconnect
+- runnable advanced examples under `tools/examples/` for agents, settings sources, plugins, stderr capture, hooks, budgets, tool permissions, partial messages, and SDK MCP tooling
 
 ### Changed
 
-- `ClaudeChatPanel` now uses a conversation-first `Chat` view with a separate `Settings` view, quick chat controls, transcript granularity toggles, de-duplicated result rendering, and richer saved/live transcript detail handling
-- session-history docs and parity tracking now reflect explicit saved-session branching support
-- initialize and transport parity now cover agent definitions via initialize payloads and `--setting-sources` passthrough without adding panel-specific agent UI
-- transport parity now covers the current advanced CLI option slice while keeping those fields out of initialize payloads and preserving the existing `can_use_tool` auto-`stdio` path
-- transport parity now covers `settings` and `sandbox` with upstream-style `--settings` merging while keeping those fields out of initialize payloads
-- transport parity now also covers ordered `extra_args` passthrough and best-effort stderr callback diagnostics without widening the initialize payload surface
-- transport parity now also covers ordered local `--plugin-dir` emission and `--fork-session` flag support without widening the initialize payload surface
+- `ClaudeChatPanel` now ships a fuller reference UI with conversation-first chat/settings views, session browsing, transcript restoration, saved-session forking, live context/MCP diagnostics, disconnected MCP authoring for simple external `stdio` entries, and bounded task controls
+- the shipped panel now supports multiple simultaneous live sessions started within the current connection, fixes unlabeled assistant-message routing across session switches, and keeps older saved sessions on a truthful disconnect-and-resume handoff path
+- transport/runtime parity now includes upstream-style CLI discovery fallback, stricter malformed-known-message handling, initialize timeout handling, shutdown grace after stdin EOF, and whole-string Unicode session-tag sanitization parity
+
+### Known limitations
+
+- Godot support target remains `4.6`
+- the addon still depends on a user-installed `claude` CLI and reuses the caller's existing Claude auth
+- mobile, web, and App Store-sandboxed macOS workflows remain out of scope
+- `ClaudeAgentOptions.user` remains unsupported on Windows shell-backed transports
+- the shipped panel only overlaps sessions that were started in the current live connection; older saved sessions still resume through disconnect-and-handoff
 
 ## [0.1.0] - 2026-04-04
 
