@@ -17,6 +17,12 @@ The current addon does not require `plugin.cfg`, autoloads, or editor-plugin ena
 - exported macOS support limited to the validated unsandboxed scenarios
 - mobile, web, and App Store-sandboxed macOS workflows remain out of scope
 
+## License And Attribution
+
+This addon payload is a derivative GDScript port of `anthropics/claude-agent-sdk-python`.
+It preserves the upstream MIT attribution from Anthropic, PBC in `LICENSE.txt`.
+See `NOTICE.txt` for the matching addon-local attribution note.
+
 ## Runtime expectations
 
 - the addon uses the system-installed `claude` CLI
@@ -64,6 +70,7 @@ This payload includes:
 - `ClaudeChatPanel` with saved-session browsing, transcript restoration, transcript granularity filters, transcript-level rewind actions, disconnected connect-and-send composer behavior, truthful reconnect/resume handoff, saved-session cutoff forks from user or assistant chat bubbles, basic rename/tag/delete controls, and disconnected prompt/tool/MCP configuration controls
 - the canonical addon `VERSION`
 - the addon-local `LICENSE.txt`
+- the addon-local `NOTICE.txt`
 
 Development-only content such as `demo/`, `tests/`, `tools/`, and `addons/gdUnit4/` stays outside this payload boundary.
 

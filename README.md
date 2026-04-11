@@ -26,6 +26,12 @@ The Asset Library listing is intended to resolve to the same tested GitHub Relea
 
 The current addon does not require `plugin.cfg`, autoload setup, or editor-plugin enablement.
 
+## License And Attribution
+
+This repository is a derivative GDScript port of `anthropics/claude-agent-sdk-python`.
+It preserves the upstream MIT attribution from Anthropic, PBC in `LICENSE`.
+See `NOTICE` for the short attribution note used by this repository.
+
 ## Requirements
 
 - Godot `4.6`

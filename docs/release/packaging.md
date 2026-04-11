@@ -19,6 +19,7 @@ The packaging flow includes the verbatim addon subtree, including:
 - tracked `.import` files that live inside `addons/claude_agent_sdk/`
 - `VERSION`
 - `LICENSE.txt`
+- `NOTICE.txt`
 
 ## Excluded content
 

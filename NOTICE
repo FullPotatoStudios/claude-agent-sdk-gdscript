@@ -1,0 +1,6 @@
+Claude Agent SDK for GDScript is a derivative GDScript port of
+anthropics/claude-agent-sdk-python.
+
+This repository preserves the upstream MIT attribution from Anthropic, PBC.
+The project maintainers do not add a separate copyright notice for local
+modifications in this repository.
