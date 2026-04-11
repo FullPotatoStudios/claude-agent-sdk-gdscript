@@ -6,6 +6,20 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-11
+
+### Changed
+
+- switched the repo and packaged addon to conservative upstream-only MIT attribution, preserving Anthropic's copyright notice and adding derivative-port `NOTICE` files instead of asserting a separate local copyright notice
+
+### Known limitations
+
+- Godot support target remains `4.6`
+- the addon still depends on a user-installed `claude` CLI and reuses the caller's existing Claude auth
+- mobile, web, and App Store-sandboxed macOS workflows remain out of scope
+- `ClaudeAgentOptions.user` remains unsupported on Windows shell-backed transports
+- the shipped panel only overlaps sessions that were started in the current live connection; older saved sessions still resume through disconnect-and-handoff
+
 ## [0.2.1] - 2026-04-11
 
 ### Fixed

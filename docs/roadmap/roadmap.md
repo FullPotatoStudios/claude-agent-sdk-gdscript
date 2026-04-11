@@ -166,7 +166,7 @@ Outputs:
 - future custom-tool / broader parity slices tracked against the upstream ledger
 
 Active slice:
-- post-`0.2.1` follow-up planning around bounded panel polish, editor-tooling graduation decisions, and remaining runtime/platform gaps after the truthful multi-session routing fix
+- post-`0.2.2` follow-up planning around bounded panel polish, editor-tooling graduation decisions, and remaining runtime/platform gaps after the conservative licensing attribution update and truthful multi-session routing fix
 
 Delivered in Phase 10A:
 - `ClaudeSessions` as a scene-free static runtime utility

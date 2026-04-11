@@ -32,7 +32,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Local release baseline
 
-- Local addon version: `0.2.1`
+- Local addon version: `0.2.2`
 - Release channels:
   - GitHub Release ZIP
   - Godot Asset Library via custom download provider pointing at that ZIP
@@ -48,7 +48,7 @@ The first public implementation target is the scene-free core conversation loop,
 
 ## Post-v1 parity progress
 
-- Active roadmap slice: post-`0.2.1` follow-up planning around bounded panel polish, editor-tooling graduation decisions, and remaining runtime/platform gaps rather than new foundational session UX work
+- Active roadmap slice: post-`0.2.2` follow-up planning around bounded panel polish, editor-tooling graduation decisions, and remaining runtime/platform gaps rather than new foundational session UX work
 - Delivered after `0.1.0`:
   - `ClaudeSessions.list_sessions()`
   - `ClaudeSessions.get_session_info()`
