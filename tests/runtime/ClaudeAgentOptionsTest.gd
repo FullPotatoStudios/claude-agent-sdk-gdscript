@@ -1014,7 +1014,12 @@ func test_subprocess_transport_allows_explicit_claudecode_override() -> void:
 
 
 func test_sdk_version_reads_canonical_version_file() -> void:
-	assert_str(ClaudeSDKVersionScript.get_version()).is_equal("0.1.0")
+	var version_file := FileAccess.open("res://addons/claude_agent_sdk/VERSION", FileAccess.READ)
+	assert_that(version_file).is_not_null()
+	var expected_version := version_file.get_as_text().strip_edges()
+	version_file.close()
+
+	assert_str(ClaudeSDKVersionScript.get_version()).is_equal(expected_version)
 
 
 func _write_settings_file(path: String, contents: String) -> void:
