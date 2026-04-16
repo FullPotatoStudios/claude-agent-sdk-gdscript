@@ -4,6 +4,7 @@ class_name ClaudeQuerySession
 signal control_request_completed(request_id: String)
 signal session_initialized(server_info: Dictionary)
 signal error_occurred(message: String)
+signal turn_result_received(session_id: String)
 
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
@@ -90,15 +91,29 @@ func close() -> void:
 	_transport.close()
 
 
-func send_user_prompt(prompt: String, session_id: String = "default") -> void:
-	send_prompt(prompt, session_id, true)
+func send_user_prompt(
+	prompt: String,
+	session_id: String = "default",
+	close_input_after_turn := false
+) -> void:
+	send_prompt(prompt, session_id, true, close_input_after_turn)
 
 
-func send_prompt_stream(prompt_stream, session_id: String = "default", backfill_session_id := true) -> void:
-	send_prompt(prompt_stream, session_id, backfill_session_id)
+func send_prompt_stream(
+	prompt_stream,
+	session_id: String = "default",
+	backfill_session_id := true,
+	close_input_after_turn := false
+) -> void:
+	send_prompt(prompt_stream, session_id, backfill_session_id, close_input_after_turn)
 
 
-func send_prompt(prompt, session_id: String = "default", backfill_session_id := true) -> void:
+func send_prompt(
+	prompt,
+	session_id: String = "default",
+	backfill_session_id := true,
+	close_input_after_turn := false
+) -> void:
 	if not _connected:
 		_emit_error("Cannot query before connect() completes")
 		return
@@ -114,6 +129,12 @@ func send_prompt(prompt, session_id: String = "default", backfill_session_id := 
 		"backfill_session_id": backfill_session_id,
 		"drain_token": _next_prompt_drain_token,
 		"promoted_session_id": "",
+		"close_input_after_turn": close_input_after_turn,
+		"wait_for_result_before_end_input": close_input_after_turn and _should_wait_for_result_before_end_input(),
+		"input_drained": false,
+		"input_ended": false,
+		"result_seen": false,
+		"end_input_task_started": false,
 	}
 
 	if prompt is ClaudePromptStreamScript:
@@ -286,6 +307,7 @@ func _flush_pending_prompt_for_session(session_id: String) -> void:
 	var prompt_stream: Variant = state.get("pending_prompt_stream", null)
 	if prompt_stream == null:
 		_active_turns_by_session[session_id] = state
+		_mark_turn_input_drained(session_id)
 		return
 	var token := int(state.get("drain_token", 0))
 	var should_backfill := bool(state.get("backfill_session_id", false))
@@ -306,6 +328,8 @@ func _drain_prompt_stream(prompt_stream, session_id: String, backfill_session_id
 				_fail_turn(session_id, prompt_error)
 			elif not wrote_any_message:
 				_fail_turn(session_id, "ClaudePromptStream finished without emitting any prompt items")
+			else:
+				_mark_turn_input_drained(session_id)
 			return
 		if next_message is not Dictionary:
 			_fail_turn(session_id, "ClaudePromptStream must emit Dictionary items")
@@ -335,6 +359,78 @@ func _build_user_prompt_payload(prompt: String, session_id: String) -> String:
 		},
 		"parent_tool_use_id": null,
 	})
+
+
+func _should_wait_for_result_before_end_input() -> bool:
+	if not _sdk_mcp_servers.is_empty():
+		return true
+	if _options == null:
+		return false
+	return _options.hooks is Dictionary and not (_options.hooks as Dictionary).is_empty()
+
+
+func _mark_turn_input_drained(session_id: String) -> void:
+	var state := _turn_state(session_id)
+	if state.is_empty():
+		return
+	state["input_drained"] = true
+	_active_turns_by_session[session_id] = state
+	_ensure_end_input_task(session_id)
+
+
+func _ensure_end_input_task(session_id: String) -> void:
+	var state := _turn_state(session_id)
+	if state.is_empty():
+		return
+	if not bool(state.get("close_input_after_turn", false)):
+		return
+	if not bool(state.get("input_drained", false)):
+		return
+	if _transport == null or not _transport.supports_end_input():
+		return
+	if bool(state.get("input_ended", false)):
+		return
+	if bool(state.get("end_input_task_started", false)):
+		return
+	state["end_input_task_started"] = true
+	_active_turns_by_session[session_id] = state
+	Callable(self, "_wait_for_turn_result_and_end_input").call_deferred(session_id)
+
+
+func _wait_for_turn_result_and_end_input(session_id: String) -> void:
+	while true:
+		var state := _turn_state(session_id)
+		if state.is_empty() or _closed:
+			return
+		if bool(state.get("input_ended", false)):
+			if bool(state.get("result_seen", false)):
+				_finalize_turn(session_id)
+			return
+		if bool(state.get("wait_for_result_before_end_input", false)) and not bool(state.get("result_seen", false)):
+			var received_session_id: String = await turn_result_received
+			if received_session_id != session_id:
+				continue
+			continue
+
+		var end_input_succeeded := false
+		if _transport != null and _transport.supports_end_input():
+			end_input_succeeded = _transport.end_input()
+			if not end_input_succeeded:
+				var transport_error: String = _transport.get_last_error()
+				if not transport_error.is_empty():
+					_emit_error(transport_error)
+		elif _transport != null:
+			push_warning("Claude transport does not support end_input(); leaving stdin open")
+
+		state = _turn_state(session_id)
+		if state.is_empty() or _closed:
+			return
+		if end_input_succeeded:
+			state["input_ended"] = true
+			_active_turns_by_session[session_id] = state
+		if bool(state.get("result_seen", false)):
+			_finalize_turn(session_id)
+		return
 
 
 func _fail_turn(session_id: String, message: String) -> void:
@@ -382,12 +478,13 @@ func _on_transport_stdout_line(line: String) -> void:
 
 	var message_session_id := _message_session_id(message)
 	var routed_session_id := _active_turn_session_key_for_message(message_session_id)
+	var is_result := message is ClaudeResultMessage
+	if is_result:
+		_complete_turn(routed_session_id)
 	_message_stream.push_message(message)
 	_push_to_global_response_streams(message)
 	if not routed_session_id.is_empty():
 		_push_to_session_response_streams(routed_session_id, message)
-	if message is ClaudeResultMessage:
-		_complete_turn(routed_session_id)
 
 
 func _on_transport_stderr_line(_line: String) -> void:
@@ -598,8 +695,23 @@ func _push_to_session_response_streams(session_id: String, message: Variant) -> 
 
 
 func _complete_turn(session_id: String) -> void:
-	if session_id.is_empty():
+	var state := _turn_state(session_id)
+	if state.is_empty():
 		return
+	state["result_seen"] = true
+	_active_turns_by_session[session_id] = state
+	turn_result_received.emit(session_id)
+	if \
+		bool(state.get("close_input_after_turn", false)) \
+		and _transport != null \
+		and _transport.supports_end_input() \
+		and not bool(state.get("input_ended", false)):
+		_ensure_end_input_task(session_id)
+		return
+	_finalize_turn(session_id)
+
+
+func _finalize_turn(session_id: String) -> void:
 	_active_turns_by_session.erase(session_id)
 	_pending_prompt_order.erase(session_id)
 
@@ -651,6 +763,8 @@ func _message_session_id(message: Variant) -> String:
 func _active_turn_session_key_for_message(message_session_id: String) -> String:
 	if message_session_id.is_empty():
 		return _fallback_active_turn_session_key_for_unlabeled_message()
+	if message_session_id == "default" and _active_turns_by_session.has(""):
+		return ""
 	if _active_turns_by_session.has(message_session_id):
 		return message_session_id
 	if message_session_id != "default":

@@ -26,12 +26,12 @@ static func query(prompt, options = null, transport = null):
 		failed_stream.fail(client.get_last_error())
 		return failed_stream
 	if prompt is ClaudePromptStreamScript:
-		client.query(prompt, "default", false)
+		client.query(prompt, "default", false, true)
 	else:
-		client.query(prompt, resolved_options.get_effective_session_id(""))
+		client.query(prompt, resolved_options.get_effective_session_id(""), true, true)
 	var stream = client.receive_response()
 	stream.retain(client)
-	stream.set_finish_callback(client.disconnect_client)
+	stream.set_finish_callback(Callable(ClaudeQuery, "_disconnect_client_deferred").bind(client))
 	return stream
 
 
@@ -39,3 +39,9 @@ static func get_auth_status(options = null, transport = null) -> Dictionary:
 	var resolved_options = options if options != null else ClaudeAgentOptionsScript.new()
 	var client = ClaudeSDKClientScript.new(resolved_options, transport)
 	return client.get_auth_status()
+
+
+static func _disconnect_client_deferred(client) -> void:
+	if client == null:
+		return
+	Callable(client, "disconnect_client").call_deferred()

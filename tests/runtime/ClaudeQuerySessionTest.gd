@@ -13,6 +13,14 @@ var _cancelable_hook_state: Dictionary = {}
 var _cancelable_permission_state: Dictionary = {}
 
 
+class UnsupportedEndInputTransport extends FakeClaudeTransport:
+	func supports_end_input() -> bool:
+		return false
+
+	func end_input() -> bool:
+		return false
+
+
 func after_test() -> void:
 	_async_completions.clear()
 	_cancelable_hook_state.clear()
@@ -283,6 +291,36 @@ func test_initialize_error_fails_pending_streams() -> void:
 	assert_str(response_stream.get_error()).contains("initialize failed")
 	assert_that(await response_stream.next_message()).is_null()
 	assert_bool(transport.connected).is_false()
+
+
+func test_result_finalizes_turn_when_transport_cannot_end_input() -> void:
+	var transport = UnsupportedEndInputTransport.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request_id := str(initialize_request.get("request_id", ""))
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": request_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi", "default", true)
+	var response_stream = session.receive_response()
+	await get_tree().process_frame
+	assert_int(transport.end_input_calls).is_equal(0)
+
+	transport.emit_stdout_message(_result_payload("done"))
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	await get_tree().process_frame
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_bool(session._active_turns_by_session.is_empty()).is_true()
 
 
 func test_malformed_known_messages_fail_session_instead_of_silent_skip() -> void:

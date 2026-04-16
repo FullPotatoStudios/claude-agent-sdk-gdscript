@@ -144,7 +144,7 @@ The first public implementation target is the scene-free core conversation loop,
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
   - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
-  - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
+  - the runtime now models upstream-style `end_input()` timing for one-shot query flows, but the shipped subprocess transport still cannot perform a true stdin half-close because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
   - same-session overlap now stays serialized locally as a determinism/truthfulness guard, even though upstream's shared-stream client does not currently add an explicit same-session query guard
 
 ## Update process

@@ -443,6 +443,17 @@ func write(payload: String) -> bool:
 	return true
 
 
+func supports_end_input() -> bool:
+	return false
+
+
+func end_input() -> bool:
+	# Godot's execute_with_pipe() currently exposes a single read/write FileAccess,
+	# so the shipped subprocess transport cannot half-close stdin without also
+	# giving up stdout reads. Keep the contract explicit for custom transports.
+	return false
+
+
 func close() -> void:
 	_stop_requested = true
 	_close_pipes()

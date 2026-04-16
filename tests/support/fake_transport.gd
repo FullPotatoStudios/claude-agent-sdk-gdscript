@@ -7,7 +7,10 @@ signal transport_closed
 signal transport_error(message: String)
 
 var connected := false
+var input_ended := false
 var writes: Array[String] = []
+var transport_events: Array[String] = []
+var end_input_calls := 0
 var open_error_message := ""
 var auth_status_result: Dictionary = {
 	"ok": true,
@@ -33,6 +36,8 @@ func open_transport() -> bool:
 		_set_last_error(open_error_message)
 		return false
 	connected = true
+	input_ended = false
+	transport_events.append("open")
 	return true
 
 
@@ -41,11 +46,27 @@ func write(payload: String) -> bool:
 		_set_last_error("FakeClaudeTransport is not connected")
 		return false
 	writes.append(payload)
+	transport_events.append("write")
+	return true
+
+
+func supports_end_input() -> bool:
+	return true
+
+
+func end_input() -> bool:
+	if not connected:
+		_set_last_error("FakeClaudeTransport is not connected")
+		return false
+	input_ended = true
+	end_input_calls += 1
+	transport_events.append("end_input")
 	return true
 
 
 func close() -> void:
 	connected = false
+	transport_events.append("close")
 	transport_closed.emit()
 
 

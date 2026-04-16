@@ -259,6 +259,14 @@ func test_consume_stdout_chunk_skips_blank_lines_between_messages() -> void:
 	assert_str(str((JSON.parse_string(messages[1]) as Dictionary).get("id", ""))).is_equal("res1")
 
 
+func test_end_input_reports_subprocess_half_close_is_unavailable() -> void:
+	var transport := _make_transport()
+
+	assert_bool(transport.supports_end_input()).is_false()
+	assert_bool(transport.end_input()).is_false()
+	assert_str(transport.get_last_error()).is_empty()
+
+
 func test_consume_stdout_chunk_buffers_split_json_across_multiple_chunks() -> void:
 	var payload := JSON.stringify({
 		"type": "assistant",
