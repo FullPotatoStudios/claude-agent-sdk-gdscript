@@ -330,6 +330,36 @@ func test_result_finalizes_turn_when_transport_cannot_end_input() -> void:
 	assert_bool(session._active_turns_by_session.is_empty()).is_true()
 
 
+func test_result_finish_clears_registered_response_stream_callbacks() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi")
+	var global_response_stream = session.receive_response()
+	var turn_response_stream = session.receive_response_for_session("default")
+
+	transport.emit_stdout_message(_result_payload("done"))
+
+	assert_object(await global_response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await global_response_stream.next_message()).is_null()
+	assert_object(await turn_response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await turn_response_stream.next_message()).is_null()
+	assert_bool((global_response_stream.get("_finish_callback") as Callable).is_valid()).is_false()
+	assert_bool((turn_response_stream.get("_finish_callback") as Callable).is_valid()).is_false()
+	assert_array(session.get("_global_response_streams") as Array).is_empty()
+	assert_dict(session.get("_turn_response_streams") as Dictionary).is_empty()
+
+
 func test_malformed_known_messages_fail_session_instead_of_silent_skip() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -440,6 +470,42 @@ func test_initialize_timeout_fails_stalled_connect_and_closes_transport() -> voi
 	assert_bool(transport.connected).is_false()
 
 
+func test_initialize_timeout_cancels_cleanly_after_successful_initialize() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.set("_initialize_timeout_sec", 0.01)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	await get_tree().create_timer(0.05).timeout
+
+	assert_str(session.get_last_error()).is_empty()
+	assert_bool(transport.connected).is_true()
+
+
+func test_initialize_timeout_watcher_does_not_retain_closed_session() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.set("_initialize_timeout_sec", 0.01)
+	session.open_session()
+	session.close()
+
+	var session_ref: WeakRef = weakref(session)
+	session = null
+
+	await get_tree().create_timer(0.05).timeout
+
+	assert_that(session_ref.get_ref()).is_null()
+
+
 func test_prompt_stream_waits_for_initialize_and_preserves_stream_payloads() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -483,6 +549,8 @@ func test_prompt_stream_waits_for_initialize_and_preserves_stream_payloads() -> 
 	assert_str(str((first_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("First")
 	assert_str(str(second_prompt.get("session_id", ""))).is_equal("explicit-session")
 	assert_str(str((second_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("Second")
+	session.close()
+	assert_that(await response_stream.next_message()).is_null()
 
 
 func test_prompt_stream_write_failure_fails_active_response_stream() -> void:
@@ -1601,7 +1669,7 @@ func test_unlabeled_assistant_still_routes_when_only_one_session_has_overlapping
 	session.send_user_prompt("First", "session-a")
 	session.send_user_prompt("Second", "session-a")
 	var first_stream = session.receive_response_for_session("session-a")
-	session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
 
 	transport.emit_stdout_message({
 		"type": "assistant",
@@ -1611,6 +1679,9 @@ func test_unlabeled_assistant_still_routes_when_only_one_session_has_overlapping
 	var assistant_message = await first_stream.next_message()
 	assert_object(assistant_message).is_instanceof(ClaudeAssistantMessage)
 	assert_str((assistant_message as ClaudeAssistantMessage).session_id).is_equal("")
+	session.close()
+	assert_that(await first_stream.next_message()).is_null()
+	assert_that(await second_stream.next_message()).is_null()
 
 
 func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_active() -> void:

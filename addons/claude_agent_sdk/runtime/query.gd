@@ -6,6 +6,7 @@ const ClaudeSDKClientScript := preload("res://addons/claude_agent_sdk/runtime/cl
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 
+
 static func query(prompt, options = null, transport = null):
 	var resolved_options = options if options != null else ClaudeAgentOptionsScript.new()
 	if not (prompt is String or prompt is ClaudePromptStreamScript):
@@ -31,7 +32,12 @@ static func query(prompt, options = null, transport = null):
 		client.query(prompt, resolved_options.get_effective_session_id(""), true, true)
 	var stream = client.receive_response()
 	stream.retain(client)
-	stream.set_finish_callback(Callable(ClaudeQuery, "_disconnect_client_deferred").bind(client))
+	stream.add_finish_callback(
+		Callable(ClaudeQuery, "_disconnect_client").bind(
+			client,
+			_disconnect_frame_delay(resolved_options, transport, client)
+		)
+	)
 	return stream
 
 
@@ -41,7 +47,36 @@ static func get_auth_status(options = null, transport = null) -> Dictionary:
 	return client.get_auth_status()
 
 
-static func _disconnect_client_deferred(client) -> void:
+static func _disconnect_client(client, frame_delay: int = 1) -> void:
 	if client == null:
 		return
-	Callable(client, "disconnect_client").call_deferred()
+	_disconnect_client_after_frames(client, frame_delay)
+
+
+static func _disconnect_client_after_frames(client, remaining_frames: int) -> void:
+	if client == null:
+		return
+	if remaining_frames <= 0:
+		client.disconnect_client()
+		return
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		client.disconnect_client()
+		return
+	tree.process_frame.connect(
+		Callable(ClaudeQuery, "_disconnect_client_after_frames").bind(client, remaining_frames - 1),
+		CONNECT_ONE_SHOT
+	)
+
+
+static func _disconnect_frame_delay(resolved_options, transport, _client = null) -> int:
+	if transport != null and transport.has_method("supports_end_input") and not transport.supports_end_input():
+		return 1
+	if resolved_options != null and resolved_options.mcp_servers is Dictionary:
+		for server_name_variant in (resolved_options.mcp_servers as Dictionary).keys():
+			var config_variant: Variant = (resolved_options.mcp_servers as Dictionary)[server_name_variant]
+			if config_variant is Dictionary and str((config_variant as Dictionary).get("type", "")) == "sdk":
+				return 2
+	if resolved_options != null and resolved_options.hooks is Dictionary and not (resolved_options.hooks as Dictionary).is_empty():
+		return 2
+	return 1

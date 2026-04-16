@@ -22,6 +22,24 @@ const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runt
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 const DEFAULT_INITIALIZE_TIMEOUT_SEC := 60.0
 
+
+class InitializeTimeoutHandler extends RefCounted:
+	var _session_ref: WeakRef
+	var _token := 0
+
+
+	func _init(session_ref: WeakRef, token: int) -> void:
+		_session_ref = session_ref
+		_token = token
+
+
+	func expire() -> void:
+		var session = _session_ref.get_ref()
+		if session == null:
+			return
+		session._on_initialize_timeout_expired(_token)
+
+
 var _transport = null
 var _options = null
 var _server_info: Dictionary = {}
@@ -48,6 +66,8 @@ var _sdk_mcp_servers: Dictionary = {}
 var _initialize_timeout_sec := DEFAULT_INITIALIZE_TIMEOUT_SEC
 var _initialize_timeout_token := 0
 var _initialize_timeout_error := ""
+var _initialize_timeout_timer: Timer = null
+var _initialize_timeout_handler = null
 
 
 func _init(transport, options = null, sdk_mcp_servers: Dictionary = {}) -> void:
@@ -87,6 +107,7 @@ func close() -> void:
 	_closed = true
 	_connected = false
 	_initialize_timeout_token += 1
+	_clear_initialize_timeout_timer()
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude session closed")
 	_finish_streams()
@@ -547,6 +568,7 @@ func _handle_control_response(data: Dictionary) -> void:
 		_server_info = response_payload
 		_initialized = true
 		_initialize_timeout_token += 1
+		_clear_initialize_timeout_timer()
 		_initialize_request_id = ""
 		session_initialized.emit(_server_info.duplicate(true))
 		_flush_pending_prompts()
@@ -575,6 +597,7 @@ func _fail_session(message: String) -> void:
 	if _last_error != message:
 		_set_last_error(message)
 	_initialize_timeout_token += 1
+	_clear_initialize_timeout_timer()
 	_complete_pending_control_requests(message)
 	_cancel_all_inflight_control_requests()
 	_fail_all_streams(message)
@@ -584,24 +607,38 @@ func _fail_session(message: String) -> void:
 
 func _arm_initialize_timeout() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null:
+	if tree == null or tree.root == null:
 		return
+	_clear_initialize_timeout_timer()
 	_initialize_timeout_token += 1
 	var token := _initialize_timeout_token
-	Callable(self, "_watch_initialize_timeout").call_deferred(tree, token)
+	var timer := Timer.new()
+	timer.one_shot = true
+	timer.wait_time = _initialize_timeout_sec
+	var handler := InitializeTimeoutHandler.new(weakref(self), token)
+	_initialize_timeout_timer = timer
+	_initialize_timeout_handler = handler
+	timer.timeout.connect(Callable(handler, "expire"))
+	timer.timeout.connect(Callable(timer, "queue_free"))
+	tree.root.add_child(timer)
+	timer.start()
 
 
-func _watch_initialize_timeout(tree: SceneTree, token: int) -> void:
-	if _initialize_request_id.is_empty() or _initialized or _closed:
+func _on_initialize_timeout_expired(token: int) -> void:
+	if token != _initialize_timeout_token or _initialize_request_id.is_empty() or _initialized or _closed:
 		return
-	await tree.create_timer(_initialize_timeout_sec).timeout
-	if token != _initialize_timeout_token:
-		return
-	if _initialize_request_id.is_empty() or _initialized or _closed:
-		return
+	_clear_initialize_timeout_timer()
 	_fail_session(
 		"Claude session initialize timed out after %.1f seconds" % _initialize_timeout_sec
 	)
+
+
+func _clear_initialize_timeout_timer() -> void:
+	if _initialize_timeout_timer != null and is_instance_valid(_initialize_timeout_timer):
+		_initialize_timeout_timer.stop()
+		_initialize_timeout_timer.queue_free()
+	_initialize_timeout_timer = null
+	_initialize_timeout_handler = null
 
 
 func _resolve_initialize_timeout_seconds() -> float:
