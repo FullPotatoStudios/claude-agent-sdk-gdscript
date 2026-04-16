@@ -8,6 +8,8 @@ signal transport_error(message: String)
 
 var connected := false
 var input_ended := false
+var end_input_supported := true
+var end_input_success := true
 var writes: Array[String] = []
 var transport_events: Array[String] = []
 var end_input_calls := 0
@@ -51,12 +53,16 @@ func write(payload: String) -> bool:
 
 
 func supports_end_input() -> bool:
-	return true
+	return end_input_supported
 
 
 func end_input() -> bool:
+	if not end_input_supported:
+		return false
 	if not connected:
 		_set_last_error("FakeClaudeTransport is not connected")
+		return false
+	if not end_input_success:
 		return false
 	input_ended = true
 	end_input_calls += 1

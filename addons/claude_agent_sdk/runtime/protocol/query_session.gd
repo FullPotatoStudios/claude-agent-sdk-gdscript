@@ -4,7 +4,7 @@ class_name ClaudeQuerySession
 signal control_request_completed(request_id: String)
 signal session_initialized(server_info: Dictionary)
 signal error_occurred(message: String)
-signal turn_result_received(session_id: String)
+signal turn_state_changed(session_id: String)
 
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
@@ -375,6 +375,11 @@ func _mark_turn_input_drained(session_id: String) -> void:
 		return
 	state["input_drained"] = true
 	_active_turns_by_session[session_id] = state
+	if not _transport_supports_end_input() and _can_logically_end_input_without_transport(state):
+		state = _mark_turn_input_ended(session_id)
+		if not state.is_empty() and bool(state.get("result_seen", false)):
+			_finalize_turn(session_id)
+			return
 	_ensure_end_input_task(session_id)
 
 
@@ -386,7 +391,7 @@ func _ensure_end_input_task(session_id: String) -> void:
 		return
 	if not bool(state.get("input_drained", false)):
 		return
-	if _transport == null or not _transport.supports_end_input():
+	if not _transport_supports_end_input():
 		return
 	if bool(state.get("input_ended", false)):
 		return
@@ -407,27 +412,14 @@ func _wait_for_turn_result_and_end_input(session_id: String) -> void:
 				_finalize_turn(session_id)
 			return
 		if bool(state.get("wait_for_result_before_end_input", false)) and not bool(state.get("result_seen", false)):
-			var received_session_id: String = await turn_result_received
-			if received_session_id != session_id:
+			var changed_session_id: String = await turn_state_changed
+			if changed_session_id != session_id:
 				continue
 			continue
 
-		var end_input_succeeded := false
-		if _transport != null and _transport.supports_end_input():
-			end_input_succeeded = _transport.end_input()
-			if not end_input_succeeded:
-				var transport_error: String = _transport.get_last_error()
-				if not transport_error.is_empty():
-					_emit_error(transport_error)
-		elif _transport != null:
-			push_warning("Claude transport does not support end_input(); leaving stdin open")
-
-		state = _turn_state(session_id)
+		state = _attempt_turn_end_input(session_id)
 		if state.is_empty() or _closed:
 			return
-		if end_input_succeeded:
-			state["input_ended"] = true
-			_active_turns_by_session[session_id] = state
 		if bool(state.get("result_seen", false)):
 			_finalize_turn(session_id)
 		return
@@ -438,6 +430,7 @@ func _fail_turn(session_id: String, message: String) -> void:
 	_fail_session_response_streams(session_id, _last_error)
 	_active_turns_by_session.erase(session_id)
 	_pending_prompt_order.erase(session_id)
+	_notify_turn_state_changed(session_id)
 	if _active_turns_by_session.is_empty():
 		for stream in _global_response_streams.duplicate():
 			stream.fail(_last_error)
@@ -638,8 +631,11 @@ func _disconnect_transport_signals() -> void:
 
 
 func _finish_streams() -> void:
+	var active_turn_session_ids := _active_turn_session_ids()
 	_pending_prompt_order.clear()
 	_active_turns_by_session.clear()
+	for session_id in active_turn_session_ids:
+		_notify_turn_state_changed(session_id)
 	_message_stream.finish()
 	_finish_global_response_streams()
 	_finish_all_session_response_streams()
@@ -647,6 +643,13 @@ func _finish_streams() -> void:
 
 func _turn_state(session_id: String) -> Dictionary:
 	return _active_turns_by_session.get(session_id, {}) if _active_turns_by_session.get(session_id, {}) is Dictionary else {}
+
+
+func _active_turn_session_ids() -> Array[String]:
+	var session_ids: Array[String] = []
+	for session_id_variant in _active_turns_by_session.keys():
+		session_ids.append(str(session_id_variant))
+	return session_ids
 
 
 func _is_prompt_drain_active(session_id: String, token: int) -> bool:
@@ -694,31 +697,91 @@ func _push_to_session_response_streams(session_id: String, message: Variant) -> 
 		stream.push_message(message)
 
 
+func _transport_supports_end_input() -> bool:
+	return _transport != null and _transport.supports_end_input()
+
+
+func _can_logically_end_input_without_transport(state: Dictionary) -> bool:
+	if state.is_empty():
+		return false
+	if not bool(state.get("close_input_after_turn", false)):
+		return false
+	if bool(state.get("input_ended", false)):
+		return true
+	if bool(state.get("wait_for_result_before_end_input", false)):
+		return bool(state.get("result_seen", false))
+	return true
+
+
+func _mark_turn_input_ended(session_id: String) -> Dictionary:
+	var state := _turn_state(session_id)
+	if state.is_empty():
+		return {}
+	if bool(state.get("input_ended", false)):
+		return state
+	state["input_ended"] = true
+	_active_turns_by_session[session_id] = state
+	_notify_turn_state_changed(session_id)
+	return state
+
+
+func _attempt_turn_end_input(session_id: String) -> Dictionary:
+	var state := _turn_state(session_id)
+	if state.is_empty():
+		return {}
+	if _transport_supports_end_input():
+		var end_input_succeeded: bool = _transport.end_input()
+		if not end_input_succeeded:
+			var transport_error: String = _transport.get_last_error()
+			if transport_error.is_empty():
+				transport_error = "Claude transport failed to end input"
+			_emit_error(transport_error)
+	return _mark_turn_input_ended(session_id)
+
+
+func _notify_turn_state_changed(session_id: String) -> void:
+	if session_id.is_empty():
+		return
+	turn_state_changed.emit(session_id)
+
+
 func _complete_turn(session_id: String) -> void:
 	var state := _turn_state(session_id)
 	if state.is_empty():
 		return
 	state["result_seen"] = true
 	_active_turns_by_session[session_id] = state
-	turn_result_received.emit(session_id)
-	if \
-		bool(state.get("close_input_after_turn", false)) \
-		and _transport != null \
-		and _transport.supports_end_input() \
-		and not bool(state.get("input_ended", false)):
-		_ensure_end_input_task(session_id)
-		return
+	_notify_turn_state_changed(session_id)
+	if bool(state.get("close_input_after_turn", false)) and not bool(state.get("input_ended", false)):
+		if not _transport_supports_end_input():
+			if not bool(state.get("input_drained", false)):
+				return
+			state = _mark_turn_input_ended(session_id)
+			if state.is_empty():
+				return
+		else:
+			if bool(state.get("end_input_task_started", false)) and bool(state.get("input_drained", false)):
+				state = _attempt_turn_end_input(session_id)
+				if state.is_empty():
+					return
+			else:
+				_ensure_end_input_task(session_id)
+				return
 	_finalize_turn(session_id)
 
 
 func _finalize_turn(session_id: String) -> void:
 	_active_turns_by_session.erase(session_id)
 	_pending_prompt_order.erase(session_id)
+	_notify_turn_state_changed(session_id)
 
 
 func _fail_all_streams(message: String) -> void:
+	var active_turn_session_ids := _active_turn_session_ids()
 	_pending_prompt_order.clear()
 	_active_turns_by_session.clear()
+	for session_id in active_turn_session_ids:
+		_notify_turn_state_changed(session_id)
 	_message_stream.fail(message)
 	for stream in _global_response_streams.duplicate():
 		stream.fail(message)

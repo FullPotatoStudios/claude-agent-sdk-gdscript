@@ -800,6 +800,110 @@ func test_one_shot_query_ends_input_immediately_for_plain_string_prompt() -> voi
 	await get_tree().process_frame
 
 
+func test_one_shot_query_finishes_cleanly_without_end_input_support() -> void:
+	var transport = FakeTransportScript.new()
+	transport.end_input_supported = false
+	var stream = ClaudeQuery.query("Hi", ClaudeAgentOptions.new(), transport)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_int(transport.end_input_calls).is_equal(0)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await stream.next_message()).is_null()
+	await get_tree().process_frame
+	assert_bool(stream.is_finished()).is_true()
+	assert_array(transport.transport_events).is_equal([
+		"open",
+		"write",
+		"write",
+		"close",
+	])
+
+
+func test_one_shot_query_with_hooks_finishes_cleanly_without_end_input_support() -> void:
+	var transport = FakeTransportScript.new()
+	transport.end_input_supported = false
+	var options = ClaudeAgentOptions.new({
+		"hooks": {
+			"PreToolUse": [
+				ClaudeHookMatcherScript.new({
+					"matcher": "Bash",
+					"hooks": [Callable(self, "_client_hook_callback")],
+				}),
+			],
+		},
+	})
+	var stream = ClaudeQuery.query("Hi", options, transport)
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var hooks_config: Dictionary = (init_request.get("request", {}) as Dictionary).get("hooks", {})
+	var hook_callback_id := str(((hooks_config.get("PreToolUse", []) as Array)[0] as Dictionary).get("hookCallbackIds", [])[0])
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	transport.emit_stdout_message({
+		"type": "control_request",
+		"request_id": "hook-no-end-input",
+		"request": {
+			"subtype": "hook_callback",
+			"callback_id": hook_callback_id,
+			"input": {"tool_name": "Bash"},
+		},
+	})
+	await get_tree().process_frame
+	assert_int(transport.end_input_calls).is_equal(0)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "ok",
+	})
+
+	assert_object(await stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await stream.next_message()).is_null()
+	await get_tree().process_frame
+	assert_bool(stream.is_finished()).is_true()
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_array(transport.transport_events).is_equal([
+		"open",
+		"write",
+		"write",
+		"write",
+		"close",
+	])
+
+
 func test_one_shot_query_with_prompt_stream_writes_items_without_backfilling_session_id() -> void:
 	var transport = FakeTransportScript.new()
 	var prompt_stream = ClaudePromptStreamScript.new()

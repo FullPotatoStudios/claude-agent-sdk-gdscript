@@ -587,6 +587,80 @@ func test_prompt_stream_stops_accepting_new_items_after_first_result() -> void:
 	assert_int(transport.writes.size()).is_equal(2)
 
 
+func test_close_input_after_turn_without_end_input_support_finalizes_turn_after_result() -> void:
+	var transport = FakeTransportScript.new()
+	transport.end_input_supported = false
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	session.send_user_prompt("Hi", "default", true)
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_bool((session.get("_active_turns_by_session") as Dictionary).is_empty()).is_true()
+
+
+func test_close_input_after_turn_reports_supported_end_input_failures() -> void:
+	var transport = FakeTransportScript.new()
+	transport.end_input_success = false
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	session.send_user_prompt("Hi", "default", true)
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_str(session.get_last_error()).contains("failed to end input")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_bool((session.get("_active_turns_by_session") as Dictionary).is_empty()).is_true()
+
+
 func test_inbound_hook_callback_writes_success_response() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(
