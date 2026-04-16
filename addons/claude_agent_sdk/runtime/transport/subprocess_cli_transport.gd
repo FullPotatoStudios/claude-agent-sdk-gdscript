@@ -97,9 +97,13 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
 	_append_plugin_args(args)
 	_append_extra_args(args)
-	var resolved_max_thinking_tokens := _resolved_max_thinking_tokens()
-	if resolved_max_thinking_tokens != null:
-		args.append_array(["--max-thinking-tokens", str(int(resolved_max_thinking_tokens))])
+	var resolved_thinking_flag := _resolved_thinking_flag()
+	if not resolved_thinking_flag.is_empty():
+		args.append_array(["--thinking", resolved_thinking_flag])
+	else:
+		var resolved_max_thinking_tokens := _resolved_max_thinking_tokens()
+		if resolved_max_thinking_tokens != null:
+			args.append_array(["--max-thinking-tokens", str(int(resolved_max_thinking_tokens))])
 	if not _options.effort.is_empty():
 		args.append_array(["--effort", _options.effort])
 	args.append_array(["--input-format", "stream-json"])
@@ -565,18 +569,27 @@ func _requested_user() -> String:
 	return _options.user.strip_edges()
 
 
+func _resolved_thinking_flag() -> String:
+	if _options.thinking is not Dictionary:
+		return ""
+
+	var thinking_config := _options.thinking as Dictionary
+	match str(thinking_config.get("type", "")):
+		"adaptive", "disabled":
+			return str(thinking_config.get("type", ""))
+		_:
+			return ""
+
+
 func _resolved_max_thinking_tokens() -> Variant:
 	var resolved: Variant = _options.max_thinking_tokens
 	if _options.thinking is Dictionary:
 		var thinking_config := _options.thinking as Dictionary
 		match str(thinking_config.get("type", "")):
-			"adaptive":
-				if resolved == null:
-					resolved = 32000
 			"enabled":
 				resolved = int(thinking_config.get("budget_tokens", 0))
-			"disabled":
-				resolved = 0
+			_:
+				return null
 	return resolved
 
 

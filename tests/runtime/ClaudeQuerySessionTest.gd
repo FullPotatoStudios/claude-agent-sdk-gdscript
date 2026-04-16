@@ -169,6 +169,12 @@ func test_initialize_includes_serialized_agents_and_preserves_hooks() -> void:
 					}),
 				],
 			},
+			"system_prompt": {
+				"type": "preset",
+				"preset": "claude_code",
+				"append": "Review with parity in mind.",
+				"exclude_dynamic_sections": true,
+			},
 			"agents": {
 				"code-reviewer": {
 					"description": "Reviews code for issues",
@@ -198,6 +204,7 @@ func test_initialize_includes_serialized_agents_and_preserves_hooks() -> void:
 
 	assert_dict(hooks_config).contains_keys(["PreToolUse"])
 	assert_dict(agents_config).contains_keys(["code-reviewer"])
+	assert_bool(bool(request.get("excludeDynamicSections", false))).is_true()
 	var agent_config: Dictionary = agents_config["code-reviewer"]
 	assert_int(int(agent_config.get("maxTurns", -1))).is_equal(2)
 	agent_config.erase("maxTurns")
@@ -825,6 +832,7 @@ func test_inbound_mcp_message_handles_initialize_and_tools_list() -> void:
 	var annotations := ClaudeMcpToolAnnotations.new({
 		"read_only_hint": true,
 		"open_world_hint": false,
+		"max_result_size_chars": 500000,
 	})
 	var tool = ClaudeMcp.tool(
 		"echo",
@@ -880,6 +888,9 @@ func test_inbound_mcp_message_handles_initialize_and_tools_list() -> void:
 		"annotations": {
 			"readOnlyHint": true,
 			"openWorldHint": false,
+		},
+		"_meta": {
+			"anthropic/maxResultSizeChars": 500000.0,
 		},
 	})
 

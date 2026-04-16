@@ -29,7 +29,7 @@ See `NOTICE.txt` for the matching addon-local attribution note.
 - existing Claude auth is reused from the caller's environment
 - the packaged chat panel is optional and can be replaced with custom UI built on the lower runtime layers
 - session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`, including richer normalized transcript detail via `get_session_transcript()`, saved-session subagent discovery via `list_subagents()`, saved-session subagent visible-message reading via `get_subagent_messages()`, and explicit saved-session branching via `fork_session()`
-- richer `system_prompt` and base `tools` configuration is available through `ClaudeAgentOptions`
+- richer `system_prompt` configuration, including preset dynamic-section exclusion, and base `tools` configuration is available through `ClaudeAgentOptions`
 - runtime-first custom agent definitions and `setting_sources` control are available through `ClaudeAgentOptions`
 - transport-first advanced CLI option parity is also available through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` support is available through `ClaudeAgentOptions`, with sandbox merged into the CLI `--settings` value when configured

@@ -72,7 +72,12 @@ func test_max_buffer_size_stays_transport_only_and_survives_duplicate() -> void:
 
 func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() -> void:
 	var preset_options = ClaudeAgentOptions.new({
-		"system_prompt": {"type": "preset", "preset": "claude_code", "append": "Stay in character."},
+		"system_prompt": {
+			"type": "preset",
+			"preset": "claude_code",
+			"append": "Stay in character.",
+			"excludeDynamicSections": true,
+		},
 		"tools": ["Read", "Glob"],
 	})
 	var preset_duplicate = preset_options.duplicate_options()
@@ -80,6 +85,7 @@ func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() 
 		"type": "preset",
 		"preset": "claude_code",
 		"append": "Stay in character.",
+		"exclude_dynamic_sections": true,
 	})
 	assert_array(preset_duplicate.tools).is_equal(["Read", "Glob"])
 
@@ -897,25 +903,32 @@ func test_subprocess_transport_resolves_thinking_precedence() -> void:
 	var adaptive_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"thinking": {"type": "adaptive"},
 	}))
-	assert_array(adaptive_transport.build_command_args()).contains(["--max-thinking-tokens", "32000"])
+	var adaptive_args := adaptive_transport.build_command_args()
+	assert_array(adaptive_args).contains(["--thinking", "adaptive"])
+	assert_bool(adaptive_args.has("--max-thinking-tokens")).is_false()
 
 	var adaptive_with_deprecated_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
 		"thinking": {"type": "adaptive"},
 	}))
-	assert_array(adaptive_with_deprecated_transport.build_command_args()).contains(["--max-thinking-tokens", "2048"])
+	var adaptive_with_deprecated_args := adaptive_with_deprecated_transport.build_command_args()
+	assert_array(adaptive_with_deprecated_args).contains(["--thinking", "adaptive"])
+	assert_bool(adaptive_with_deprecated_args.has("--max-thinking-tokens")).is_false()
 
 	var enabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
 		"thinking": {"type": "enabled", "budget_tokens": 8192},
 	}))
 	assert_array(enabled_transport.build_command_args()).contains(["--max-thinking-tokens", "8192"])
+	assert_bool(enabled_transport.build_command_args().has("--thinking")).is_false()
 
 	var disabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
 		"thinking": {"type": "disabled"},
 	}))
-	assert_array(disabled_transport.build_command_args()).contains(["--max-thinking-tokens", "0"])
+	var disabled_args := disabled_transport.build_command_args()
+	assert_array(disabled_args).contains(["--thinking", "disabled"])
+	assert_bool(disabled_args.has("--max-thinking-tokens")).is_false()
 
 
 func test_subprocess_transport_rejects_explicit_permission_prompt_when_can_use_tool_is_configured() -> void:

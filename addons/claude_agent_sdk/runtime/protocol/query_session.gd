@@ -1030,6 +1030,9 @@ func _build_initialize_request() -> Dictionary:
 	var agents_config := _build_agents_configuration()
 	if agents_config != null:
 		request["agents"] = agents_config
+	var exclude_dynamic_sections := _build_exclude_dynamic_sections_configuration()
+	if exclude_dynamic_sections != null:
+		request["excludeDynamicSections"] = exclude_dynamic_sections
 	return request
 
 
@@ -1094,6 +1097,20 @@ func _build_agents_configuration() -> Variant:
 			continue
 		agents_config[agent_name] = definition.to_initialize_dict()
 	return agents_config if not agents_config.is_empty() else null
+
+
+func _build_exclude_dynamic_sections_configuration() -> Variant:
+	if _options == null or not (_options.system_prompt is Dictionary):
+		return null
+
+	var prompt_config := _options.system_prompt as Dictionary
+	if str(prompt_config.get("type", "")).strip_edges() != "preset":
+		return null
+
+	var exclude_dynamic_sections := prompt_config.get("exclude_dynamic_sections", prompt_config.get("excludeDynamicSections", null))
+	if exclude_dynamic_sections is bool:
+		return bool(exclude_dynamic_sections)
+	return null
 
 
 func _coerce_agent_definition(value: Variant):

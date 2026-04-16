@@ -72,7 +72,7 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeMcp` scene-free SDK MCP builders and typed runtime MCP models
   - mixed external plus SDK-hosted `ClaudeAgentOptions.mcp_servers` handling
   - `ClaudeQuerySession` runtime JSON-RPC bridging for SDK-hosted MCP `initialize`, `notifications/initialized`, `tools/list`, and `tools/call`
-  - richer `ClaudeAgentOptions.system_prompt` variants: plain string, `claude_code` preset, preset+append, and file-backed prompts
+  - richer `ClaudeAgentOptions.system_prompt` variants: plain string, `claude_code` preset, preset+append, preset dynamic-section exclusion, and file-backed prompts
   - upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
   - `ClaudeChatPanel` disconnected prompt/tool configuration controls plus MCP environment summary
   - `ClaudeChatPanel` conversation-first `Chat` / `Settings` split with quick chat controls and secondary prompt/tool configuration
@@ -82,6 +82,8 @@ The first public implementation target is the scene-free core conversation loop,
   - runtime-first agent-definition parity through initialize-payload serialization and `setting_sources` CLI passthrough
   - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough parity so `[]` still emits `--setting-sources ""`
   - transport-first advanced CLI option parity for `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
+  - `permission_mode = "auto"` parity on the runtime surfaces plus the shipped panel's quick permission selector
+  - explicit `--thinking adaptive|disabled` transport parity, while `thinking = {"type": "enabled"}` still lowers to `--max-thinking-tokens`
   - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
   - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and best-effort `ClaudeAgentOptions.stderr` callback delivery
   - transport-first plugin-dir parity through `ClaudeAgentOptions.plugins` with local `--plugin-dir` emission
@@ -118,6 +120,7 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` connected-session context-usage diagnostics with automatic post-connect / post-result refresh plus manual refresh controls
   - `ClaudeChatPanel` live MCP status cards with reconnect and enable/disable actions backed by the existing runtime MCP controls
   - `ClaudeChatPanel` disconnected MCP authoring controls for simple dictionary-backed external `stdio` server entries
+  - SDK-hosted MCP `maxResultSizeChars` parity via `_meta["anthropic/maxResultSizeChars"]` in `tools/list` responses
   - read-only panel MCP inventory for SDK-hosted servers, raw passthrough `mcp_servers` config, and external non-`stdio` configs that remain code-authored in this slice
   - typed `ClaudeContextUsageResponse`, `ClaudeContextUsageCategory`, `ClaudeContextUsageMemoryFile`, `ClaudeContextUsageMcpTool`, and `ClaudeContextUsageAgent` models for live context diagnostics
   - typed `ClaudeMcpStatusResponse`, `ClaudeMcpServerStatus`, `ClaudeMcpServerInfo`, `ClaudeMcpServerToolInfo`, and `ClaudeMcpServerToolAnnotations` models for live MCP status diagnostics
@@ -158,14 +161,23 @@ The sibling upstream checkout was advanced locally to inspect changes beyond the
 - Reviewed on: `2026-04-16`
 - Still-pinned baseline commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
 - Reviewed newer upstream commits:
+  - `e94a74d`: SDK MCP `_meta["anthropic/maxResultSizeChars"]` forwarding for large tool results
+  - `841ee87`: add `"auto"` permission-mode parity
+  - `6617b9e`: `thinking adaptive|disabled` should use `--thinking`, not `--max-thinking-tokens`
+  - `3bf8fd5`: preset `exclude_dynamic_sections` initialize parity
   - `2038a15`: `delete_session` best-effort subagent tree cleanup
   - `ebc06f2`: `list_subagents()` and `get_subagent_messages()`
   - `e621929`: explicit empty `setting_sources` should still pass `--setting-sources ""`
 - Adopted locally in this slice:
+  - SDK-hosted MCP `_meta["anthropic/maxResultSizeChars"]` forwarding through `ClaudeMcpToolAnnotations`, `ClaudeSdkMcpServer`, and `ClaudeQuerySession`
+  - `permission_mode = "auto"` parity on the runtime surfaces and shipped panel selector
+  - explicit `--thinking adaptive|disabled` transport parity while preserving enabled-budget handling through `--max-thinking-tokens`
+  - preset `exclude_dynamic_sections` normalization plus initialize-request parity, preserved through panel configuration round-trips
   - best-effort sibling subagent-tree cleanup in `ClaudeSessions.delete_session()`
   - saved-session subagent discovery/history helpers in `ClaudeSessions`, `ClaudeClientAdapter`, and `ClaudeClientNode`
   - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
 - Reviewed but not adopted in this slice:
+  - `bbec84d`: TRACEPARENT/TRACESTATE subprocess propagation remains for a future transport/environment slice
   - later upstream commits after `e621929` remain for a future parity review before any baseline bump
 
 ## Update process

@@ -67,6 +67,7 @@ var _last_cli_diagnostic_line := ""
 var _forwarded_stderr_callback: Callable = Callable()
 var _did_apply_initial_split := false
 var _suppress_configuration_sync := false
+var _system_prompt_exclude_dynamic_sections := false
 var _built_in_tool_checks: Dictionary = {}
 var _built_in_tool_group_buttons: Dictionary = {}
 var _current_view := PANEL_VIEW_CHAT
@@ -434,7 +435,7 @@ func _populate_quick_setting_choices() -> void:
 			_chat_effort_option.add_item(effort_name)
 	if _chat_permission_mode.item_count > 0:
 		return
-	for mode in ["default", "plan", "acceptEdits", "bypassPermissions"]:
+	for mode in ["default", "plan", "acceptEdits", "bypassPermissions", "auto"]:
 		_chat_permission_mode.add_item(mode)
 
 
@@ -547,10 +548,12 @@ func _apply_system_prompt_controls_from_options() -> void:
 	var system_prompt: Variant = _configured_options.system_prompt
 	_system_prompt_text_input.text = ""
 	_system_prompt_file_input.text = ""
+	_system_prompt_exclude_dynamic_sections = false
 	if system_prompt is Dictionary:
 		var prompt_config := system_prompt as Dictionary
 		var prompt_type := str(prompt_config.get("type", ""))
 		if prompt_type == "preset":
+			_system_prompt_exclude_dynamic_sections = bool(prompt_config.get("exclude_dynamic_sections", prompt_config.get("excludeDynamicSections", false)))
 			var append_text := str(prompt_config.get("append", ""))
 			if append_text.is_empty():
 				_system_prompt_mode.select(SYSTEM_PROMPT_MODE_PRESET)
@@ -1629,12 +1632,19 @@ func _system_prompt_from_controls() -> Variant:
 		SYSTEM_PROMPT_MODE_TEXT:
 			return _system_prompt_text_input.text
 		SYSTEM_PROMPT_MODE_PRESET:
-			return {"type": "preset", "preset": "claude_code"}
+			var preset_prompt: Dictionary = {"type": "preset", "preset": "claude_code"}
+			if _system_prompt_exclude_dynamic_sections:
+				preset_prompt["exclude_dynamic_sections"] = true
+			return preset_prompt
 		SYSTEM_PROMPT_MODE_PRESET_APPEND:
 			var append_text := _system_prompt_text_input.text
+			var preset_append_prompt: Dictionary = {"type": "preset", "preset": "claude_code"}
+			if _system_prompt_exclude_dynamic_sections:
+				preset_append_prompt["exclude_dynamic_sections"] = true
 			if append_text.strip_edges().is_empty():
-				return {"type": "preset", "preset": "claude_code"}
-			return {"type": "preset", "preset": "claude_code", "append": append_text}
+				return preset_append_prompt
+			preset_append_prompt["append"] = append_text
+			return preset_append_prompt
 		SYSTEM_PROMPT_MODE_FILE:
 			var path := _system_prompt_file_input.text.strip_edges()
 			return "" if path.is_empty() else {"type": "file", "path": path}

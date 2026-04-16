@@ -146,7 +146,7 @@ func _ready() -> void:
 - transport-first process-user launch support through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - streamed prompt input support through `ClaudePromptStream` on `ClaudeQuery.query()` and `ClaudeSDKClient.query()`
 - interactive prompt-on-connect support through `connect_client(prompt)` on `ClaudeSDKClient`, `ClaudeClientAdapter`, and `ClaudeClientNode`, including string and `ClaudePromptStream` inputs
-- Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append, and file-backed prompts
+- Richer `system_prompt` modes, including plain text, `claude_code` preset, preset+append with optional dynamic-section exclusion, and file-backed prompts
 - Base built-in tool-set selection through `ClaudeAgentOptions.tools`, composed with `allowed_tools` and `disallowed_tools`
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
 - Godot-native adapter and node layers with session-history and transcript-detail convenience passthroughs

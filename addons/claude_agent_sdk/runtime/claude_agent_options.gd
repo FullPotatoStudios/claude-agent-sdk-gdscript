@@ -275,6 +275,9 @@ static func _normalize_system_prompt(value: Variant) -> Variant:
 				var append_value := str(source.get("append", ""))
 				if not append_value.is_empty():
 					duplicated["append"] = append_value
+				var exclude_dynamic_sections := source.get("exclude_dynamic_sections", source.get("excludeDynamicSections", null))
+				if exclude_dynamic_sections is bool:
+					duplicated["exclude_dynamic_sections"] = bool(exclude_dynamic_sections)
 			"file":
 				duplicated["path"] = str(source.get("path", "")).strip_edges()
 			_:

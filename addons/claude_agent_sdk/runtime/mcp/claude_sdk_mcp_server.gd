@@ -25,6 +25,9 @@ func _init(value_name: String = "", value_version: String = "1.0.0", value_tools
 				var annotations := tool.annotations.to_mcp_dictionary()
 				if not annotations.is_empty():
 					definition["annotations"] = annotations
+				var meta := tool.annotations.to_meta_dictionary()
+				if not meta.is_empty():
+					definition["_meta"] = meta
 			_tool_definitions.append(definition)
 
 

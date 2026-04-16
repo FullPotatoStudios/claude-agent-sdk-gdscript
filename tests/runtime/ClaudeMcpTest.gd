@@ -6,6 +6,7 @@ func test_tool_creation_supports_annotations_and_raw_json_schema() -> void:
 	var annotations := ClaudeMcpToolAnnotations.new({
 		"read_only_hint": true,
 		"open_world_hint": false,
+		"maxResultSizeChars": 500000,
 	})
 	var schema := {
 		"type": "object",
@@ -31,6 +32,9 @@ func test_tool_creation_supports_annotations_and_raw_json_schema() -> void:
 	assert_dict(tool.annotations.to_mcp_dictionary()).is_equal({
 		"readOnlyHint": true,
 		"openWorldHint": false,
+	})
+	assert_dict(tool.annotations.to_meta_dictionary()).is_equal({
+		"anthropic/maxResultSizeChars": 500000,
 	})
 
 
@@ -85,11 +89,15 @@ func test_schema_helpers_produce_stable_json_schema_dictionaries() -> void:
 
 
 func test_create_sdk_server_returns_runtime_config_shape() -> void:
+	var annotations := ClaudeMcpToolAnnotations.new({
+		"max_result_size_chars": 75000,
+	})
 	var tool = ClaudeMcp.tool(
 		"echo",
 		"Echo input",
 		ClaudeMcp.schema_object({"text": ClaudeMcp.schema_scalar("string")}, ["text"]),
-		func(args: Dictionary): return {"content": [{"type": "text", "text": str(args.get("text", ""))}]}
+		func(args: Dictionary): return {"content": [{"type": "text", "text": str(args.get("text", ""))}]},
+		annotations
 	)
 	var config := ClaudeMcp.create_sdk_server("test-sdk", "1.2.3", [tool])
 
@@ -111,5 +119,8 @@ func test_create_sdk_server_returns_runtime_config_shape() -> void:
 				"text": {"type": "string"},
 			},
 			"required": ["text"],
+		},
+		"_meta": {
+			"anthropic/maxResultSizeChars": 75000,
 		},
 	})

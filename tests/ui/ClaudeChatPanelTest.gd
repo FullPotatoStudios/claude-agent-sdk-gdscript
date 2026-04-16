@@ -102,6 +102,51 @@ func test_panel_loads_chat_configuration_controls_from_options() -> void:
 	await _cleanup_panel(panel)
 
 
+func test_panel_loads_auto_permission_mode_choice_from_options() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"permission_mode": "auto",
+	}), FakeTransportScript.new())
+
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+
+	assert_str(_selected_option_text(panel, "PermissionQuickOption")).is_equal("auto")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_preserves_hidden_preset_exclude_dynamic_sections_during_configuration_sync() -> void:
+	var panel = ChatPanelScene.instantiate()
+	panel.setup(ClaudeAgentOptionsScript.new({
+		"system_prompt": {
+			"type": "preset",
+			"preset": "claude_code",
+			"append": "Stay in-universe.",
+			"exclude_dynamic_sections": true,
+		},
+	}), FakeTransportScript.new())
+
+	get_tree().root.add_child(panel)
+	await _await_frames(2)
+	_show_settings_view(panel)
+	await _await_frames(1)
+
+	_text_edit(panel, "SystemPromptTextInput").text = "Keep cacheable preset content."
+	_text_edit(panel, "SystemPromptTextInput").text_changed.emit()
+	await _await_frames(1)
+
+	var configured_options = panel.get("_configured_options") as ClaudeAgentOptions
+	assert_dict(configured_options.system_prompt).is_equal({
+		"type": "preset",
+		"preset": "claude_code",
+		"append": "Keep cacheable preset content.",
+		"exclude_dynamic_sections": true,
+	})
+
+	await _cleanup_panel(panel)
+
+
 func test_panel_mcp_authoring_updates_external_stdio_rows_and_preserves_read_only_entries() -> void:
 	var sdk_server := ClaudeMcp.create_sdk_server(
 		"gameplay",
