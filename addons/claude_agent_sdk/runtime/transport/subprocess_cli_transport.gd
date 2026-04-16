@@ -266,6 +266,7 @@ func build_environment_overrides() -> Dictionary:
 		"CLAUDE_CODE_ENTRYPOINT": SDK_ENTRYPOINT,
 		"CLAUDE_AGENT_SDK_VERSION": ClaudeSDKVersionScript.get_version(),
 	}
+	_append_w3c_trace_context_overrides(overrides)
 	if not _options.cwd.is_empty():
 		overrides["PWD"] = _options.cwd
 	for key_variant in _options.env.keys():
@@ -273,6 +274,16 @@ func build_environment_overrides() -> Dictionary:
 	if _options.enable_file_checkpointing:
 		overrides["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] = "true"
 	return overrides
+
+
+func _append_w3c_trace_context_overrides(overrides: Dictionary) -> void:
+	for key in ["TRACEPARENT", "TRACESTATE"]:
+		if not OS.has_environment(key):
+			continue
+		var value := OS.get_environment(key)
+		if value.is_empty():
+			continue
+		overrides[key] = value
 
 
 func filters_inherited_claudecode() -> bool:

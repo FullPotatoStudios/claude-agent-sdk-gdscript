@@ -176,8 +176,8 @@ The sibling upstream checkout was advanced locally to inspect changes beyond the
   - best-effort sibling subagent-tree cleanup in `ClaudeSessions.delete_session()`
   - saved-session subagent discovery/history helpers in `ClaudeSessions`, `ClaudeClientAdapter`, and `ClaudeClientNode`
   - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
+  - bounded W3C trace-context env propagation through `ClaudeSubprocessCLITransport`, forwarding ambient `TRACEPARENT` / `TRACESTATE` into the explicit subprocess launch env, including the POSIX `sudo -n -u` wrapper path, while keeping `ClaudeAgentOptions.env` overrides authoritative
 - Reviewed but not adopted in this slice:
-  - `bbec84d`: TRACEPARENT/TRACESTATE subprocess propagation remains for a future transport/environment slice
   - later upstream commits after `e621929` remain for a future parity review before any baseline bump
 
 ## Update process

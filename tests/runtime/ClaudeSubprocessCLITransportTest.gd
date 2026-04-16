@@ -3,6 +3,9 @@ extends GdUnitTestSuite
 
 const DEFAULT_MAX_BUFFER_SIZE := 1024 * 1024
 const PROCESS_EXIT_GRACE_MSEC := 5000
+const W3C_TRACE_ENV_KEYS := ["TRACEPARENT", "TRACESTATE"]
+
+var _original_w3c_trace_env: Dictionary = {}
 
 
 class CloseBehaviorTransport extends ClaudeSubprocessCLITransport:
@@ -73,6 +76,36 @@ func _make_transport(config: Dictionary = {}) -> ClaudeSubprocessCLITransport:
 
 func _messages_from_result(result: Dictionary) -> Array[String]:
 	return result.get("messages", []) if result.get("messages", []) is Array else []
+
+
+func before_test() -> void:
+	_original_w3c_trace_env = _capture_environment(W3C_TRACE_ENV_KEYS)
+
+
+func after_test() -> void:
+	_restore_environment(_original_w3c_trace_env)
+
+
+func _capture_environment(keys: Array) -> Dictionary:
+	var captured: Dictionary = {}
+	for key_variant in keys:
+		var key := str(key_variant)
+		captured[key] = {
+			"present": OS.has_environment(key),
+			"value": OS.get_environment(key),
+		}
+	return captured
+
+
+func _restore_environment(values: Dictionary) -> void:
+	for key_variant in values.keys():
+		var key := str(key_variant)
+		var entry := values[key_variant] as Dictionary
+		var value := str(entry.get("value", ""))
+		if bool(entry.get("present", false)):
+			OS.set_environment(key, value)
+		else:
+			OS.set_environment(key, "")
 
 
 func test_resolve_cli_path_prefers_effective_path_before_upstream_fallback_locations() -> void:
@@ -206,6 +239,59 @@ func test_probe_auth_status_reports_binary_not_found_when_cli_lookup_fails() -> 
 
 	assert_str(str(result.get("error_code", ""))).is_equal("binary_not_found")
 	assert_str(str(result.get("error_message", ""))).contains("Claude Code not found")
+
+
+func test_build_environment_overrides_forwards_inherited_w3c_trace_context() -> void:
+	OS.set_environment("TRACEPARENT", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
+	OS.set_environment("TRACESTATE", "vendor=value")
+	var transport := _make_transport()
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
+	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=value")
+
+
+func test_build_environment_overrides_keeps_explicit_trace_env_overrides_authoritative() -> void:
+	OS.set_environment("TRACEPARENT", "00-stale-parent")
+	OS.set_environment("TRACESTATE", "vendor=stale")
+	var transport := _make_transport({
+		"env": {
+			"TRACEPARENT": "00-custom-parent",
+			"TRACESTATE": "vendor=custom",
+		},
+	})
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-custom-parent")
+	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=custom")
+
+
+func test_build_environment_overrides_leaves_trace_context_absent_when_not_present() -> void:
+	OS.set_environment("TRACEPARENT", "")
+	OS.set_environment("TRACESTATE", "")
+	var transport := _make_transport()
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_bool(overrides.has("TRACEPARENT")).is_false()
+	assert_bool(overrides.has("TRACESTATE")).is_false()
+
+
+func test_user_launch_path_preserves_trace_context_assignments_in_posix_shell_script() -> void:
+	if OS.get_name() == "Windows":
+		return
+	OS.set_environment("TRACEPARENT", "00-ambient-parent")
+	OS.set_environment("TRACESTATE", "vendor=ambient")
+	var transport := _make_transport({"user": "sdk-user"})
+
+	var spec := transport._build_process_spec_for_args(PackedStringArray(["auth", "status"]), "/usr/bin/claude")
+	var shell_script := str((spec.get("args", PackedStringArray()) as PackedStringArray)[6])
+
+	assert_str(str(spec.get("path", ""))).is_equal("sudo")
+	assert_str(shell_script).contains("TRACEPARENT='00-ambient-parent'")
+	assert_str(shell_script).contains("TRACESTATE='vendor=ambient'")
 
 
 func test_consume_stdout_chunk_parses_multiple_json_objects_in_one_chunk() -> void:
