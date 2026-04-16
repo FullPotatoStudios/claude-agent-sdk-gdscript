@@ -148,6 +148,7 @@ The first public implementation target is the scene-free core conversation loop,
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
+  - upstream Python SDK can inject active OpenTelemetry W3C trace context into subprocess launches; local GDScript currently supports only bounded env-based forwarding and override scrubbing for `TRACEPARENT` / `TRACESTATE`
   - local session-scoped helpers can bind a brand-new `"default"` turn to the first unresolved runtime session ID seen on the owned connection because the shared CLI stream does not expose a stronger per-turn correlation primitive before the runtime session UUID appears
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
@@ -183,7 +184,7 @@ only adds release/version metadata that does not require local parity work.
   - best-effort sibling subagent-tree cleanup in `ClaudeSessions.delete_session()`
   - saved-session subagent discovery/history helpers in `ClaudeSessions`, `ClaudeClientAdapter`, and `ClaudeClientNode`
   - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
-  - bounded W3C trace-context env propagation through `ClaudeSubprocessCLITransport`, forwarding ambient `TRACEPARENT` / `TRACESTATE` into the explicit subprocess launch env, including the POSIX `sudo -n -u` wrapper path, while keeping `ClaudeAgentOptions.env` overrides authoritative
+  - bounded W3C trace-context env propagation through `ClaudeSubprocessCLITransport`, forwarding ambient `TRACEPARENT` / `TRACESTATE` into the explicit subprocess launch env, including the POSIX `sudo -n -u` wrapper path, while keeping explicit W3C overrides authoritative without inheriting a stale opposite half
 - Reviewed but not adopted in this slice:
   - no additional runtime parity work was required after `e621929`; the pulled upstream tip through `a0fbd14` only changed bundled CLI/release metadata and changelog text
 

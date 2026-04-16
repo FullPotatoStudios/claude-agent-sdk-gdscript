@@ -267,6 +267,7 @@ func build_environment_overrides() -> Dictionary:
 		"CLAUDE_AGENT_SDK_VERSION": ClaudeSDKVersionScript.get_version(),
 	}
 	_append_w3c_trace_context_overrides(overrides)
+	_scrub_inherited_w3c_trace_context_for_explicit_overrides(overrides)
 	if not _options.cwd.is_empty():
 		overrides["PWD"] = _options.cwd
 	for key_variant in _options.env.keys():
@@ -284,6 +285,20 @@ func _append_w3c_trace_context_overrides(overrides: Dictionary) -> void:
 		if value.is_empty():
 			continue
 		overrides[key] = value
+
+
+func _scrub_inherited_w3c_trace_context_for_explicit_overrides(overrides: Dictionary) -> void:
+	var has_explicit_trace_override := false
+	for key in ["TRACEPARENT", "TRACESTATE"]:
+		if _options.env.has(key):
+			has_explicit_trace_override = true
+			break
+	if not has_explicit_trace_override:
+		return
+	for key in ["TRACEPARENT", "TRACESTATE"]:
+		if _options.env.has(key):
+			continue
+		overrides.erase(key)
 
 
 func filters_inherited_claudecode() -> bool:

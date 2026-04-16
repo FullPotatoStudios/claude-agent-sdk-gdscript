@@ -268,6 +268,36 @@ func test_build_environment_overrides_keeps_explicit_trace_env_overrides_authori
 	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=custom")
 
 
+func test_build_environment_overrides_scrubs_inherited_tracestate_when_traceparent_is_explicit() -> void:
+	OS.set_environment("TRACEPARENT", "00-stale-parent")
+	OS.set_environment("TRACESTATE", "vendor=stale")
+	var transport := _make_transport({
+		"env": {
+			"TRACEPARENT": "00-custom-parent",
+		},
+	})
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-custom-parent")
+	assert_bool(overrides.has("TRACESTATE")).is_false()
+
+
+func test_build_environment_overrides_scrubs_inherited_traceparent_when_tracestate_is_explicit() -> void:
+	OS.set_environment("TRACEPARENT", "00-stale-parent")
+	OS.set_environment("TRACESTATE", "vendor=stale")
+	var transport := _make_transport({
+		"env": {
+			"TRACESTATE": "vendor=custom",
+		},
+	})
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_bool(overrides.has("TRACEPARENT")).is_false()
+	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=custom")
+
+
 func test_build_environment_overrides_leaves_trace_context_absent_when_not_present() -> void:
 	OS.set_environment("TRACEPARENT", "")
 	OS.set_environment("TRACESTATE", "")
@@ -292,6 +322,26 @@ func test_user_launch_path_preserves_trace_context_assignments_in_posix_shell_sc
 	assert_str(str(spec.get("path", ""))).is_equal("sudo")
 	assert_str(shell_script).contains("TRACEPARENT='00-ambient-parent'")
 	assert_str(shell_script).contains("TRACESTATE='vendor=ambient'")
+
+
+func test_user_launch_path_scrubs_inherited_trace_half_when_explicit_override_is_partial() -> void:
+	if OS.get_name() == "Windows":
+		return
+	OS.set_environment("TRACEPARENT", "00-stale-parent")
+	OS.set_environment("TRACESTATE", "vendor=stale")
+	var transport := _make_transport({
+		"user": "sdk-user",
+		"env": {
+			"TRACEPARENT": "00-custom-parent",
+		},
+	})
+
+	var spec := transport._build_process_spec_for_args(PackedStringArray(["auth", "status"]), "/usr/bin/claude")
+	var shell_script := str((spec.get("args", PackedStringArray()) as PackedStringArray)[6])
+
+	assert_str(str(spec.get("path", ""))).is_equal("sudo")
+	assert_str(shell_script).contains("TRACEPARENT='00-custom-parent'")
+	assert_bool(shell_script.contains("TRACESTATE='vendor=stale'")).is_false()
 
 
 func test_consume_stdout_chunk_parses_multiple_json_objects_in_one_chunk() -> void:
