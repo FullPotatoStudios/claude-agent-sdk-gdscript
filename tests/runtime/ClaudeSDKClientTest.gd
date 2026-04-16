@@ -267,7 +267,7 @@ func test_client_allows_different_session_queries_to_overlap() -> void:
 	client.disconnect_client()
 
 
-func test_client_rejects_second_query_for_same_session_while_response_is_active() -> void:
+func test_client_allows_same_session_queries_to_overlap() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
 	client.connect_client()
@@ -283,12 +283,41 @@ func test_client_rejects_second_query_for_same_session_while_response_is_active(
 
 	client.query("First", "session-a")
 	client.query("Second", "session-a")
+	var first_stream = client.receive_response_for_session("session-a")
+	var second_stream = client.receive_response_for_session("session-a")
 
-	assert_str(client.get_last_error()).contains("session 'session-a'")
+	assert_str(client.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-first",
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-second",
+	})
+
+	assert_object(await first_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await first_stream.next_message()).is_null()
+	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await second_stream.next_message()).is_null()
 	client.disconnect_client()
 
 
-func test_client_rejects_second_query_for_same_session_while_prompt_stream_is_still_active() -> void:
+func test_client_allows_same_session_query_while_prompt_stream_is_still_active() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
 	var prompt_stream = ClaudePromptStreamScript.new()
@@ -304,9 +333,45 @@ func test_client_rejects_second_query_for_same_session_while_prompt_stream_is_st
 	})
 
 	client.query(prompt_stream, "session-a")
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
 	client.query("Second", "session-a")
+	var first_stream = client.receive_response_for_session("session-a")
+	var second_stream = client.receive_response_for_session("session-a")
+	prompt_stream.finish()
 
-	assert_str(client.get_last_error()).contains("session 'session-a'")
+	assert_str(client.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-first",
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-second",
+	})
+
+	assert_object(await first_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await first_stream.next_message()).is_null()
+	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await second_stream.next_message()).is_null()
 	client.disconnect_client()
 
 

@@ -1616,7 +1616,7 @@ func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_acti
 	assert_that(await default_stream.next_message()).is_null()
 
 
-func test_same_session_second_query_is_rejected_while_response_is_active() -> void:
+func test_same_session_queries_can_overlap_and_session_streams_follow_fifo_turn_order() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
 	session.open_session()
@@ -1632,12 +1632,41 @@ func test_same_session_second_query_is_rejected_while_response_is_active() -> vo
 
 	session.send_user_prompt("First", "session-a")
 	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
 
-	assert_str(session.get_last_error()).contains("session 'session-a'")
-	assert_int(transport.writes.size()).is_equal(2)
+	assert_str(session.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+	assert_str(str((JSON.parse_string(transport.writes[1]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+	assert_str(str((JSON.parse_string(transport.writes[2]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "First response"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-first", "session-a"))
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Second response"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-second", "session-a"))
+
+	var first_message = await first_stream.next_message()
+	assert_object(first_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((first_message as ClaudeAssistantMessage).model).is_equal("haiku")
+	assert_object(await first_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await first_stream.next_message()).is_null()
+
+	var second_message = await second_stream.next_message()
+	assert_object(second_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((second_message as ClaudeAssistantMessage).model).is_equal("haiku")
+	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await second_stream.next_message()).is_null()
 
 
-func test_same_session_second_query_is_rejected_while_prompt_stream_is_active() -> void:
+func test_same_session_query_can_start_while_prompt_stream_turn_is_still_active() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
 	var prompt_stream = ClaudePromptStreamScript.new()
@@ -1653,9 +1682,29 @@ func test_same_session_second_query_is_rejected_while_prompt_stream_is_active() 
 	})
 
 	session.send_prompt_stream(prompt_stream, "session-a")
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
 	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
+	prompt_stream.finish()
 
-	assert_str(session.get_last_error()).contains("session 'session-a'")
+	assert_str(session.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+	assert_str(str((JSON.parse_string(transport.writes[1]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+	assert_str(str((JSON.parse_string(transport.writes[2]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+
+	transport.emit_stdout_message(_result_payload("done-first", "session-a"))
+	transport.emit_stdout_message(_result_payload("done-second", "session-a"))
+
+	assert_object(await first_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await first_stream.next_message()).is_null()
+	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await second_stream.next_message()).is_null()
 
 
 func test_default_session_stream_tracks_promoted_runtime_session_id() -> void:

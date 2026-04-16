@@ -23,7 +23,7 @@ Use `ClaudeSDKClient` directly when:
 - you want transport-side stdout buffering control through `ClaudeAgentOptions.max_buffer_size`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
 - you want additive typed runtime helpers for hook callback inputs/outputs or permission updates while keeping the existing dictionary callback flow compatible
-- you want to overlap turns for different `session_id` values on one connected client while keeping same-session turns serialized
+- you want to overlap turns on one connected client, including repeated `query()` calls against the same `session_id`
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
 normal result dictionary with `is_error = true`. Unlike the upstream Python
@@ -105,7 +105,7 @@ The integration layer is intentionally thin.
 - `ClaudeToolPermissionContext` preserves raw `suggestions` and now also exposes additive typed suggestion coercion through `typed_suggestions`
 - hook and `can_use_tool` callback contexts now expose a cooperative `signal` object that is canceled when Claude retracts a control request or the local session closes; unlike the upstream Python SDK, GDScript still cannot force-preempt an arbitrary awaited `Callable`
 - `ClaudeSDKClient.connect_client()`, `ClaudeClientAdapter.connect_client()`, and `ClaudeClientNode.connect_client()` now accept `null`, a `String`, or `ClaudePromptStream` for prompt-on-connect parity; string connect prompts still send a literal `session_id = "default"` user payload, matching upstream connect behavior, and repeated local `connect_client()` calls now reopen the session instead of no-oping. When `can_use_tool` is configured, connect-time string prompts still require `ClaudePromptStream`
-- connected `query()` calls now allow overlap across different `session_id` values on one local client as an additive compatibility layer over upstream's shared-stream, no-global-busy-guard behavior; same-session overlap still rejects with an error as a local determinism/truthfulness guard, and the shipped panel surfaces different-session overlap only for live sessions started in the current connection while saved historical sessions still use disconnect-and-resume handoff
+- connected `query()` calls now allow overlap across different or repeated `session_id` values on one local client through per-session FIFO turn tracking, matching upstream's shared-stream, no-global-busy-guard behavior more closely; the shipped panel still keeps saved historical sessions on a disconnect-and-resume handoff unless that session was started in the current live connection
 - local `ClaudePromptStream` behavior is intentionally strict: an empty stream or `fail(...)` ends the active turn locally instead of leaving the query busy forever
 - `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path

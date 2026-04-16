@@ -285,10 +285,6 @@ func submit_prompt(prompt: String) -> void:
 				_display_selected_content()
 		return
 	var target_session_id := _current_live_query_session_id()
-	if _client_node.is_session_busy(target_session_id):
-		_emit_error("Wait for the current session turn to finish before sending another prompt")
-		return
-
 	var target_session_key := _live_session_key_for_query_target()
 	if _selected_session_requires_disconnect_handoff(target_session_key):
 		_emit_error("Disconnect and resume to continue a saved session; shared live overlap only covers sessions started in this connection")
@@ -1825,6 +1821,10 @@ func _reload_selected_session_transcript() -> void:
 	_selected_session_transcript = _client_node.get_session_transcript(_selected_session_id, _selected_session_directory())
 	_render_selected_session_transcript()
 	_refresh_selected_session_metadata()
+	_refresh_session_controls()
+	_update_status_from_state()
+	_refresh_composer_state()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _render_selected_session_transcript() -> void:
@@ -3433,10 +3433,8 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 
 func _refresh_composer_state() -> void:
 	var logged_in := bool(_last_auth_status.get("logged_in", false))
-	var selected_session_id := _current_live_query_session_id()
-	var selected_session_busy: bool = _client_node != null and _client_node.is_session_busy(selected_session_id)
 	var requires_disconnect_handoff := _selected_session_requires_disconnect_handoff(_live_session_key_for_query_target())
-	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in and not selected_session_busy
+	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in
 	var can_send: bool = can_draft and not requires_disconnect_handoff and not _prompt_input.text.strip_edges().is_empty()
 	_prompt_input.editable = can_draft
 	_send_button.disabled = not can_send
@@ -3461,7 +3459,9 @@ func _composer_hint_text() -> String:
 		return "Send the prompt to connect and start a new chat."
 	var selected_session_id := _current_live_query_session_id()
 	if _client_node != null and _client_node.is_session_busy(selected_session_id):
-		return "Claude is responding in the selected session."
+		if _prompt_input.text.strip_edges().is_empty():
+			return "Claude is responding in the selected session. You can still send another prompt; replies stay in transcript arrival order."
+		return "Send another prompt into the selected live session while Claude is still responding."
 	if _client_node != null and _client_node.is_busy():
 		return "Another live session is busy. You can still work in this selected session, or interrupt the shared connection."
 	if _selected_session_requires_disconnect_handoff(_live_session_key_for_query_target()):

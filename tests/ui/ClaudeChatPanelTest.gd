@@ -2563,7 +2563,7 @@ func test_panel_connect_on_send_promotes_draft_session_and_restores_idle_compose
 	await _await_frames(1)
 	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[1])
 	assert_str(str(prompt_payload.get("session_id", ""))).is_equal("default")
-	assert_bool(_prompt_input(panel).editable).is_false()
+	assert_bool(_prompt_input(panel).editable).is_true()
 	transport.emit_stdout_message({
 		"type": "result",
 		"subtype": "success",
@@ -2882,6 +2882,48 @@ func test_panel_default_draft_promotes_after_overlap_without_losing_background_l
 	await _await_frames(1)
 	var follow_up_write: Dictionary = JSON.parse_string(transport.writes[-1])
 	assert_str(str(follow_up_write.get("session_id", ""))).is_equal("resolved-default-session")
+
+	await _cleanup_panel(panel)
+
+
+func test_panel_selected_live_session_can_send_again_while_same_session_turn_is_busy() -> void:
+	var transport = FakeTransportScript.new()
+	var panel = await _connected_panel(transport)
+
+	panel.submit_prompt("Create A")
+	await _await_frames(1)
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 8,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "live-session-a",
+		"result": "A created",
+	})
+	await _await_frames(2)
+
+	var live_index := int(panel.call("_find_panel_session_index", "live-session-a"))
+	assert_int(live_index).is_greater_equal(0)
+	_select_session_with_click_signal(panel, live_index)
+	await _await_frames(2)
+
+	panel.submit_prompt("First overlap")
+	await _await_frames(1)
+	var first_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(first_payload.get("session_id", ""))).is_equal("live-session-a")
+	assert_bool(_prompt_input(panel).editable).is_true()
+	assert_str(_label(panel, "ComposerHintLabel").text).contains("You can still send another prompt")
+
+	_prompt_input(panel).text = "Second overlap"
+	_prompt_input(panel).text_changed.emit()
+	assert_bool(_button(panel, "SendButton").disabled).is_false()
+	_button(panel, "SendButton").pressed.emit()
+	await _await_frames(1)
+
+	var second_payload: Dictionary = JSON.parse_string(transport.writes[-1])
+	assert_str(str(second_payload.get("session_id", ""))).is_equal("live-session-a")
 
 	await _cleanup_panel(panel)
 

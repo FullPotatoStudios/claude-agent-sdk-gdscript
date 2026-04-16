@@ -720,16 +720,14 @@ func test_adapter_passes_rate_limit_events_through_turn_stream_without_finishing
 	await _cleanup_adapter(adapter)
 
 
-func test_adapter_emits_error_for_same_session_query_while_busy_without_interrupting_current_turn() -> void:
+func test_adapter_tracks_same_session_overlapping_turns_until_each_result_arrives() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
-	var errors: Array[String] = []
 	var busy_events: Array[bool] = []
-	var turn_results: Array[int] = []
+	var turn_results: Array[String] = []
 
-	adapter.error_occurred.connect(func(message: String): errors.append(message))
 	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
-	adapter.turn_finished.connect(func(_message): turn_results.append(1))
+	adapter.turn_finished.connect(func(message): turn_results.append(str(message.result)))
 
 	adapter.connect_client()
 	var init_request := _read_last_write(transport)
@@ -745,14 +743,40 @@ func test_adapter_emits_error_for_same_session_query_while_busy_without_interrup
 
 	adapter.query("First", "session-a")
 	adapter.query("Second", "session-a")
-	transport.emit_stdout_message(_result_payload("done", "session-a"))
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-first", "session-a"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-second", "session-a"))
 	await _await_frames(3)
 
 	assert_bool(adapter.is_busy()).is_false()
 	assert_array(busy_events).is_equal([true, false])
-	assert_int(turn_results.size()).is_equal(1)
-	assert_str(errors[-1]).contains("session 'session-a'")
+	assert_array(turn_results).is_equal(["done-first", "done-second"])
 	await _cleanup_adapter(adapter)
+
+
+func test_adapter_clear_active_turn_removes_matching_same_session_turn_token() -> void:
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+	adapter._active_turns_by_session = {
+		"session-a": [
+			{"turn_token": 1, "promoted_session_id": ""},
+			{"turn_token": 2, "promoted_session_id": ""},
+		]
+	}
+	adapter.call("_refresh_busy")
+
+	adapter.call("_clear_active_turn", "session-a", 2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+	var remaining_queue: Array = adapter._active_turns_by_session.get("session-a", [])
+	assert_int(remaining_queue.size()).is_equal(1)
+	assert_int(int((remaining_queue[0] as Dictionary).get("turn_token", -1))).is_equal(1)
 
 
 func test_adapter_emits_connection_error_and_supports_auth_probe_before_connect() -> void:

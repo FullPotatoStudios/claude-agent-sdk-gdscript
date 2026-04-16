@@ -194,7 +194,7 @@ func is_busy() -> bool:
 
 
 func is_session_busy(session_id: String) -> bool:
-	return _active_turns_by_session.has(session_id)
+	return not _active_turn_queue(session_id).is_empty()
 
 
 func _run_message_drain(token: int, stream) -> void:
@@ -241,7 +241,7 @@ func _watch_turn_response(connection_token: int, session_id: String, turn_token:
 			return
 		if message == null:
 			if not saw_result:
-				_clear_active_turn(session_id)
+				_clear_active_turn(session_id, turn_token)
 			return
 		if message is ClaudeResultMessage:
 			saw_result = true
@@ -250,10 +250,12 @@ func _watch_turn_response(connection_token: int, session_id: String, turn_token:
 func _begin_turn_watch(prompt, session_id: String) -> void:
 	_turn_watch_counter += 1
 	var turn_token := _turn_watch_counter
-	_active_turns_by_session[session_id] = {
+	var queue := _active_turn_queue(session_id)
+	queue.append({
 		"turn_token": turn_token,
 		"promoted_session_id": "",
-	}
+	})
+	_active_turns_by_session[session_id] = queue
 	_refresh_busy()
 	if prompt is String:
 		turn_started.emit(str(prompt), session_id)
@@ -295,7 +297,11 @@ func _handle_session_mutation_result(result: int) -> int:
 
 
 func _refresh_busy() -> void:
-	var next_busy := not _active_turns_by_session.is_empty()
+	var next_busy := false
+	for session_id_variant in _active_turns_by_session.keys():
+		if not _active_turn_queue(str(session_id_variant)).is_empty():
+			next_busy = true
+			break
 	if _busy == next_busy:
 		return
 	_busy = next_busy
@@ -303,16 +309,40 @@ func _refresh_busy() -> void:
 
 
 func _has_matching_turn_token(session_id: String, turn_token: int) -> bool:
-	var turn_state: Dictionary = _active_turns_by_session.get(session_id, {}) if _active_turns_by_session.get(session_id, {}) is Dictionary else {}
-	if turn_state.is_empty():
-		return false
-	return int(turn_state.get("turn_token", -1)) == turn_token
+	for turn_state_variant in _active_turn_queue(session_id):
+		if turn_state_variant is not Dictionary:
+			continue
+		var turn_state := turn_state_variant as Dictionary
+		if int(turn_state.get("turn_token", -1)) == turn_token:
+			return true
+	return false
 
 
-func _clear_active_turn(session_id: String) -> void:
+func _clear_active_turn(session_id: String, turn_token: int = -1) -> void:
 	if session_id.is_empty():
 		return
-	_active_turns_by_session.erase(session_id)
+	var queue := _active_turn_queue(session_id)
+	if queue.is_empty():
+		return
+	if turn_token == -1:
+		queue.pop_front()
+	else:
+		var removed := false
+		for index in range(queue.size()):
+			if queue[index] is not Dictionary:
+				continue
+			var turn_state := queue[index] as Dictionary
+			if int(turn_state.get("turn_token", -1)) != turn_token:
+				continue
+			queue.remove_at(index)
+			removed = true
+			break
+		if not removed:
+			return
+	if queue.is_empty():
+		_active_turns_by_session.erase(session_id)
+	else:
+		_active_turns_by_session[session_id] = queue
 	_refresh_busy()
 
 
@@ -337,25 +367,33 @@ func _active_turn_session_key_for_message(message: Variant) -> String:
 	var session_id := _message_session_id(message)
 	if session_id.is_empty():
 		return _fallback_active_turn_session_key_for_unlabeled_message()
-	if _active_turns_by_session.has(session_id):
+	if not _active_turn_queue(session_id).is_empty():
 		return session_id
 	if session_id != "default":
-		var default_turn_state: Dictionary = _active_turns_by_session.get("default", {}) if _active_turns_by_session.get("default", {}) is Dictionary else {}
+		var default_turn_state := _head_turn_state("default")
 		if not default_turn_state.is_empty():
 			var promoted_session_id := str(default_turn_state.get("promoted_session_id", ""))
 			if promoted_session_id == session_id:
 				return "default"
 			if promoted_session_id.is_empty() and _can_promote_default_turn_to_session(session_id):
 				default_turn_state["promoted_session_id"] = session_id
-				_active_turns_by_session["default"] = default_turn_state
+				_replace_head_turn_state("default", default_turn_state)
 				return "default"
 	return ""
 
 
 func _fallback_active_turn_session_key_for_unlabeled_message() -> String:
-	if _active_turns_by_session.size() != 1:
+	var active_session_count := 0
+	var active_session_id := ""
+	for session_id_variant in _active_turns_by_session.keys():
+		var session_id := str(session_id_variant)
+		if _active_turn_queue(session_id).is_empty():
+			continue
+		active_session_count += 1
+		active_session_id = session_id
+	if active_session_count != 1:
 		return ""
-	return str(_active_turns_by_session.keys()[0])
+	return active_session_id
 
 
 func _session_reference_id_for_routed_message(active_turn_session_id: String, message: Variant) -> String:
@@ -364,7 +402,7 @@ func _session_reference_id_for_routed_message(active_turn_session_id: String, me
 	var message_session_id := _message_session_id(message)
 	if not message_session_id.is_empty() and message_session_id != "default":
 		return message_session_id
-	var default_turn_state: Dictionary = _active_turns_by_session.get("default", {}) if _active_turns_by_session.get("default", {}) is Dictionary else {}
+	var default_turn_state := _head_turn_state("default")
 	var promoted_session_id := str(default_turn_state.get("promoted_session_id", ""))
 	if not promoted_session_id.is_empty():
 		return promoted_session_id
@@ -374,7 +412,7 @@ func _session_reference_id_for_routed_message(active_turn_session_id: String, me
 func _can_promote_default_turn_to_session(session_id: String) -> bool:
 	if session_id.is_empty() or session_id == "default":
 		return false
-	if not _active_turns_by_session.has("default"):
+	if _head_turn_state("default").is_empty():
 		return false
 	return not _is_session_claimed_by_non_default_turn(session_id)
 
@@ -386,7 +424,29 @@ func _is_session_claimed_by_non_default_turn(session_id: String) -> bool:
 			continue
 		if active_session_id == session_id:
 			return true
-		var active_turn_state: Dictionary = _active_turns_by_session.get(active_session_id, {}) if _active_turns_by_session.get(active_session_id, {}) is Dictionary else {}
-		if str(active_turn_state.get("promoted_session_id", "")) == session_id:
-			return true
+		for active_turn_state_variant in _active_turn_queue(active_session_id):
+			if active_turn_state_variant is not Dictionary:
+				continue
+			var active_turn_state := active_turn_state_variant as Dictionary
+			if str(active_turn_state.get("promoted_session_id", "")) == session_id:
+				return true
 	return false
+
+
+func _active_turn_queue(session_id: String) -> Array:
+	return _active_turns_by_session.get(session_id, []) if _active_turns_by_session.get(session_id, []) is Array else []
+
+
+func _head_turn_state(session_id: String) -> Dictionary:
+	var queue := _active_turn_queue(session_id)
+	if queue.is_empty():
+		return {}
+	return queue[0] as Dictionary if queue[0] is Dictionary else {}
+
+
+func _replace_head_turn_state(session_id: String, turn_state: Dictionary) -> void:
+	var queue := _active_turn_queue(session_id)
+	if queue.is_empty():
+		return
+	queue[0] = turn_state
+	_active_turns_by_session[session_id] = queue
