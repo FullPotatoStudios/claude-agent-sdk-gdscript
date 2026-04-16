@@ -117,6 +117,20 @@ func get_session_messages(
 	return ClaudeSessionsScript.get_session_messages(session_id, directory, limit, offset)
 
 
+func list_subagents(session_id: String, directory: String = "") -> Array[String]:
+	return ClaudeSessionsScript.list_subagents(session_id, directory)
+
+
+func get_subagent_messages(
+	session_id: String,
+	agent_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionMessage]:
+	return ClaudeSessionsScript.get_subagent_messages(session_id, agent_id, directory, limit, offset)
+
+
 func get_session_transcript(
 	session_id: String,
 	directory: String = "",

@@ -54,6 +54,8 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeSessions.get_session_info()`
   - `ClaudeSessions.get_session_messages()`
   - `ClaudeSessions.get_session_transcript()`
+  - `ClaudeSessions.list_subagents()`
+  - `ClaudeSessions.get_subagent_messages()`
   - typed read-only history models `ClaudeSessionInfo` and `ClaudeSessionMessage`
   - typed transcript-detail history model `ClaudeSessionTranscriptEntry`
   - `ClaudeSessions.rename_session()`
@@ -78,6 +80,7 @@ The first public implementation target is the scene-free core conversation loop,
   - richer saved-session transcript restoration using normalized thinking/tool/system/result detail
   - runtime-first session forking helpers with adapter/node passthroughs, UUID remapping, cutoff support, and preserved `content-replacement` / title metadata
   - runtime-first agent-definition parity through initialize-payload serialization and `setting_sources` CLI passthrough
+  - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough parity so `[]` still emits `--setting-sources ""`
   - transport-first advanced CLI option parity for `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
   - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
   - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and best-effort `ClaudeAgentOptions.stderr` callback delivery
@@ -131,6 +134,8 @@ The first public implementation target is the scene-free core conversation loop,
   - subprocess transport shutdown grace parity after stdin EOF, with a 5-second wait before forced kill so final session-file flushes are less likely to be lost
   - malformed known-message payloads now fail loudly through `ClaudeMessageParser.parse_message_result()` and fatal `ClaudeQuerySession` stream/session errors, while unknown top-level message types still skip forward-compatibly
   - session-tag Unicode sanitization parity through generated whole-string normalization tables that now mirror upstream iterative Unicode normalization/composition plus format/private-use/unassigned stripping
+  - saved-session subagent discovery/history parity through `ClaudeSessions.list_subagents()` and `get_subagent_messages()`, lifted through `ClaudeClientAdapter` and `ClaudeClientNode`
+  - saved-session delete parity now best-effort removes the sibling subagent transcript tree alongside the main `.jsonl` file
   - additive same-session and different-session overlap compatibility on connected clients through per-session turn tracking in `ClaudeQuerySession`, matching upstream's shared receive stream and lack of a client-wide busy guard more closely while keeping named-session result routing tied to Claude's reported `num_turns` and leaving transcript rendering in arrival order
   - additive `receive_response_for_session(session_id)` on `ClaudeQuerySession` and `ClaudeSDKClient`, while `receive_response()` now follows upstream global first-result convenience semantics
   - default-turn runtime-session promotion now binds once to the resolved runtime session ID instead of re-routing later foreign session traffic into `"default"`
@@ -145,6 +150,23 @@ The first public implementation target is the scene-free core conversation loop,
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
   - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
   - the runtime now models upstream-style `end_input()` timing for one-shot query flows, but the shipped subprocess transport still cannot perform a true stdin half-close because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
+
+## Reviewed upstream commits after the current baseline
+
+The sibling upstream checkout was advanced locally to inspect changes beyond the pinned baseline. This repo does not yet claim full parity with that newer upstream head; the notes below record the bounded slice reviewed and adopted here.
+
+- Reviewed on: `2026-04-16`
+- Still-pinned baseline commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
+- Reviewed newer upstream commits:
+  - `2038a15`: `delete_session` best-effort subagent tree cleanup
+  - `ebc06f2`: `list_subagents()` and `get_subagent_messages()`
+  - `e621929`: explicit empty `setting_sources` should still pass `--setting-sources ""`
+- Adopted locally in this slice:
+  - best-effort sibling subagent-tree cleanup in `ClaudeSessions.delete_session()`
+  - saved-session subagent discovery/history helpers in `ClaudeSessions`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+  - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
+- Reviewed but not adopted in this slice:
+  - later upstream commits after `e621929` remain for a future parity review before any baseline bump
 
 ## Update process
 

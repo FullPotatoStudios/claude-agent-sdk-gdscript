@@ -40,8 +40,15 @@ var fork_session: bool = false
 var output_format: Dictionary = {}
 var mcp_servers: Variant = {}
 var agents: Dictionary = {}
-var setting_sources: Array[String] = []
 var sandbox: Variant = null
+var _setting_sources_configured := false
+var _setting_sources: Array[String] = []
+var setting_sources: Array[String]:
+	get:
+		return _setting_sources
+	set(value):
+		_setting_sources = _to_string_array(value)
+		_setting_sources_configured = true
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -125,15 +132,19 @@ func apply(config: Dictionary):
 			mcp_servers = str(config["mcp_servers"])
 	if config.has("agents") and config["agents"] is Dictionary:
 		agents = _normalize_agents(config["agents"] as Dictionary)
-	if config.has("setting_sources") and config["setting_sources"] is Array:
-		setting_sources = _to_string_array(config["setting_sources"] as Array)
+	if config.has("setting_sources"):
+		if config["setting_sources"] is Array:
+			setting_sources = _to_string_array(config["setting_sources"] as Array)
+		else:
+			_setting_sources = []
+			_setting_sources_configured = config["setting_sources"] != null
 	if config.has("sandbox"):
 		sandbox = _normalize_sandbox(config["sandbox"])
 	return self
 
 
 func duplicate_options():
-	return ClaudeAgentOptions.new({
+	var duplicated := ClaudeAgentOptions.new({
 		"model": model,
 		"effort": effort,
 		"cwd": cwd,
@@ -170,15 +181,21 @@ func duplicate_options():
 				"output_format": output_format.duplicate(true),
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
 			"agents": _duplicate_agents(agents),
-			"setting_sources": setting_sources.duplicate(),
 			"sandbox": _duplicate_variant(sandbox),
 		})
+	if _setting_sources_configured:
+		duplicated.apply({"setting_sources": setting_sources.duplicate()})
+	return duplicated
 
 
 func get_effective_session_id(default_session_id: String = "default") -> String:
 	if not session_id.is_empty():
 		return session_id
 	return default_session_id
+
+
+func has_setting_sources() -> bool:
+	return _setting_sources_configured
 
 
 static func _to_string_array(values: Array) -> Array[String]:

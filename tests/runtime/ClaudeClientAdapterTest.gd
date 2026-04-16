@@ -1014,11 +1014,32 @@ func test_adapter_session_passthrough_reads_and_mutates_sessions() -> void:
 		},
 		{"type": "summary", "summary": "Saved summary"},
 	], 1712302000)
+	var subagent_dir := project_dir.path_join(session_id).path_join("subagents")
+	DirAccess.make_dir_recursive_absolute(subagent_dir)
+	var subagent_file := FileAccess.open(subagent_dir.path_join("agent-helper.jsonl"), FileAccess.WRITE)
+	subagent_file.store_line(JSON.stringify({
+		"type": "user",
+		"uuid": "adapter-sub-u-1",
+		"sessionId": session_id,
+		"message": {"role": "user", "content": "Subagent prompt"},
+	}))
+	subagent_file.store_line(JSON.stringify({
+		"type": "assistant",
+		"uuid": "adapter-sub-a-1",
+		"parentUuid": "adapter-sub-u-1",
+		"sessionId": session_id,
+		"message": {"role": "assistant", "content": "Subagent answer"},
+	}))
+	subagent_file.close()
 
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
 	var sessions := adapter.list_sessions(project_path, 0, 0, false)
 	assert_int(sessions.size()).is_equal(1)
 	assert_str(sessions[0].session_id).is_equal(session_id)
+	assert_array(adapter.list_subagents(session_id, project_path)).is_equal(["helper"])
+	var subagent_messages := adapter.get_subagent_messages(session_id, "helper", project_path)
+	assert_int(subagent_messages.size()).is_equal(2)
+	assert_str(subagent_messages[0].uuid).is_equal("adapter-sub-u-1")
 
 	assert_int(adapter.rename_session(session_id, "Adapter renamed", project_path)).is_equal(OK)
 	assert_int(adapter.tag_session(session_id, "review", project_path)).is_equal(OK)

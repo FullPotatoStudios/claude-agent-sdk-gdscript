@@ -185,6 +185,30 @@ func test_duplicate_options_preserves_agents_and_setting_sources() -> void:
 	assert_str(doc_writer.prompt).is_equal("Explain clearly.")
 	assert_that(doc_writer.tools).is_null()
 	assert_array(duplicated.setting_sources).is_equal(["user", "project"])
+	assert_bool(duplicated.has_setting_sources()).is_true()
+
+
+func test_duplicate_options_preserves_explicit_empty_setting_sources() -> void:
+	var options = ClaudeAgentOptions.new({
+		"setting_sources": [],
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_bool(options.has_setting_sources()).is_true()
+	assert_bool(duplicated.has_setting_sources()).is_true()
+	assert_array(duplicated.setting_sources).is_empty()
+
+
+func test_duplicate_options_preserves_directly_assigned_setting_sources() -> void:
+	var options := ClaudeAgentOptions.new()
+	options.setting_sources = ["user", "project"]
+
+	var duplicated = options.duplicate_options()
+
+	assert_bool(options.has_setting_sources()).is_true()
+	assert_bool(duplicated.has_setting_sources()).is_true()
+	assert_array(duplicated.setting_sources).is_equal(["user", "project"])
 
 
 func test_duplicate_options_preserves_transport_first_advanced_cli_fields() -> void:
@@ -591,7 +615,7 @@ func test_subprocess_transport_supports_tools_unset_empty_and_preset() -> void:
 	assert_array(normalized_preset_args).contains(["--tools", "default"])
 
 
-func test_subprocess_transport_supports_setting_sources_only_when_non_empty() -> void:
+func test_subprocess_transport_supports_unset_empty_and_configured_setting_sources() -> void:
 	var unset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
 	var unset_args := unset_transport.build_command_args()
 	assert_bool(unset_args.has("--setting-sources")).is_false()
@@ -600,13 +624,25 @@ func test_subprocess_transport_supports_setting_sources_only_when_non_empty() ->
 		"setting_sources": [],
 	}))
 	var empty_args := empty_transport.build_command_args()
-	assert_bool(empty_args.has("--setting-sources")).is_false()
+	assert_array(empty_args).contains(["--setting-sources", ""])
 
 	var configured_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"setting_sources": ["user", "project", "local"],
 	}))
 	var configured_args := configured_transport.build_command_args()
 	assert_array(configured_args).contains(["--setting-sources", "user,project,local"])
+
+	var direct_options := ClaudeAgentOptions.new()
+	direct_options.setting_sources = ["local"]
+	var direct_transport = ClaudeSubprocessCLITransport.new(direct_options)
+	var direct_args := direct_transport.build_command_args()
+	assert_array(direct_args).contains(["--setting-sources", "local"])
+
+	var direct_empty_options := ClaudeAgentOptions.new()
+	direct_empty_options.setting_sources = []
+	var direct_empty_transport = ClaudeSubprocessCLITransport.new(direct_empty_options)
+	var direct_empty_args := direct_empty_transport.build_command_args()
+	assert_array(direct_empty_args).contains(["--setting-sources", ""])
 
 
 func test_subprocess_transport_supports_transport_first_advanced_cli_flags() -> void:

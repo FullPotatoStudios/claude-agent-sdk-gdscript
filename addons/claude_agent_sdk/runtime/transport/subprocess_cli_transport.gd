@@ -93,7 +93,7 @@ func build_command_args() -> PackedStringArray:
 		args.append("--include-partial-messages")
 	if _options.fork_session:
 		args.append("--fork-session")
-	if not _options.setting_sources.is_empty():
+	if _options.has_setting_sources():
 		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
 	_append_plugin_args(args)
 	_append_extra_args(args)

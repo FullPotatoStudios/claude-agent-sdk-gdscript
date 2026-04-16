@@ -17,6 +17,8 @@ var sessions := ClaudeSessions.list_sessions()
 var session_info := ClaudeSessions.get_session_info(session_id)
 var messages := ClaudeSessions.get_session_messages(session_id)
 var transcript := ClaudeSessions.get_session_transcript(session_id)
+var subagents := ClaudeSessions.list_subagents(session_id)
+var subagent_messages := ClaudeSessions.get_subagent_messages(session_id, "agent-helper")
 var fork_result := ClaudeSessions.fork_session(session_id)
 var rename_error := ClaudeSessions.rename_session(session_id, "My session title")
 ```
@@ -27,6 +29,8 @@ Available methods:
 - `ClaudeSessions.get_session_info(session_id: String, directory := "")`
 - `ClaudeSessions.get_session_messages(session_id: String, directory := "", limit := 0, offset := 0)`
 - `ClaudeSessions.get_session_transcript(session_id: String, directory := "", limit := 0, offset := 0)`
+- `ClaudeSessions.list_subagents(session_id: String, directory := "")`
+- `ClaudeSessions.get_subagent_messages(session_id: String, agent_id: String, directory := "", limit := 0, offset := 0)`
 - `ClaudeSessions.fork_session(session_id: String, directory := "", up_to_message_id := "", title := "")`
 - `ClaudeSessions.rename_session(session_id: String, title: String, directory := "")`
 - `ClaudeSessions.tag_session(session_id: String, tag := null, directory := "")`
@@ -39,6 +43,8 @@ Return types:
 - `get_session_info()` returns `ClaudeSessionInfo` or `null`
 - `get_session_messages()` returns `Array[ClaudeSessionMessage]`
 - `get_session_transcript()` returns `Array[ClaudeSessionTranscriptEntry]`
+- `list_subagents()` returns `Array[String]`
+- `get_subagent_messages()` returns `Array[ClaudeSessionMessage]`
 - `fork_session()` returns `ClaudeForkSessionResult` or `null`
 - mutation methods return Godot `Error` codes and populate `ClaudeSessions.get_last_error()` on failure
 
@@ -100,6 +106,8 @@ If `git` is unavailable or worktree discovery fails, lookup falls back to the pr
 
 Transcript reading reconstructs the main visible conversation chain and skips sidechain, meta, and team-only entries.
 
+Subagent history helpers traverse the saved session's sibling subagent transcript tree and expose the same normalized visible-message shape used by `get_session_messages()`.
+
 `ClaudeSessionTranscriptEntry` contains richer normalized transcript detail for custom transcript UIs:
 
 - `kind` can be `user`, `assistant`, `thinking`, `tool_use`, `tool_result`, `system`, `progress`, `attachment`, or `result`
@@ -125,7 +133,7 @@ Basic mutation behavior:
 - forked sessions preserve `content-replacement` metadata and append a `custom-title` entry for the fork title
 - `rename_session()` appends a `custom-title` JSONL entry and the latest title wins in `list_sessions()` / `get_session_info()`
 - `tag_session()` appends a `tag` JSONL entry; passing `null` clears the tag by appending an empty-string tag entry
-- `delete_session()` hard-deletes the session `.jsonl` file
+- `delete_session()` hard-deletes the session `.jsonl` file and best-effort removes the sibling subagent transcript tree
 - missing sessions return `ERR_DOES_NOT_EXIST`
 - invalid UUIDs and empty title/tag inputs return `ERR_INVALID_PARAMETER`
 - tag sanitization now uses generated local Unicode tables to match upstream whole-string iterative Unicode normalization/composition plus stripping of format/private-use/unassigned codepoint ranges

@@ -28,7 +28,7 @@ See `NOTICE.txt` for the matching addon-local attribution note.
 - the addon uses the system-installed `claude` CLI
 - existing Claude auth is reused from the caller's environment
 - the packaged chat panel is optional and can be replaced with custom UI built on the lower runtime layers
-- session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`, including richer normalized transcript detail via `get_session_transcript()` and explicit saved-session branching via `fork_session()`
+- session history is available directly through `ClaudeSessions` and through convenience passthroughs on `ClaudeClientAdapter` / `ClaudeClientNode`, including richer normalized transcript detail via `get_session_transcript()`, saved-session subagent discovery via `list_subagents()`, saved-session subagent visible-message reading via `get_subagent_messages()`, and explicit saved-session branching via `fork_session()`
 - richer `system_prompt` and base `tools` configuration is available through `ClaudeAgentOptions`
 - runtime-first custom agent definitions and `setting_sources` control are available through `ClaudeAgentOptions`
 - transport-first advanced CLI option parity is also available through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
@@ -52,6 +52,7 @@ This payload includes:
 - `ClaudeSDKClient`
 - `ClaudeSessions`
 - `ClaudeForkSessionResult`
+- `ClaudeSessionTranscriptEntry`
 - `ClaudeAgentDefinition`
 - transport-first advanced CLI option fields on `ClaudeAgentOptions`
 - transport-first `settings` and `sandbox` fields on `ClaudeAgentOptions`
@@ -78,6 +79,7 @@ Development-only content such as `demo/`, `tests/`, `tools/`, and `addons/gdUnit
 
 - See the root repository `README.md` for the public project overview.
 - See the repository docs, especially `docs/contributing/session-history.md`, for session-history and basic mutation usage.
+- See the repository docs, especially `docs/contributing/session-history.md`, for session-history, subagent-history, and basic mutation usage.
 - For file checkpointing and rewind usage, note that practical rewind flows typically also need `extra_args = {"replay-user-messages": null}` so streamed user messages include rewindable UUIDs.
 - For `ClaudeAgentOptions.user`, note that the current runtime uses a POSIX shell-wrapper launch path and Windows transports reject the option.
 - See `docs/contributing/integration.md` and `docs/contributing/ui-panel.md` for prompt/tool configuration and panel behavior details.

@@ -37,6 +37,7 @@ Use `ClaudeClientAdapter` when:
 - you want a thin wrapper that drains the session-wide message stream for you
 - you are building your own game/tool state around typed runtime messages
 - you want adapter-level convenience access to session history, richer transcript detail, and basic session mutations without calling `ClaudeSessions` directly
+- you want adapter-level convenience access to saved-session subagent discovery and subagent visible-message history without calling `ClaudeSessions` directly
 
 Use `ClaudeClientNode` when:
 
@@ -44,6 +45,7 @@ Use `ClaudeClientNode` when:
 - you want signal-based integration from a scene script with minimal glue code
 - you want optional `auto_connect_on_ready` and `auto_disconnect_on_exit`
 - you want the same session-history, transcript-detail, and basic session-mutation convenience methods from a `Node`
+- you want the same saved-session subagent discovery and subagent visible-message convenience methods from a `Node`
 
 Use `ClaudeChatPanel` when:
 
@@ -90,6 +92,7 @@ The integration layer is intentionally thin.
 - It does not replace the reusable chat panel for users who want a drop-in UI
 - It does not ship editor-plugin wiring inside `addons/claude_agent_sdk/`; the current editor-dock workflow lives as a development-only example under `tools/examples/editor_plugin_demo/`
 - It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`
+- It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`, `list_subagents()`, and `get_subagent_messages()`
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
 - agent definitions are also runtime-first and are sent through the initialize payload rather than through panel-specific configuration
 - `setting_sources` is transport/runtime configuration for Claude settings discovery, not a panel concern

@@ -49,7 +49,7 @@ See `NOTICE` for the short attribution note used by this repository.
 - A scene-free runtime core under `addons/claude_agent_sdk/runtime/`
 - `ClaudeQuery` for one-shot usage
 - `ClaudeSDKClient` for interactive runtime usage
-- `ClaudeSessions` for local session history access, richer transcript detail reading, and basic session mutations
+- `ClaudeSessions` for local session history access, richer transcript detail reading, saved-session subagent discovery/history, and basic session mutations
 - `ClaudeSessionTranscriptEntry` for normalized historical transcript detail
 - `ClaudeForkSessionResult` plus explicit session forking helpers for branching saved conversations
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` control
@@ -69,7 +69,7 @@ See `NOTICE` for the short attribution note used by this repository.
 - transport-first process-user launch parity through `ClaudeAgentOptions.user` on POSIX shell-backed transports
 - `ClaudeMcp`, `ClaudeMcpTool`, `ClaudeMcpToolAnnotations`, and `ClaudeSdkMcpServer` for scene-free SDK-hosted MCP tool definitions
 - `ClaudeBuiltInToolCatalog` for scene-free built-in Claude Code tool metadata and selection mapping
-- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history and transcript-detail convenience methods
+- `ClaudeClientAdapter` and `ClaudeClientNode` for Godot-friendly integration, including session-history, saved-session subagent-history, and transcript-detail convenience methods
 - `ClaudeChatPanel` as a reusable reference chat UI with a conversation-first `Chat` view, secondary `Settings` view, saved-session browsing, truthful reconnect/resume handoff, full-session plus saved-session cutoff forking from chat bubbles and transcript detail cards, task-aware transcript controls, connected-session context/MCP diagnostics, disconnected chat-configuration controls including bounded external MCP editing plus SDK MCP inventory inspection, transcript-level rewind actions, and disconnected connect-and-send composer behavior
 - A root-project demo under `demo/` for validation and onboarding
 
@@ -126,7 +126,7 @@ func _ready() -> void:
 - Claude CLI subprocess transport with inherited environment and explicit overrides
 - Typed message parsing for user, assistant, system, result, and partial stream events
 - One-shot queries plus interactive connected sessions
-- Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, session forking, and basic rename/tag/delete mutations
+- Local session history access for session listing, metadata lookup, visible-message reading, richer transcript-detail reading, saved-session subagent discovery/history, session forking, and basic rename/tag/delete mutations
 - Interrupt, model switching, permission-mode switching, context usage, and MCP status controls
 - Typed live context/MCP diagnostics through `ClaudeContextUsageResponse`, `ClaudeMcpStatusResponse`, and nested status/category models
 - Hook callbacks, tool-permission callbacks, structured output, and partial-message support
@@ -134,7 +134,7 @@ func _ready() -> void:
 - Typed hook-output helpers plus typed permission-update/result helpers for runtime callback integrations
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Runtime-first agent definitions through `ClaudeAgentOptions.agents` and initialize-payload serialization
-- `setting_sources` support for controlling user/project/local Claude settings loading
+- `setting_sources` support for controlling user/project/local Claude settings loading, including explicit empty-list passthrough when you need to disable those sources at the CLI layer
 - transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
 - transport-first `settings` and `sandbox` support through `ClaudeAgentOptions`, including plain `settings` pass-through and sandbox-to-`--settings` JSON merging
 - transport-first diagnostics support through `ClaudeAgentOptions.extra_args` and per-line stderr callback delivery
