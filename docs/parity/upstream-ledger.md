@@ -4,10 +4,10 @@
 
 - Upstream repository: `https://github.com/anthropics/claude-agent-sdk-python`
 - Local reference checkout: a sibling checkout of the upstream repo, if available
-- Version: `v0.1.54`
-- Commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
-- Reviewed on: `2026-04-02`
-- Local project phase at pin time: preliminary work / Phase 1 feasibility
+- Version: `post-v0.1.59 main`
+- Commit: `e62192920d3c782c25df2141980ea63fc261de48`
+- Reviewed on: `2026-04-16`
+- Local project phase at pin time: post-v1 parity maintenance / Phase 10 follow-up
 
 ## Initial parity cut
 
@@ -154,13 +154,17 @@ The first public implementation target is the scene-free core conversation loop,
   - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
   - the runtime now models upstream-style `end_input()` timing for one-shot query flows, but the shipped subprocess transport still cannot perform a true stdin half-close because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
 
-## Reviewed upstream commits after the current baseline
+## Reviewed upstream slice beyond the historical pin
 
-The sibling upstream checkout was advanced locally to inspect changes beyond the pinned baseline. This repo does not yet claim full parity with that newer upstream head; the notes below record the bounded slice reviewed and adopted here.
+The sibling upstream checkout was advanced locally to inspect changes beyond the
+historical Phase 1 pin. The local runtime now matches the last meaningful
+upstream feature/fix point reviewed here, while the newer pulled upstream tip
+only adds release/version metadata that does not require local parity work.
 
 - Reviewed on: `2026-04-16`
-- Still-pinned baseline commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
-- Reviewed newer upstream commits:
+- Updated functional baseline commit: `e62192920d3c782c25df2141980ea63fc261de48`
+- Pulled upstream tip reviewed after the baseline update: `a0fbd1424bd52ae7f2cb7d0d8343f89f97701c96`
+- Reviewed upstream commits in this slice:
   - `e94a74d`: SDK MCP `_meta["anthropic/maxResultSizeChars"]` forwarding for large tool results
   - `841ee87`: add `"auto"` permission-mode parity
   - `6617b9e`: `thinking adaptive|disabled` should use `--thinking`, not `--max-thinking-tokens`
@@ -168,6 +172,9 @@ The sibling upstream checkout was advanced locally to inspect changes beyond the
   - `2038a15`: `delete_session` best-effort subagent tree cleanup
   - `ebc06f2`: `list_subagents()` and `get_subagent_messages()`
   - `e621929`: explicit empty `setting_sources` should still pass `--setting-sources ""`
+  - `8a131ed`: bundled CLI version bump only
+  - `3414aa7`: release metadata/version bump only
+  - `a0fbd14`: changelog/docs update for `v0.1.60` only
 - Adopted locally in this slice:
   - SDK-hosted MCP `_meta["anthropic/maxResultSizeChars"]` forwarding through `ClaudeMcpToolAnnotations`, `ClaudeSdkMcpServer`, and `ClaudeQuerySession`
   - `permission_mode = "auto"` parity on the runtime surfaces and shipped panel selector
@@ -178,7 +185,7 @@ The sibling upstream checkout was advanced locally to inspect changes beyond the
   - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
   - bounded W3C trace-context env propagation through `ClaudeSubprocessCLITransport`, forwarding ambient `TRACEPARENT` / `TRACESTATE` into the explicit subprocess launch env, including the POSIX `sudo -n -u` wrapper path, while keeping `ClaudeAgentOptions.env` overrides authoritative
 - Reviewed but not adopted in this slice:
-  - later upstream commits after `e621929` remain for a future parity review before any baseline bump
+  - no additional runtime parity work was required after `e621929`; the pulled upstream tip through `a0fbd14` only changed bundled CLI/release metadata and changelog text
 
 ## Update process
 

@@ -1056,10 +1056,11 @@ func _refresh_mcp_authoring_control_state() -> void:
 		if row_variant is not Control:
 			continue
 		var row := row_variant as Control
-		var name_input := row.find_child("McpServerNameInput", true, false) as LineEdit
-		var command_input := row.find_child("McpServerCommandInput", true, false) as LineEdit
-		var args_input := row.find_child("McpServerArgsInput", true, false) as LineEdit
-		var remove_button := row.find_child("McpRemoveServerButton", true, false) as Button
+		var controls := _mcp_editable_row_controls(row)
+		var name_input := controls.get("name_input") as LineEdit
+		var command_input := controls.get("command_input") as LineEdit
+		var args_input := controls.get("args_input") as LineEdit
+		var remove_button := controls.get("remove_button") as Button
 		if name_input != null:
 			name_input.editable = not locked
 		if command_input != null:
@@ -1074,6 +1075,10 @@ func _clear_container_children(container: Node) -> void:
 	for child in container.get_children():
 		container.remove_child(child)
 		child.queue_free()
+
+
+func _mcp_editable_row_controls(row: Control) -> Dictionary:
+	return row.get_meta("mcp_row_controls", {}) as Dictionary
 
 
 func _classify_mcp_servers(value: Variant) -> Dictionary:
@@ -1253,6 +1258,12 @@ func _build_mcp_editable_row(index: int, entry: Dictionary) -> Control:
 	args_input.text = ",".join(args_parts)
 	args_input.text_changed.connect(_on_mcp_editable_row_text_changed.bind(card))
 	body.add_child(args_input)
+	card.set_meta("mcp_row_controls", {
+		"name_input": name_input,
+		"command_input": command_input,
+		"args_input": args_input,
+		"remove_button": remove_button,
+	})
 
 	return card
 
@@ -1298,9 +1309,10 @@ func _editable_mcp_row_entries(skip_row: Control = null) -> Array[Dictionary]:
 
 
 func _editable_mcp_entry_from_row(row: Control) -> Dictionary:
-	var name_input := row.find_child("McpServerNameInput", true, false) as LineEdit
-	var command_input := row.find_child("McpServerCommandInput", true, false) as LineEdit
-	var args_input := row.find_child("McpServerArgsInput", true, false) as LineEdit
+	var controls := _mcp_editable_row_controls(row)
+	var name_input := controls.get("name_input") as LineEdit
+	var command_input := controls.get("command_input") as LineEdit
+	var args_input := controls.get("args_input") as LineEdit
 	var flags := row.get_meta("mcp_row_flags", {}) as Dictionary
 	return {
 		"name": name_input.text.strip_edges() if name_input != null else "",
