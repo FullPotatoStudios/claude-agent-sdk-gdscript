@@ -317,6 +317,57 @@ func test_client_allows_same_session_queries_to_overlap() -> void:
 	client.disconnect_client()
 
 
+func test_client_routes_same_session_out_of_order_results_by_turn_count() -> void:
+	var transport = FakeTransportScript.new()
+	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)
+	client.connect_client()
+	var init_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	client.query("First", "session-a")
+	client.query("Second", "session-a")
+	var first_stream = client.receive_response_for_session("session-a")
+	var second_stream = client.receive_response_for_session("session-a")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 2,
+		"session_id": "session-a",
+		"result": "done-second",
+	})
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-a",
+		"result": "done-first",
+	})
+
+	var second_result = await second_stream.next_message()
+	assert_object(second_result).is_instanceof(ClaudeResultMessage)
+	assert_int((second_result as ClaudeResultMessage).num_turns).is_equal(2)
+	assert_that(await second_stream.next_message()).is_null()
+	var first_result = await first_stream.next_message()
+	assert_object(first_result).is_instanceof(ClaudeResultMessage)
+	assert_int((first_result as ClaudeResultMessage).num_turns).is_equal(1)
+	assert_that(await first_stream.next_message()).is_null()
+	client.disconnect_client()
+
+
 func test_client_allows_same_session_query_while_prompt_stream_is_still_active() -> void:
 	var transport = FakeTransportScript.new()
 	var client = ClaudeSDKClient.new(ClaudeAgentOptions.new(), transport)

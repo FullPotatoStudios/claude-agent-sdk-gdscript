@@ -1573,6 +1573,35 @@ func test_unlabeled_assistant_routes_to_only_active_session_stream() -> void:
 	assert_that(await response_stream.next_message()).is_null()
 
 
+func test_unlabeled_assistant_still_routes_when_only_one_session_has_overlapping_turns() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	session.receive_response_for_session("session-a")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Unlabeled overlap"}]},
+	})
+
+	var assistant_message = await first_stream.next_message()
+	assert_object(assistant_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((assistant_message as ClaudeAssistantMessage).session_id).is_equal("")
+
+
 func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_active() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -1664,6 +1693,39 @@ func test_same_session_queries_can_overlap_and_session_streams_follow_fifo_turn_
 	assert_str((second_message as ClaudeAssistantMessage).model).is_equal("haiku")
 	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
 	assert_that(await second_stream.next_message()).is_null()
+
+
+func test_same_session_overlap_routes_out_of_order_results_by_turn_count() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
+
+	transport.emit_stdout_message(_result_payload("done-second", "session-a", 2))
+	transport.emit_stdout_message(_result_payload("done-first", "session-a", 1))
+
+	var second_result = await second_stream.next_message()
+	assert_object(second_result).is_instanceof(ClaudeResultMessage)
+	assert_int((second_result as ClaudeResultMessage).num_turns).is_equal(2)
+	assert_that(await second_stream.next_message()).is_null()
+
+	var first_result = await first_stream.next_message()
+	assert_object(first_result).is_instanceof(ClaudeResultMessage)
+	assert_int((first_result as ClaudeResultMessage).num_turns).is_equal(1)
+	assert_that(await first_stream.next_message()).is_null()
 
 
 func test_same_session_query_can_start_while_prompt_stream_turn_is_still_active() -> void:
@@ -1892,14 +1954,14 @@ func test_dynamic_controls_send_expected_control_requests() -> void:
 	})
 
 
-func _result_payload(result_text: String, session_id: String = "default") -> Dictionary:
+func _result_payload(result_text: String, session_id: String = "default", num_turns: int = 1) -> Dictionary:
 	return {
 		"type": "result",
 		"subtype": "success",
 		"duration_ms": 20,
 		"duration_api_ms": 10,
 		"is_error": false,
-		"num_turns": 1,
+		"num_turns": num_turns,
 		"session_id": session_id,
 		"result": result_text,
 	}

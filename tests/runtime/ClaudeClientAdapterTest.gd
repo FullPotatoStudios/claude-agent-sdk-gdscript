@@ -760,6 +760,46 @@ func test_adapter_tracks_same_session_overlapping_turns_until_each_result_arrive
 	await _cleanup_adapter(adapter)
 
 
+func test_adapter_tracks_same_session_overlapping_turns_when_results_finish_out_of_order() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var turn_results: Array[String] = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_finished.connect(func(message): turn_results.append(str(message.result)))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("First", "session-a")
+	adapter.query("Second", "session-a")
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-second", "session-a", 2))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-first", "session-a", 1))
+	await _await_frames(3)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_array(turn_results).is_equal(["done-second", "done-first"])
+	await _cleanup_adapter(adapter)
+
+
 func test_adapter_clear_active_turn_removes_matching_same_session_turn_token() -> void:
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
 	adapter._active_turns_by_session = {
@@ -1220,14 +1260,14 @@ func _read_last_write(transport) -> Dictionary:
 	return JSON.parse_string(transport.writes[-1])
 
 
-func _result_payload(result_text: String, session_id: String = "default") -> Dictionary:
+func _result_payload(result_text: String, session_id: String = "default", num_turns: int = 1) -> Dictionary:
 	return {
 		"type": "result",
 		"subtype": "success",
 		"duration_ms": 10,
 		"duration_api_ms": 5,
 		"is_error": false,
-		"num_turns": 1,
+		"num_turns": num_turns,
 		"session_id": session_id,
 		"result": result_text,
 	}

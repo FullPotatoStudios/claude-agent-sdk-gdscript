@@ -127,7 +127,8 @@ The panel intentionally does not yet include:
 - shipped editor-plugin wiring inside the addon payload
 
 The lower runtime now keeps same-session and different-session overlap in the
-same shared live connection through FIFO turn routing, and the shipped panel
+same shared live connection through per-session turn tracking plus named-session
+result matching on Claude's reported `num_turns`, and the shipped panel
 surfaces that directly:
 
 - one connected panel can keep multiple live sessions active at once
