@@ -71,6 +71,7 @@ var _built_in_tool_checks: Dictionary = {}
 var _built_in_tool_group_buttons: Dictionary = {}
 var _current_view := PANEL_VIEW_CHAT
 var _transcript_entries: Array[Dictionary] = []
+var _transcript_entry_indices: Dictionary = {}
 var _transcript_entry_views := {}
 var _task_entry_ids := {}
 var _tool_use_names := {}
@@ -857,6 +858,7 @@ func _apply_transcript_state(state: Dictionary) -> void:
 		if entry_variant is Dictionary:
 			transcript_entries.append(entry_variant)
 	_transcript_entries = transcript_entries
+	_rebuild_transcript_entry_indices()
 	_task_entry_ids = state.get("task_entry_ids", {}) as Dictionary
 	_tool_use_names = state.get("tool_use_names", {}) as Dictionary
 	_next_transcript_entry_id = int(state.get("next_transcript_entry_id", 1))
@@ -2591,6 +2593,7 @@ func _append_transcript_entry(kind: String, data: Dictionary) -> int:
 	entry["kind"] = kind
 	_next_transcript_entry_id += 1
 	_transcript_entries.append(entry)
+	_transcript_entry_indices[int(entry.get("id", -1))] = _transcript_entries.size() - 1
 	if not _suppress_transcript_view_updates:
 		_ensure_transcript_entry_view(entry)
 	return int(entry.get("id", -1))
@@ -2606,19 +2609,23 @@ func _append_pending_user_prompt(text: String) -> void:
 
 
 func _get_transcript_entry(entry_id: int) -> Dictionary:
-	for entry in _transcript_entries:
-		if int(entry.get("id", -1)) == entry_id:
-			return entry
+	var index := _transcript_entry_index(entry_id)
+	if index >= 0:
+		return _transcript_entries[index]
 	return {}
 
 
 func _set_transcript_entry(entry_id: int, updated_entry: Dictionary) -> void:
-	for index in range(_transcript_entries.size()):
-		if int(_transcript_entries[index].get("id", -1)) == entry_id:
-			_transcript_entries[index] = updated_entry
-			if not _suppress_transcript_view_updates:
-				_update_transcript_entry_view(updated_entry)
-			return
+	var index := _transcript_entry_index(entry_id)
+	if index < 0:
+		return
+	_transcript_entries[index] = updated_entry
+	var updated_entry_id := int(updated_entry.get("id", entry_id))
+	if updated_entry_id != entry_id:
+		_transcript_entry_indices.erase(entry_id)
+	_transcript_entry_indices[updated_entry_id] = index
+	if not _suppress_transcript_view_updates:
+		_update_transcript_entry_view(updated_entry)
 
 
 func _discard_pending_prompt_echo_entry() -> void:
@@ -2627,11 +2634,8 @@ func _discard_pending_prompt_echo_entry() -> void:
 	_pending_prompt_entry_id = -1
 	if entry_id < 0:
 		return
-	for index in range(_transcript_entries.size()):
-		if int(_transcript_entries[index].get("id", -1)) != entry_id:
-			continue
-		_transcript_entries.remove_at(index)
-		break
+	if not _remove_transcript_entry(entry_id):
+		return
 	if _suppress_transcript_view_updates:
 		return
 	var view: Dictionary = _transcript_entry_views.get(entry_id, {})
@@ -2729,6 +2733,41 @@ func _refresh_transcript_entry_views_visibility() -> void:
 		return
 	for entry in _transcript_entries:
 		_refresh_transcript_entry_view(entry)
+
+
+func _rebuild_transcript_entry_indices() -> void:
+	_transcript_entry_indices.clear()
+	for index in range(_transcript_entries.size()):
+		var entry := _transcript_entries[index]
+		var entry_id := int(entry.get("id", -1))
+		if entry_id >= 0:
+			_transcript_entry_indices[entry_id] = index
+
+
+func _transcript_entry_index(entry_id: int) -> int:
+	if entry_id < 0:
+		return -1
+	var index := int(_transcript_entry_indices.get(entry_id, -1))
+	if index >= 0 and index < _transcript_entries.size():
+		var entry := _transcript_entries[index]
+		if int(entry.get("id", -1)) == entry_id:
+			return index
+	_rebuild_transcript_entry_indices()
+	index = int(_transcript_entry_indices.get(entry_id, -1))
+	if index >= 0 and index < _transcript_entries.size():
+		var rebuilt_entry := _transcript_entries[index]
+		if int(rebuilt_entry.get("id", -1)) == entry_id:
+			return index
+	return -1
+
+
+func _remove_transcript_entry(entry_id: int) -> bool:
+	var index := _transcript_entry_index(entry_id)
+	if index < 0:
+		return false
+	_transcript_entries.remove_at(index)
+	_rebuild_transcript_entry_indices()
+	return true
 
 
 func _create_transcript_primary_view(entry: Dictionary) -> Control:

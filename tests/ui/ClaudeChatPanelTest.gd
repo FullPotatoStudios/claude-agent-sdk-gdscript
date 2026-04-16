@@ -2765,6 +2765,11 @@ func test_panel_selected_live_session_keeps_its_query_target_when_other_live_ses
 	await _await_frames(1)
 	_select_session_with_click_signal(panel, first_index)
 	await _await_frames(2)
+	assert_bool(_prompt_input(panel).editable).is_true()
+	_prompt_input(panel).text = "Continue A"
+	_prompt_input(panel).text_changed.emit()
+	assert_bool(_button(panel, "SendButton").disabled).is_false()
+	assert_str(_label(panel, "ComposerHintLabel").text).contains("Another live session is busy")
 
 	transport.emit_stdout_message({
 		"type": "result",
@@ -2779,8 +2784,6 @@ func test_panel_selected_live_session_keeps_its_query_target_when_other_live_ses
 	await _await_frames(2)
 
 	assert_str(_session_id_from_panel(panel)).is_equal("live-session-a")
-	_prompt_input(panel).text = "Continue A"
-	_prompt_input(panel).text_changed.emit()
 	_button(panel, "SendButton").pressed.emit()
 	await _await_frames(1)
 	var prompt_payload: Dictionary = JSON.parse_string(transport.writes[-1])
