@@ -7,6 +7,7 @@ const PROCESS_EXIT_GRACE_MSEC := 5000
 const SDK_ENTRYPOINT := "sdk-gd"
 const DEFAULT_MAX_BUFFER_SIZE := 1024 * 1024
 const DEFAULT_CLI_NAME := "claude"
+const W3C_TRACE_ENV_KEYS := ["TRACEPARENT", "TRACESTATE"]
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudeSDKVersionScript := preload("res://addons/claude_agent_sdk/runtime/claude_sdk_version.gd")
 
@@ -14,6 +15,8 @@ signal stdout_line(line: String)
 signal stderr_line(line: String)
 signal transport_closed
 signal transport_error(message: String)
+
+static var _trace_context_provider: Callable = Callable()
 
 var _options = null
 var _process: Dictionary = {}
@@ -39,6 +42,14 @@ var _last_error := ""
 
 func _init(options = null) -> void:
 	_options = options if options != null else ClaudeAgentOptionsScript.new()
+
+
+static func set_trace_context_provider(provider: Callable) -> void:
+	_trace_context_provider = provider if provider.is_valid() else Callable()
+
+
+static func clear_trace_context_provider() -> void:
+	_trace_context_provider = Callable()
 
 
 func build_command_args() -> PackedStringArray:
@@ -266,8 +277,8 @@ func build_environment_overrides() -> Dictionary:
 		"CLAUDE_CODE_ENTRYPOINT": SDK_ENTRYPOINT,
 		"CLAUDE_AGENT_SDK_VERSION": ClaudeSDKVersionScript.get_version(),
 	}
-	_append_w3c_trace_context_overrides(overrides)
-	_scrub_inherited_w3c_trace_context_for_explicit_overrides(overrides)
+	var trace_plan := _resolved_w3c_trace_context_plan()
+	overrides.merge(trace_plan.get("overrides", {}))
 	if not _options.cwd.is_empty():
 		overrides["PWD"] = _options.cwd
 	for key_variant in _options.env.keys():
@@ -277,28 +288,92 @@ func build_environment_overrides() -> Dictionary:
 	return overrides
 
 
-func _append_w3c_trace_context_overrides(overrides: Dictionary) -> void:
-	for key in ["TRACEPARENT", "TRACESTATE"]:
+func build_environment_unset_keys() -> PackedStringArray:
+	var keys := PackedStringArray()
+	var trace_plan := _resolved_w3c_trace_context_plan()
+	for key_variant in (trace_plan.get("unset_keys", PackedStringArray()) as PackedStringArray):
+		var key := str(key_variant)
+		if key.is_empty() or key == "CLAUDECODE" or keys.has(key):
+			continue
+		keys.append(key)
+	if filters_inherited_claudecode():
+		keys.append("CLAUDECODE")
+	return keys
+
+
+func _resolved_w3c_trace_context_plan() -> Dictionary:
+	var overrides := {}
+	var unset_lookup := {}
+	var provider_overrides := _resolved_provider_w3c_trace_context()
+	var provider_has_traceparent := provider_overrides.has("TRACEPARENT")
+	for key in W3C_TRACE_ENV_KEYS:
 		if not OS.has_environment(key):
 			continue
 		var value := OS.get_environment(key)
 		if value.is_empty():
 			continue
 		overrides[key] = value
-
-
-func _scrub_inherited_w3c_trace_context_for_explicit_overrides(overrides: Dictionary) -> void:
+	if provider_has_traceparent:
+		for key in W3C_TRACE_ENV_KEYS:
+			if provider_overrides.has(key):
+				overrides[key] = provider_overrides[key]
+			elif not _options.env.has(key):
+				overrides.erase(key)
+				unset_lookup[key] = true
 	var has_explicit_trace_override := false
-	for key in ["TRACEPARENT", "TRACESTATE"]:
-		if _options.env.has(key):
-			has_explicit_trace_override = true
-			break
-	if not has_explicit_trace_override:
-		return
-	for key in ["TRACEPARENT", "TRACESTATE"]:
-		if _options.env.has(key):
+	for key in W3C_TRACE_ENV_KEYS:
+		if not _options.env.has(key):
 			continue
-		overrides.erase(key)
+		has_explicit_trace_override = true
+		overrides[key] = str(_options.env[key])
+		unset_lookup.erase(key)
+	if has_explicit_trace_override:
+		for key in W3C_TRACE_ENV_KEYS:
+			if _options.env.has(key):
+				continue
+			overrides.erase(key)
+			unset_lookup[key] = true
+	var unset_keys := PackedStringArray()
+	for key in W3C_TRACE_ENV_KEYS:
+		if unset_lookup.has(key):
+			unset_keys.append(key)
+	return {
+		"overrides": overrides,
+		"unset_keys": unset_keys,
+	}
+
+
+func _resolved_provider_w3c_trace_context() -> Dictionary:
+	if not _trace_context_provider.is_valid():
+		return {}
+	var carrier = _trace_context_provider.call()
+	if not (carrier is Dictionary):
+		return {}
+	var normalized := {}
+	for key_variant in (carrier as Dictionary).keys():
+		var normalized_key := _normalize_w3c_trace_key(str(key_variant))
+		if normalized_key.is_empty():
+			continue
+		var value := str((carrier as Dictionary)[key_variant]).strip_edges()
+		if value.is_empty():
+			continue
+		normalized[normalized_key] = value
+	if not normalized.has("TRACEPARENT"):
+		return {}
+	var result := {"TRACEPARENT": str(normalized["TRACEPARENT"])}
+	if normalized.has("TRACESTATE"):
+		result["TRACESTATE"] = str(normalized["TRACESTATE"])
+	return result
+
+
+func _normalize_w3c_trace_key(key: String) -> String:
+	match key.strip_edges().to_lower():
+		"traceparent":
+			return "TRACEPARENT"
+		"tracestate":
+			return "TRACESTATE"
+		_:
+			return ""
 
 
 func filters_inherited_claudecode() -> bool:
@@ -515,12 +590,13 @@ func _build_posix_shell_script(logical_args: PackedStringArray, cli_path: String
 	if not _options.cwd.is_empty():
 		parts.append("cd %s &&" % _quote_posix(_options.cwd))
 	var env_overrides := build_environment_overrides()
+	var unset_keys := build_environment_unset_keys()
 	parts.append("exec")
-	if filters_inherited_claudecode() or not env_overrides.is_empty():
+	if not unset_keys.is_empty() or not env_overrides.is_empty():
 		parts.append("env")
-		if filters_inherited_claudecode():
+		for key in unset_keys:
 			parts.append("-u")
-			parts.append("CLAUDECODE")
+			parts.append(key)
 		for key_variant in env_overrides.keys():
 			var key := str(key_variant)
 			parts.append("%s=%s" % [key, _quote_posix(str(env_overrides[key_variant]))])
@@ -534,8 +610,8 @@ func _build_windows_shell_script(logical_args: PackedStringArray, cli_path: Stri
 	var commands: Array[String] = []
 	if not _options.cwd.is_empty():
 		commands.append("cd /d %s" % _quote_windows(_options.cwd))
-	if filters_inherited_claudecode():
-		commands.append("set CLAUDECODE=")
+	for key in build_environment_unset_keys():
+		commands.append("set %s=" % _quote_windows_assignment(str(key)))
 	var env_overrides := build_environment_overrides()
 	for key_variant in env_overrides.keys():
 		var key := str(key_variant)

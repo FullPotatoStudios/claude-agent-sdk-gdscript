@@ -99,6 +99,7 @@ The integration layer is intentionally thin.
 - advanced CLI fields such as `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget` are transport-only in the current parity slice and do not enter initialize payloads
 - `settings` and `sandbox` are also transport-only in the current parity slice; `sandbox` is implemented by constructing the CLI `--settings` value rather than by adding a separate runtime protocol field
 - `extra_args` and `stderr` are also transport-only in the current parity slice; `stderr` is a best-effort diagnostics callback and does not become a protocol/error channel
+- active W3C trace-context injection is also transport-only in the current parity slice; use `ClaudeSubprocessCLITransport.set_trace_context_provider(func(): return {"traceparent": ..., "tracestate": ...})` when you need a Godot-native equivalent of the upstream Python SDK's active trace-context propagation
 - `plugins` and `fork_session` are also transport-only in the current parity slice; they do not enter initialize payloads
 - `max_buffer_size` is also transport-only in the current parity slice; it controls local stdout buffering and does not enter initialize payloads or CLI argument serialization
 - `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`, emitted as repeated `--plugin-dir` flags

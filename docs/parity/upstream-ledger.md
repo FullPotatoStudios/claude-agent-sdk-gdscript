@@ -5,7 +5,7 @@
 - Upstream repository: `https://github.com/anthropics/claude-agent-sdk-python`
 - Local reference checkout: a sibling checkout of the upstream repo, if available
 - Version: `post-v0.1.59 main`
-- Commit: `e62192920d3c782c25df2141980ea63fc261de48`
+- Commit: `bbec84d9c5e79f709da3929db3615c742c103e84`
 - Reviewed on: `2026-04-16`
 - Local project phase at pin time: post-v1 parity maintenance / Phase 10 follow-up
 
@@ -148,7 +148,7 @@ The first public implementation target is the scene-free core conversation loop,
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
-  - upstream Python SDK can inject active OpenTelemetry W3C trace context into subprocess launches; local GDScript currently supports only bounded env-based forwarding and override scrubbing for `TRACEPARENT` / `TRACESTATE`
+  - upstream Python SDK injects active OpenTelemetry context through `opentelemetry.propagate.inject()`, while local GDScript mirrors the resulting `TRACEPARENT` / `TRACESTATE` launch env behavior through `ClaudeSubprocessCLITransport.set_trace_context_provider()` plus ambient env passthrough rather than a direct OpenTelemetry dependency
   - local session-scoped helpers can bind a brand-new `"default"` turn to the first unresolved runtime session ID seen on the owned connection because the shared CLI stream does not expose a stronger per-turn correlation primitive before the runtime session UUID appears
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
@@ -163,9 +163,10 @@ upstream feature/fix point reviewed here, while the newer pulled upstream tip
 only adds release/version metadata that does not require local parity work.
 
 - Reviewed on: `2026-04-16`
-- Updated functional baseline commit: `e62192920d3c782c25df2141980ea63fc261de48`
+- Updated functional baseline commit: `bbec84d9c5e79f709da3929db3615c742c103e84`
 - Pulled upstream tip reviewed after the baseline update: `a0fbd1424bd52ae7f2cb7d0d8343f89f97701c96`
 - Reviewed upstream commits in this slice:
+  - `bbec84d`: propagate active W3C trace context into the CLI subprocess env
   - `e94a74d`: SDK MCP `_meta["anthropic/maxResultSizeChars"]` forwarding for large tool results
   - `841ee87`: add `"auto"` permission-mode parity
   - `6617b9e`: `thinking adaptive|disabled` should use `--thinking`, not `--max-thinking-tokens`
@@ -184,9 +185,9 @@ only adds release/version metadata that does not require local parity work.
   - best-effort sibling subagent-tree cleanup in `ClaudeSessions.delete_session()`
   - saved-session subagent discovery/history helpers in `ClaudeSessions`, `ClaudeClientAdapter`, and `ClaudeClientNode`
   - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
-  - bounded W3C trace-context env propagation through `ClaudeSubprocessCLITransport`, forwarding ambient `TRACEPARENT` / `TRACESTATE` into the explicit subprocess launch env, including the POSIX `sudo -n -u` wrapper path, while keeping explicit W3C overrides authoritative without inheriting a stale opposite half
+  - upstream-inspired active W3C trace-context launch parity through a Godot-native `ClaudeSubprocessCLITransport.set_trace_context_provider()` shim, normalized `TRACEPARENT` / `TRACESTATE` env emission, ambient env passthrough, and truthful scrub/unset behavior on the POSIX `sudo -n -u` wrapper path
 - Reviewed but not adopted in this slice:
-  - no additional runtime parity work was required after `e621929`; the pulled upstream tip through `a0fbd14` only changed bundled CLI/release metadata and changelog text
+  - no additional runtime parity work was required after `bbec84d`; the pulled upstream tip through `a0fbd14` only changed bundled CLI/release metadata and changelog text
 
 ## Update process
 

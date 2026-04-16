@@ -80,10 +80,12 @@ func _messages_from_result(result: Dictionary) -> Array[String]:
 
 func before_test() -> void:
 	_original_w3c_trace_env = _capture_environment(W3C_TRACE_ENV_KEYS)
+	ClaudeSubprocessCLITransport.clear_trace_context_provider()
 
 
 func after_test() -> void:
 	_restore_environment(_original_w3c_trace_env)
+	ClaudeSubprocessCLITransport.clear_trace_context_provider()
 
 
 func _capture_environment(keys: Array) -> Dictionary:
@@ -252,6 +254,21 @@ func test_build_environment_overrides_forwards_inherited_w3c_trace_context() -> 
 	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=value")
 
 
+func test_build_environment_overrides_uses_registered_trace_context_provider() -> void:
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func():
+		return {
+			"traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+			"tracestate": "vendor=value",
+		}
+	)
+	var transport := _make_transport()
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
+	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=value")
+
+
 func test_build_environment_overrides_keeps_explicit_trace_env_overrides_authoritative() -> void:
 	OS.set_environment("TRACEPARENT", "00-stale-parent")
 	OS.set_environment("TRACESTATE", "vendor=stale")
@@ -268,6 +285,46 @@ func test_build_environment_overrides_keeps_explicit_trace_env_overrides_authori
 	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=custom")
 
 
+func test_build_environment_overrides_keeps_explicit_trace_env_overrides_authoritative_over_provider() -> void:
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func():
+		return {
+			"traceparent": "00-provider-parent",
+			"tracestate": "vendor=provider",
+		}
+	)
+	var transport := _make_transport({
+		"env": {
+			"TRACEPARENT": "00-custom-parent",
+			"TRACESTATE": "vendor=custom",
+		},
+	})
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-custom-parent")
+	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=custom")
+
+
+func test_build_environment_overrides_partial_explicit_trace_override_scrubs_provider_opposite_half() -> void:
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func():
+		return {
+			"traceparent": "00-provider-parent",
+			"tracestate": "vendor=provider",
+		}
+	)
+	var transport := _make_transport({
+		"env": {
+			"TRACEPARENT": "00-custom-parent",
+		},
+	})
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-custom-parent")
+	assert_bool(overrides.has("TRACESTATE")).is_false()
+	assert_array(Array(transport.build_environment_unset_keys())).contains_exactly(["TRACESTATE", "CLAUDECODE"])
+
+
 func test_build_environment_overrides_scrubs_inherited_tracestate_when_traceparent_is_explicit() -> void:
 	OS.set_environment("TRACEPARENT", "00-stale-parent")
 	OS.set_environment("TRACESTATE", "vendor=stale")
@@ -281,6 +338,7 @@ func test_build_environment_overrides_scrubs_inherited_tracestate_when_tracepare
 
 	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-custom-parent")
 	assert_bool(overrides.has("TRACESTATE")).is_false()
+	assert_array(Array(transport.build_environment_unset_keys())).contains_exactly(["TRACESTATE", "CLAUDECODE"])
 
 
 func test_build_environment_overrides_scrubs_inherited_traceparent_when_tracestate_is_explicit() -> void:
@@ -296,6 +354,7 @@ func test_build_environment_overrides_scrubs_inherited_traceparent_when_tracesta
 
 	assert_bool(overrides.has("TRACEPARENT")).is_false()
 	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=custom")
+	assert_array(Array(transport.build_environment_unset_keys())).contains_exactly(["TRACEPARENT", "CLAUDECODE"])
 
 
 func test_build_environment_overrides_leaves_trace_context_absent_when_not_present() -> void:
@@ -307,6 +366,52 @@ func test_build_environment_overrides_leaves_trace_context_absent_when_not_prese
 
 	assert_bool(overrides.has("TRACEPARENT")).is_false()
 	assert_bool(overrides.has("TRACESTATE")).is_false()
+
+
+func test_build_environment_overrides_active_provider_replaces_stale_inherited_trace_context() -> void:
+	OS.set_environment("TRACEPARENT", "00-stale-parent")
+	OS.set_environment("TRACESTATE", "vendor=stale")
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func():
+		return {
+			"traceparent": "00-active-parent",
+		}
+	)
+	var transport := _make_transport()
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-active-parent")
+	assert_bool(overrides.has("TRACESTATE")).is_false()
+	assert_array(Array(transport.build_environment_unset_keys())).contains_exactly(["TRACESTATE", "CLAUDECODE"])
+
+
+func test_build_environment_overrides_provider_without_traceparent_preserves_inherited_trace_context() -> void:
+	OS.set_environment("TRACEPARENT", "00-ambient-parent")
+	OS.set_environment("TRACESTATE", "vendor=ambient")
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func():
+		return {
+			"baggage": "user=alice",
+			"tracestate": "vendor=ignored-without-traceparent",
+		}
+	)
+	var transport := _make_transport()
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-ambient-parent")
+	assert_str(str(overrides.get("TRACESTATE", ""))).is_equal("vendor=ambient")
+	assert_array(Array(transport.build_environment_unset_keys())).contains_exactly(["CLAUDECODE"])
+
+
+func test_build_environment_overrides_invalid_provider_output_noops() -> void:
+	OS.set_environment("TRACEPARENT", "00-ambient-parent")
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func(): return "not-a-dictionary")
+	var transport := _make_transport()
+
+	var overrides := transport.build_environment_overrides()
+
+	assert_str(str(overrides.get("TRACEPARENT", ""))).is_equal("00-ambient-parent")
+	assert_array(Array(transport.build_environment_unset_keys())).contains_exactly(["CLAUDECODE"])
 
 
 func test_user_launch_path_preserves_trace_context_assignments_in_posix_shell_script() -> void:
@@ -341,6 +446,28 @@ func test_user_launch_path_scrubs_inherited_trace_half_when_explicit_override_is
 
 	assert_str(str(spec.get("path", ""))).is_equal("sudo")
 	assert_str(shell_script).contains("TRACEPARENT='00-custom-parent'")
+	assert_str(shell_script).contains("-u TRACESTATE")
+	assert_bool(shell_script.contains("TRACESTATE='vendor=stale'")).is_false()
+
+
+func test_user_launch_path_scrubs_stale_tracestate_when_provider_supplies_active_traceparent() -> void:
+	if OS.get_name() == "Windows":
+		return
+	OS.set_environment("TRACEPARENT", "00-stale-parent")
+	OS.set_environment("TRACESTATE", "vendor=stale")
+	ClaudeSubprocessCLITransport.set_trace_context_provider(func():
+		return {
+			"traceparent": "00-active-parent",
+		}
+	)
+	var transport := _make_transport({"user": "sdk-user"})
+
+	var spec := transport._build_process_spec_for_args(PackedStringArray(["auth", "status"]), "/usr/bin/claude")
+	var shell_script := str((spec.get("args", PackedStringArray()) as PackedStringArray)[6])
+
+	assert_str(str(spec.get("path", ""))).is_equal("sudo")
+	assert_str(shell_script).contains("TRACEPARENT='00-active-parent'")
+	assert_str(shell_script).contains("-u TRACESTATE")
 	assert_bool(shell_script.contains("TRACESTATE='vendor=stale'")).is_false()
 
 
