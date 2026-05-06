@@ -137,6 +137,52 @@ func test_list_sessions_excludes_sidechain_and_metadata_only_sessions() -> void:
 	assert_str(sessions[0].summary).is_equal("Visible session")
 
 
+func test_list_sessions_created_at_when_first_line_lacks_timestamp() -> void:
+	var config_root := _create_config_root("created-at-later-line")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/created-at-later-line"
+	var project_dir := _make_project_dir(config_root, project_path)
+
+	_write_session_file(project_dir, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", [
+		{"type": "permission-mode", "permissionMode": "acceptEdits"},
+		{
+			"type": "user",
+			"cwd": project_path,
+			"timestamp": "2026-01-15T10:30:00Z",
+			"message": {"content": "hello"},
+		},
+		{"type": "summary", "summary": "Later-timestamp session"},
+	], 1768473100)
+
+	var sessions := ClaudeSessions.list_sessions(project_path, 0, 0, false)
+
+	assert_int(sessions.size()).is_equal(1)
+	if sessions.is_empty():
+		return
+	assert_int(int(sessions[0].created_at)).is_equal(1768473000000)
+
+
+func test_list_sessions_created_at_null_when_no_timestamp_in_head() -> void:
+	var config_root := _create_config_root("created-at-missing")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/created-at-missing"
+	var project_dir := _make_project_dir(config_root, project_path)
+
+	_write_session_file(project_dir, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", [
+		{"type": "user", "cwd": project_path, "message": {"content": "no timestamp"}},
+		{"type": "summary", "summary": "Missing timestamp session"},
+	], 1768473200)
+
+	var sessions := ClaudeSessions.list_sessions(project_path, 0, 0, false)
+
+	assert_int(sessions.size()).is_equal(1)
+	if sessions.is_empty():
+		return
+	assert_that(sessions[0].created_at).is_null()
+
+
 func test_list_sessions_supports_worktree_toggle() -> void:
 	var config_root := _create_config_root("worktree-list")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
