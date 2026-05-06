@@ -522,6 +522,53 @@ func test_consume_stdout_chunk_skips_blank_lines_between_messages() -> void:
 	assert_str(str((JSON.parse_string(messages[1]) as Dictionary).get("id", ""))).is_equal("res1")
 
 
+func test_build_command_args_emits_thinking_display_independently_of_thinking_type() -> void:
+	var transport := _make_transport({"thinking": {"display": "summarized"}})
+
+	var args := transport.build_command_args()
+
+	assert_int(args.find("--thinking-display")).is_greater_equal(0)
+	assert_str(args[args.find("--thinking-display") + 1]).is_equal("summarized")
+	assert_int(args.find("--thinking")).is_equal(-1)
+	assert_int(args.find("--max-thinking-tokens")).is_equal(-1)
+
+
+func test_build_command_args_emits_thinking_display_alongside_adaptive_thinking() -> void:
+	var transport := _make_transport({"thinking": {"type": "adaptive", "display": "omitted"}})
+
+	var args := transport.build_command_args()
+
+	var display_index := args.find("--thinking-display")
+	var thinking_index := args.find("--thinking")
+	assert_int(display_index).is_greater_equal(0)
+	assert_str(args[display_index + 1]).is_equal("omitted")
+	assert_int(thinking_index).is_greater_equal(0)
+	assert_str(args[thinking_index + 1]).is_equal("adaptive")
+
+
+func test_build_command_args_emits_thinking_display_alongside_enabled_budget_tokens() -> void:
+	var transport := _make_transport({
+		"thinking": {"type": "enabled", "budget_tokens": 1024, "display": "summarized"},
+	})
+
+	var args := transport.build_command_args()
+
+	var display_index := args.find("--thinking-display")
+	var budget_index := args.find("--max-thinking-tokens")
+	assert_int(display_index).is_greater_equal(0)
+	assert_str(args[display_index + 1]).is_equal("summarized")
+	assert_int(budget_index).is_greater_equal(0)
+	assert_str(args[budget_index + 1]).is_equal("1024")
+
+
+func test_build_command_args_omits_thinking_display_when_unset() -> void:
+	var transport := _make_transport({"thinking": {"type": "adaptive"}})
+
+	var args := transport.build_command_args()
+
+	assert_int(args.find("--thinking-display")).is_equal(-1)
+
+
 func test_end_input_reports_subprocess_half_close_is_unavailable() -> void:
 	var transport := _make_transport()
 

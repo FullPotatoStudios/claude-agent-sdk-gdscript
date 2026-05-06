@@ -361,22 +361,25 @@ static func _normalize_thinking(value: Variant) -> Variant:
 		return null
 	var source := value as Dictionary
 	var thinking_type := str(source.get("type", "")).strip_edges()
-	if thinking_type.is_empty():
-		return null
+	var display := str(source.get("display", "")).strip_edges()
+	var normalized: Dictionary = {}
 	match thinking_type:
-		"adaptive":
-			return {"type": "adaptive"}
+		"":
+			pass
+		"adaptive", "disabled":
+			normalized["type"] = thinking_type
 		"enabled":
 			if not source.has("budget_tokens"):
 				return null
-			return {
-				"type": "enabled",
-				"budget_tokens": int(source["budget_tokens"]),
-			}
-		"disabled":
-			return {"type": "disabled"}
+			normalized["type"] = "enabled"
+			normalized["budget_tokens"] = int(source["budget_tokens"])
 		_:
 			return null
+	if not display.is_empty():
+		normalized["display"] = display
+	if normalized.is_empty():
+		return null
+	return normalized
 
 
 static func _normalize_sandbox(value: Variant) -> Variant:
