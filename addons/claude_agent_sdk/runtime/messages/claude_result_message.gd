@@ -14,6 +14,7 @@ var result: String = ""
 var structured_output: Variant = null
 var model_usage: Dictionary = {}
 var permission_denials: Array = []
+var deferred_tool_use: Variant = null
 var errors: Array = []
 var uuid: String = ""
 
@@ -34,7 +35,8 @@ func _init(
 	value_model_usage: Dictionary = {},
 	value_permission_denials: Array = [],
 	value_errors: Array = [],
-	value_uuid: String = ""
+	value_uuid: String = "",
+	value_deferred_tool_use: Variant = null
 ) -> void:
 	super._init("result", raw)
 	subtype = value_subtype
@@ -52,3 +54,4 @@ func _init(
 	permission_denials = value_permission_denials.duplicate(true)
 	errors = value_errors.duplicate(true)
 	uuid = value_uuid
+	deferred_tool_use = value_deferred_tool_use

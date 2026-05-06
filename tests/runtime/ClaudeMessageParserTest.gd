@@ -16,6 +16,7 @@ const ClaudeRateLimitEventScript := preload("res://addons/claude_agent_sdk/runti
 const ClaudeRateLimitInfoScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_rate_limit_info.gd")
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_stream_event.gd")
+const ClaudeDeferredToolUseScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_deferred_tool_use.gd")
 
 
 func test_parse_assistant_message_into_typed_blocks() -> void:
@@ -71,6 +72,7 @@ func test_parse_user_system_and_result_messages() -> void:
 	assert_object(result).is_instanceof(ClaudeResultMessageScript)
 	assert_str(result.result).is_equal("4")
 	assert_that(result.structured_output).is_null()
+	assert_that(result.deferred_tool_use).is_null()
 
 
 func test_parse_user_message_preserves_tool_result_blocks_and_tool_use_result_variant() -> void:
@@ -506,3 +508,72 @@ func test_skip_unknown_top_level_message_types() -> void:
 	})
 
 	assert_that(message).is_null()
+
+
+func test_parse_result_message_deferred_tool_use_when_present() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "result",
+		"subtype": "deferred",
+		"duration_ms": 12,
+		"duration_api_ms": 6,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-deferred",
+		"deferred_tool_use": {
+			"id": "toolu_def_1",
+			"name": "Bash",
+			"input": {"command": "ls", "description": "list files"},
+		},
+	})
+
+	assert_object(message).is_instanceof(ClaudeResultMessageScript)
+	assert_object(message.deferred_tool_use).is_instanceof(ClaudeDeferredToolUseScript)
+	assert_str(message.deferred_tool_use.id).is_equal("toolu_def_1")
+	assert_str(message.deferred_tool_use.name).is_equal("Bash")
+	assert_dict(message.deferred_tool_use.input).is_equal({
+		"command": "ls",
+		"description": "list files",
+	})
+
+
+func test_parse_result_message_deferred_tool_use_null_when_absent() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-1",
+	})
+
+	assert_object(message).is_instanceof(ClaudeResultMessageScript)
+	assert_that(message.deferred_tool_use).is_null()
+
+
+func test_parse_result_message_deferred_tool_use_ignores_malformed_payloads() -> void:
+	var non_dictionary_payload: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-bad",
+		"deferred_tool_use": "not-a-dict",
+	})
+	var missing_keys: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "session-partial",
+		"deferred_tool_use": {"id": "tool-x"},
+	})
+
+	assert_object(non_dictionary_payload).is_instanceof(ClaudeResultMessageScript)
+	assert_that(non_dictionary_payload.deferred_tool_use).is_null()
+	assert_object(missing_keys).is_instanceof(ClaudeResultMessageScript)
+	assert_that(missing_keys.deferred_tool_use).is_null()
