@@ -1247,6 +1247,31 @@ func test_duplicate_options_preserves_skills_field() -> void:
 	assert_that(unset_options.duplicate_options().skills).is_null()
 
 
+func test_session_store_field_defaults_to_null_and_accepts_in_memory_adapter() -> void:
+	var defaulted_options = ClaudeAgentOptions.new()
+	assert_that(defaulted_options.session_store).is_null()
+
+	var store := ClaudeInMemorySessionStore.new()
+	var configured_options = ClaudeAgentOptions.new({"session_store": store})
+	assert_that(configured_options.session_store).is_same(store)
+
+
+func test_session_store_round_trips_through_duplicate_options_by_reference() -> void:
+	var store := ClaudeInMemorySessionStore.new()
+	var options = ClaudeAgentOptions.new({"session_store": store})
+	var duplicated = options.duplicate_options()
+	# duplicate_options copies the reference so two ClaudeAgentOptions instances
+	# can share a single store; mutations on one are observable on the other.
+	assert_that(duplicated.session_store).is_same(store)
+
+
+func test_session_store_rejects_non_store_values_and_falls_back_to_null() -> void:
+	var string_options = ClaudeAgentOptions.new({"session_store": "not-a-store"})
+	assert_that(string_options.session_store).is_null()
+	var dict_options = ClaudeAgentOptions.new({"session_store": {}})
+	assert_that(dict_options.session_store).is_null()
+
+
 func test_sdk_version_reads_canonical_version_file() -> void:
 	var version_file := FileAccess.open("res://addons/claude_agent_sdk/VERSION", FileAccess.READ)
 	assert_that(version_file).is_not_null()

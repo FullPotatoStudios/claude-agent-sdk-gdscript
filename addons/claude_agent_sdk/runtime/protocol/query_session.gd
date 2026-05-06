@@ -20,6 +20,8 @@ const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk
 const ClaudeSdkMcpServerScript := preload("res://addons/claude_agent_sdk/runtime/mcp/claude_sdk_mcp_server.gd")
 const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_definition.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
+const ClaudeSessionsScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_sessions.gd")
+const ClaudeSessionKeyScript := preload("res://addons/claude_agent_sdk/runtime/sessions/claude_session_key.gd")
 const DEFAULT_INITIALIZE_TIMEOUT_SEC := 60.0
 
 
@@ -507,6 +509,7 @@ func _on_transport_stdout_line(line: String) -> void:
 
 	var routed_turn_id := _routed_turn_id_for_message(message)
 	_message_stream.push_message(message)
+	_mirror_message_to_session_store(message, data)
 	_push_to_global_response_streams(message)
 	if not routed_turn_id.is_empty():
 		_push_to_turn_response_streams(routed_turn_id, message)
@@ -1606,3 +1609,53 @@ func _complete_pending_control_requests(message: String) -> void:
 func _raise_control_request_error(message: String) -> Dictionary:
 	push_error(message)
 	return {"__control_error__": message}
+
+
+func _mirror_message_to_session_store(message: Variant, raw_entry: Dictionary) -> void:
+	# Synchronously forwards the parsed CLI stdout entry to the configured
+	# session store, if any. Failures are warned-on but never abort the
+	# message-receive loop. Upstream Python uses an async batcher
+	# (`TranscriptMirrorBatcher`); the GDScript SDK is a *reader* over the CLI's
+	# JSONL output, so the sync hook is sufficient at MVP scale — see
+	# `docs/investigations/session-store-scope-risk-memo.md`.
+	if _options == null:
+		return
+	var store: Variant = _options.session_store
+	if store == null or not (store is ClaudeSessionStore):
+		return
+	if not (store as ClaudeSessionStore).should_mirror_cli_writes():
+		# Adapters that wrap the CLI's own canonical JSONL (e.g.
+		# ClaudeOnDiskSessionStore) opt out — mirroring would duplicate entries
+		# and race the CLI's append stream.
+		return
+	var session_id := _message_session_id(message)
+	if session_id.is_empty():
+		return
+	var project_key := _resolve_project_key_for_store()
+	if project_key.is_empty():
+		return
+	var key := ClaudeSessionKeyScript.new(project_key, session_id, "")
+	var append_result := (store as ClaudeSessionStore).append(key, [raw_entry.duplicate(true)])
+	if typeof(append_result) == TYPE_INT and int(append_result) != OK:
+		push_warning(
+			"Session store append failed (%d): %s"
+			% [int(append_result), (store as ClaudeSessionStore).get_last_error()]
+		)
+
+
+func _resolve_project_key_for_store() -> String:
+	var directory := ""
+	if _options != null and _options.cwd != null:
+		directory = str(_options.cwd)
+	if directory.is_empty():
+		directory = OS.get_environment("PWD")
+	if directory.is_empty():
+		directory = ProjectSettings.globalize_path("res://")
+	if directory.is_empty():
+		return ""
+	var project_key := ClaudeSessionsScript.project_key_for_directory(directory)
+	if not project_key.is_empty():
+		return project_key
+	# Fallback to a deterministic hash so the mirror still groups by cwd even
+	# when path resolution fails (e.g. unusual filesystem layouts).
+	return "unresolved-%s" % ClaudeSessionsScript._simple_hash(directory)

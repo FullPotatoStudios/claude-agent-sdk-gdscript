@@ -231,6 +231,50 @@ inspects every meaningful change through `bdb3291` (v0.1.75) plus
   - `ResourceWarning` cleanup on disconnect (`0.1.74`, #908): Python `MemoryObjectReceiveStream` lifecycle
   - bundled CLI version metadata bumps (`0.1.59`, `0.1.75`): the GDScript addon does not bundle a `claude` CLI
 
+## Reviewed upstream slice — SessionStore subsystem
+
+- Reviewed on: `2026-05-07`
+- Upstream releases covered: `v0.1.64`, `v0.1.65`, `v0.1.73`
+- Design memos: `docs/investigations/session-store-ergonomics-memo.md`, `docs/investigations/session-store-scope-risk-memo.md`
+
+Decisive context (from the scope/risk memo): the GDScript SDK is a *reader* over the Claude CLI's JSONL, not a *writer*. The CLI subprocess writes transcripts itself, so we do not need upstream's `TranscriptMirrorBatcher` async serialization machinery at MVP scale — synchronous `store.append(...)` per parsed message is sufficient.
+
+### `v0.1.64` — SessionStore Protocol + 9 helpers + 3 reference adapters
+
+| Symbol | Decision | Reason |
+|---|---|---|
+| `SessionStore` Protocol (required `append` + `load`; optional `delete`, `list_sessions`, `list_session_summaries`, `list_subkeys`) | **MVP — shipped** as `ClaudeSessionStore` (capability bitmask + per-instance `get_last_error`) |
+| In-memory reference adapter | **MVP — shipped** as `ClaudeInMemorySessionStore` |
+| On-disk reference adapter | **MVP — shipped** as `ClaudeOnDiskSessionStore` |
+| `ClaudeAgentOptions.session_store` field | **MVP — shipped** with sync mirror after the parser |
+| `TranscriptMirrorBatcher` (async serialization, retry, backoff) | **v2 deferred** — no measurable need at game-loop scale; SDK is a reader |
+| In-band `MirrorErrorMessage` system frame | **v2 deferred** — requires the batcher to be reachable; current path uses `push_warning` |
+| `materialize_resume_session` | **v2 deferred** — only matters when a non-disk store ships; on-disk resume already works through the CLI |
+| Optional `store` parameter on existing `ClaudeSessions.list_sessions()` / `.get_session_info()` etc. | **v2 deferred** — would double the static surface for no MVP demand |
+| HTTP / Redis / S3 / Postgres reference adapters | **Skipped permanently** — no native Godot client, misleading examples (see scope memo §3) |
+
+### `v0.1.65` — `import_session_to_store` + batch summaries
+
+| Symbol | Decision | Reason |
+|---|---|---|
+| `import_session_to_store` JSONL importer | **v2 deferred** — purely a migration tool; ergonomics memo §8 sketches the runtime-API-first path |
+| Batch session summaries (multi-session reads) | **v2 deferred** — low-effort once the interface lands, no MVP demand |
+| `validate_session_store_options` validator | **v2 deferred** — premature in MVP; lazy errors suffice |
+
+### `v0.1.73` — `session_store_flush`
+
+| Symbol | Decision | Reason |
+|---|---|---|
+| `session_store_flush` ("batched" / "eager") option | **Deferred indefinitely** — only meaningful with the batcher, which itself is deferred |
+
+### Acceptance summary
+
+- Devs can pass a `session_store` to `ClaudeAgentOptions` and observe each parsed CLI message appended to it via the adapter (covered by `ClaudeQuerySessionTest.test_session_store_receives_one_append_per_parsed_message`).
+- `ClaudeOnDiskSessionStore` writes JSONL into the same `~/.claude/projects/<sanitized>/<session>.jsonl` layout `ClaudeSessions` reads from (covered by `ClaudeSessionStoreTest.test_on_disk_store_*`).
+- `ClaudeInMemorySessionStore` round-trips a session: append → list → load (covered by `ClaudeSessionStoreTest.test_in_memory_store_*`).
+- Existing `ClaudeSessions.*` static API behaviour unchanged. The only addition to `ClaudeSessions` is the one-line `project_key_for_directory` helper used by the mirror.
+- Failing `store.append` does not abort the receive loop (covered by `ClaudeQuerySessionTest.test_session_store_failure_does_not_abort_receive_loop`).
+
 ## Update process
 
 For each future upstream sync review:
