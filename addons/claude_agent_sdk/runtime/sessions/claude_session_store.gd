@@ -79,6 +79,15 @@ func is_blocking_safe() -> bool:
 	return true
 
 
+# Whether the runtime should mirror parsed CLI stdout entries into this store.
+# Most stores want the mirror (true). An adapter that wraps the same JSONL the
+# CLI itself writes (e.g. `ClaudeOnDiskSessionStore`) overrides this to return
+# false — otherwise the mirror duplicates entries and races with the CLI's own
+# append stream.
+func should_mirror_cli_writes() -> bool:
+	return true
+
+
 func get_last_error() -> String:
 	return _last_error
 

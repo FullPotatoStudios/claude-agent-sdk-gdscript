@@ -1623,6 +1623,11 @@ func _mirror_message_to_session_store(message: Variant, raw_entry: Dictionary) -
 	var store: Variant = _options.session_store
 	if store == null or not (store is ClaudeSessionStore):
 		return
+	if not (store as ClaudeSessionStore).should_mirror_cli_writes():
+		# Adapters that wrap the CLI's own canonical JSONL (e.g.
+		# ClaudeOnDiskSessionStore) opt out — mirroring would duplicate entries
+		# and race the CLI's append stream.
+		return
 	var session_id := _message_session_id(message)
 	if session_id.is_empty():
 		return

@@ -2129,6 +2129,32 @@ func test_session_store_failure_does_not_abort_receive_loop() -> void:
 	assert_bool(failing_store.append_call_count > 0).is_true()
 
 
+func test_cli_canonical_store_is_not_mirrored() -> void:
+	var transport = FakeTransportScript.new()
+	var canonical_store := CanonicalCliSessionStore.new()
+	var options = ClaudeAgentOptions.new({"cwd": "/tmp/store-mirror-canonical", "session_store": canonical_store})
+	var session = ClaudeQuerySession.new(transport, options)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi", "canonical-session", true)
+	var response_stream = session.receive_response()
+	transport.emit_stdout_message(_result_payload("done", "canonical-session"))
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+
+	# `should_mirror_cli_writes()` returns false → mirror hook must skip every
+	# append so the store doesn't double-write the CLI's own JSONL.
+	assert_int(canonical_store.append_call_count).is_equal(0)
+
+
 class FailingSessionStore extends ClaudeSessionStore:
 	var append_call_count := 0
 
@@ -2139,6 +2165,20 @@ class FailingSessionStore extends ClaudeSessionStore:
 		append_call_count += 1
 		_set_last_error("synthetic store failure")
 		return ERR_CANT_OPEN
+
+	func load(_key: ClaudeSessionKey) -> Array:
+		return []
+
+
+class CanonicalCliSessionStore extends ClaudeSessionStore:
+	var append_call_count := 0
+
+	func should_mirror_cli_writes() -> bool:
+		return false
+
+	func append(_key: ClaudeSessionKey, _entries: Array) -> int:
+		append_call_count += 1
+		return OK
 
 	func load(_key: ClaudeSessionKey) -> Array:
 		return []

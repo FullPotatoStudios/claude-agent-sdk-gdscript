@@ -23,6 +23,14 @@ func is_blocking_safe() -> bool:
 	return true
 
 
+# This adapter wraps the same JSONL files the Claude CLI writes itself, so the
+# runtime must NOT mirror parsed CLI stdout into it — that would duplicate every
+# entry and race with the CLI's own append stream. Manual `append()` calls from
+# user code remain supported (e.g. tagging/rename markers).
+func should_mirror_cli_writes() -> bool:
+	return false
+
+
 func append(key: ClaudeSessionKey, entries: Array) -> int:
 	if key == null:
 		_set_last_error("append called with null key")
