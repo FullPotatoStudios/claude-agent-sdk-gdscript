@@ -317,6 +317,19 @@ func test_duplicate_options_preserves_enable_file_checkpointing() -> void:
 	assert_bool(duplicated.enable_file_checkpointing).is_true()
 
 
+func test_strict_mcp_config_defaults_false_and_round_trips_through_duplicate() -> void:
+	var defaults_options = ClaudeAgentOptions.new()
+	assert_bool(defaults_options.strict_mcp_config).is_false()
+
+	var options = ClaudeAgentOptions.new({
+		"strict_mcp_config": true,
+	})
+	assert_bool(options.strict_mcp_config).is_true()
+
+	var duplicated = options.duplicate_options()
+	assert_bool(duplicated.strict_mcp_config).is_true()
+
+
 func test_duplicate_options_preserves_user() -> void:
 	var options = ClaudeAgentOptions.new({
 		"user": "claude",
