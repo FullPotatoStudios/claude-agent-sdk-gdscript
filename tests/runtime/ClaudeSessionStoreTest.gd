@@ -262,6 +262,50 @@ func test_on_disk_store_delete_returns_does_not_exist_for_missing_session() -> v
 	assert_str(store.get_last_error()).contains("does not exist")
 
 
+func test_on_disk_store_rejects_path_traversal_in_project_key() -> void:
+	var config_root := _create_config_root("on-disk-traversal-project")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var store := ClaudeOnDiskSessionStoreScript.new()
+	var session_id := "77777777-7777-4777-8777-777777777777"
+	var malicious := ClaudeSessionKeyScript.new("../escape", session_id)
+	assert_int(store.append(malicious, [{"type": "user"}])).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(store.get_last_error()).contains("project_key")
+	assert_int(store.delete(malicious)).is_equal(ERR_INVALID_PARAMETER)
+
+
+func test_on_disk_store_rejects_path_separators_in_project_key() -> void:
+	var store := ClaudeOnDiskSessionStoreScript.new()
+	var session_id := "88888888-8888-4888-8888-888888888888"
+	var with_slash := ClaudeSessionKeyScript.new("project/escape", session_id)
+	assert_int(store.append(with_slash, [{"type": "user"}])).is_equal(ERR_INVALID_PARAMETER)
+	assert_array(store.list_sessions("project/escape")).is_empty()
+
+
+func test_on_disk_store_rejects_invalid_session_id() -> void:
+	var config_root := _create_config_root("on-disk-bad-session-id")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := "/tmp/on-disk-bad-session-id"
+	_make_project_dir(config_root, project_path)
+	var project_key := ClaudeSessionsScript.project_key_for_directory(project_path)
+	var store := ClaudeOnDiskSessionStoreScript.new()
+	var key := ClaudeSessionKeyScript.new(project_key, "../etc/passwd")
+	assert_int(store.append(key, [{"type": "user"}])).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(store.get_last_error()).contains("session_id")
+
+
+func test_on_disk_store_rejects_path_traversal_in_subpath() -> void:
+	var config_root := _create_config_root("on-disk-traversal-subpath")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var project_path := "/tmp/on-disk-traversal-subpath"
+	_make_project_dir(config_root, project_path)
+	var project_key := ClaudeSessionsScript.project_key_for_directory(project_path)
+	var store := ClaudeOnDiskSessionStoreScript.new()
+	var session_id := "99999999-9999-4999-8999-999999999999"
+	var key := ClaudeSessionKeyScript.new(project_key, session_id, "subagents/../../escape")
+	assert_int(store.append(key, [{"type": "user"}])).is_equal(ERR_INVALID_PARAMETER)
+	assert_str(store.get_last_error()).contains("subpath")
+
+
 # --- Helpers (mirrors ClaudeSessionsTest.gd conventions) ---
 
 func _create_config_root(label: String) -> String:

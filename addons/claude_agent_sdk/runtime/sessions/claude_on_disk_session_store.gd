@@ -32,19 +32,16 @@ func should_mirror_cli_writes() -> bool:
 
 
 func append(key: ClaudeSessionKey, entries: Array) -> int:
-	if key == null:
-		_set_last_error("append called with null key")
-		return ERR_INVALID_PARAMETER
-	if key.session_id.is_empty() or key.project_key.is_empty():
-		_set_last_error("append requires non-empty project_key and session_id")
-		return ERR_INVALID_PARAMETER
+	var key_error := _validate_key_for_disk(key)
+	if key_error != OK:
+		return key_error
 	if entries.is_empty():
 		_clear_last_error()
 		return OK
 
 	var target_path := _resolve_target_path(key)
-	if target_path.is_empty():
-		_set_last_error("could not resolve on-disk path for %s" % key.to_canonical_string())
+	if target_path.is_empty() or not _path_within_projects_dir(target_path):
+		_set_last_error("could not resolve safe on-disk path for %s" % key.to_canonical_string())
 		return ERR_CANT_OPEN
 
 	var make_dir_error := DirAccess.make_dir_recursive_absolute(target_path.get_base_dir())
@@ -67,11 +64,10 @@ func append(key: ClaudeSessionKey, entries: Array) -> int:
 
 
 func load(key: ClaudeSessionKey) -> Array:
-	if key == null:
-		_set_last_error("load called with null key")
+	if _validate_key_for_disk(key) != OK:
 		return []
 	var target_path := _resolve_target_path(key)
-	if target_path.is_empty() or not FileAccess.file_exists(target_path):
+	if target_path.is_empty() or not _path_within_projects_dir(target_path) or not FileAccess.file_exists(target_path):
 		_clear_last_error()
 		return []
 
@@ -89,12 +85,12 @@ func load(key: ClaudeSessionKey) -> Array:
 
 
 func delete(key: ClaudeSessionKey) -> int:
-	if key == null:
-		_set_last_error("delete called with null key")
-		return ERR_INVALID_PARAMETER
+	var key_error := _validate_key_for_disk(key)
+	if key_error != OK:
+		return key_error
 	var target_path := _resolve_target_path(key)
-	if target_path.is_empty():
-		_set_last_error("could not resolve on-disk path for %s" % key.to_canonical_string())
+	if target_path.is_empty() or not _path_within_projects_dir(target_path):
+		_set_last_error("could not resolve safe on-disk path for %s" % key.to_canonical_string())
 		return ERR_DOES_NOT_EXIST
 	if not FileAccess.file_exists(target_path):
 		_set_last_error("session file %s does not exist" % target_path)
@@ -117,12 +113,12 @@ func delete(key: ClaudeSessionKey) -> int:
 
 
 func list_sessions(project_key: String) -> Array:
-	if project_key.is_empty():
+	if not _is_safe_project_key(project_key):
 		_clear_last_error()
 		return []
 	var project_dir := _project_dir_for_key(project_key)
 	var result: Array = []
-	if project_dir.is_empty():
+	if project_dir.is_empty() or not _path_within_projects_dir(project_dir):
 		_clear_last_error()
 		return result
 	var access := DirAccess.open(project_dir)
@@ -154,11 +150,14 @@ func list_session_summaries(project_key: String) -> Array:
 
 
 func list_subkeys(key: ClaudeSessionListSubkeysKey) -> Array:
-	if key == null or key.session_id.is_empty() or key.project_key.is_empty():
+	if key == null:
+		_clear_last_error()
+		return []
+	if not _is_safe_project_key(key.project_key) or not _is_safe_session_id(key.session_id):
 		_clear_last_error()
 		return []
 	var project_dir := _project_dir_for_key(key.project_key)
-	if project_dir.is_empty():
+	if project_dir.is_empty() or not _path_within_projects_dir(project_dir):
 		_clear_last_error()
 		return []
 	var subagents_dir := project_dir.path_join(key.session_id).path_join("subagents")
@@ -246,3 +245,65 @@ func _remove_directory_if_empty(path: String) -> void:
 		return
 	if access.get_files().is_empty() and access.get_directories().is_empty():
 		DirAccess.remove_absolute(path)
+
+
+# Validates that a key's fields are safe to join under the projects directory.
+# Returns OK or a negative ERR_* (and records `_last_error`).
+#
+# The on-disk adapter writes / reads / deletes under
+# `~/.claude/projects/<project_key>/<session_id>[/<subpath>].jsonl`. Without
+# validation, a `project_key`/`session_id`/`subpath` containing `..` or path
+# separators (besides the legitimate `/` inside `subpath`) lets a caller escape
+# the projects tree. Reject anything that doesn't match the sanitized layout
+# the runtime itself produces.
+func _validate_key_for_disk(key: ClaudeSessionKey) -> int:
+	if key == null:
+		_set_last_error("key is null")
+		return ERR_INVALID_PARAMETER
+	if not _is_safe_project_key(key.project_key):
+		_set_last_error("project_key %s contains unsafe characters" % JSON.stringify(key.project_key))
+		return ERR_INVALID_PARAMETER
+	if not _is_safe_session_id(key.session_id):
+		_set_last_error("session_id %s is not a valid UUID" % JSON.stringify(key.session_id))
+		return ERR_INVALID_PARAMETER
+	if not _is_safe_subpath(key.subpath):
+		_set_last_error("subpath %s contains unsafe characters" % JSON.stringify(key.subpath))
+		return ERR_INVALID_PARAMETER
+	return OK
+
+
+func _is_safe_project_key(project_key: String) -> bool:
+	if project_key.is_empty():
+		return false
+	if project_key.contains("..") or project_key.contains("/") or project_key.contains("\\"):
+		return false
+	if project_key.contains(" "):
+		return false
+	return true
+
+
+func _is_safe_session_id(session_id: String) -> bool:
+	# session_ids are UUIDs by construction. Use the existing validator so the
+	# disk adapter mirrors `ClaudeSessions.*` mutation guards.
+	return ClaudeSessionsScript._is_valid_uuid(session_id)
+
+
+func _is_safe_subpath(subpath: String) -> bool:
+	if subpath.is_empty():
+		return true
+	if subpath.contains("..") or subpath.contains("\\") or subpath.contains(" "):
+		return false
+	if subpath.begins_with("/") or subpath.ends_with("/"):
+		return false
+	for segment in subpath.split("/", false):
+		if segment.is_empty() or segment == "." or segment == "..":
+			return false
+	return true
+
+
+func _path_within_projects_dir(path: String) -> bool:
+	var projects_dir := ClaudeSessionsScript._get_projects_dir()
+	if projects_dir.is_empty():
+		return false
+	var projects_prefix := projects_dir if projects_dir.ends_with("/") else projects_dir + "/"
+	return path == projects_dir or path.begins_with(projects_prefix)
