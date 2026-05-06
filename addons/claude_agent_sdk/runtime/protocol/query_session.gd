@@ -1074,7 +1074,26 @@ func _build_initialize_request() -> Dictionary:
 	var exclude_dynamic_sections := _build_exclude_dynamic_sections_configuration()
 	if exclude_dynamic_sections != null:
 		request["excludeDynamicSections"] = exclude_dynamic_sections
+	var skills_config := _build_skills_configuration()
+	if skills_config != null:
+		request["skills"] = skills_config
 	return request
+
+
+func _build_skills_configuration() -> Variant:
+	# Mirrors Python: only forward ``skills`` to the CLI's initialize control
+	# request when the caller passed an explicit list. ``null`` (default) and
+	# ``"all"`` are equivalent at the wire level (no filter), so leaving the
+	# field off keeps the CLI's default skill discovery behavior.
+	if _options == null:
+		return null
+	var skills_value: Variant = _options.skills
+	if skills_value is Array:
+		var serialized: Array = []
+		for entry_variant in skills_value as Array:
+			serialized.append(str(entry_variant))
+		return serialized
+	return null
 
 
 func _build_hooks_configuration() -> Variant:
