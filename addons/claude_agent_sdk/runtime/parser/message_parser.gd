@@ -48,7 +48,8 @@ static func parse_message_result(data: Variant) -> Dictionary:
 				payload.get("modelUsage", {}) if payload.get("modelUsage", {}) is Dictionary else {},
 				payload.get("permission_denials", []) if payload.get("permission_denials", []) is Array else [],
 				payload.get("errors", []) if payload.get("errors", []) is Array else [],
-				str(payload.get("uuid", ""))
+				str(payload.get("uuid", "")),
+				_parse_deferred_tool_use(payload.get("deferred_tool_use"))
 			))
 		"stream_event":
 			if not _require_fields(payload, ["uuid", "session_id", "event"], [], "stream_event message"):
@@ -363,3 +364,18 @@ static func _build_missing_fields_error(data: Dictionary, context: String) -> St
 				return "Missing required field in %s: %s" % [context, field_name]
 		return "Missing required field in %s" % context
 	return "Missing required field in %s" % context
+
+
+static func _parse_deferred_tool_use(value: Variant) -> Variant:
+	if value is not Dictionary:
+		return null
+	var deferred := value as Dictionary
+	if not deferred.has("id") or not deferred.has("name") or not deferred.has("input"):
+		return null
+	var raw_input: Variant = deferred.get("input")
+	var deferred_input: Dictionary = raw_input as Dictionary if raw_input is Dictionary else {}
+	return ClaudeDeferredToolUse.new(
+		str(deferred.get("id", "")),
+		str(deferred.get("name", "")),
+		deferred_input
+	)

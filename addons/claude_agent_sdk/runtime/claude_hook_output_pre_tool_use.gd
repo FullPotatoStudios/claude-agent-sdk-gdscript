@@ -1,6 +1,8 @@
 extends ClaudeHookSpecificOutput
 class_name ClaudeHookOutputPreToolUse
 
+const ALLOWED_PERMISSION_DECISIONS: Array[String] = ["allow", "deny", "ask", "defer"]
+
 var permission_decision: String = ""
 var permission_decision_reason: String = ""
 var updated_input: Variant = null

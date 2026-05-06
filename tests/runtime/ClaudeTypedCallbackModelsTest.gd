@@ -630,3 +630,18 @@ func test_query_session_keeps_missing_callback_ids_nullable() -> void:
 	var permission_payload: Dictionary = ((permission_response.get("response", {}) as Dictionary).get("response", {}) as Dictionary)
 	assert_that((permission_payload.get("updatedInput", {}) as Dictionary).get("tool_use_id", "missing")).is_equal(null)
 	assert_that((permission_payload.get("updatedInput", {}) as Dictionary).get("agent_id", "missing")).is_equal(null)
+
+
+func test_pre_tool_use_hook_output_round_trips_defer_permission_decision() -> void:
+	var hook_output = ClaudeHookOutputPreToolUseScript.new({
+		"permission_decision": "defer",
+		"permission_decision_reason": "Deferred for async approval",
+	})
+
+	assert_array(ClaudeHookOutputPreToolUseScript.ALLOWED_PERMISSION_DECISIONS).contains(["defer"])
+	assert_str(hook_output.permission_decision).is_equal("defer")
+	assert_dict(hook_output.to_dict()).is_equal({
+		"hookEventName": "PreToolUse",
+		"permissionDecision": "defer",
+		"permissionDecisionReason": "Deferred for async approval",
+	})
