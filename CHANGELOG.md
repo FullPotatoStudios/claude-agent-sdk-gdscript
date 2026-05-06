@@ -19,6 +19,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 ### Fixed
 
 - deserialized `ClaudeToolPermissionContext.suggestions` into `ClaudePermissionUpdate` instances so a `can_use_tool` callback can echo received suggestions back through `ClaudePermissionResultAllow.updated_permissions` without manual coercion, matching upstream Python post-`0.1.75` fix `6597529` (PR #920); `typed_suggestions` is retained as a backward-compat alias for the same typed array
+- `ClaudeSessions.list_sessions()` now scans the full head buffer for the first `timestamp` field instead of only the first JSONL line, matching upstream Python `0.1.74` so sessions whose first record is metadata-only (e.g. `permission-mode`) still report a non-null `created_at`
 
 ## [0.2.2] - 2026-04-11
 

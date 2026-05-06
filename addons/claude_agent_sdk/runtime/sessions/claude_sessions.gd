@@ -820,8 +820,10 @@ static func _parse_session_info_from_lite(session_id: String, lite: LiteSessionF
 			tag = candidate_tag if not str(candidate_tag).is_empty() else null
 			break
 
+	# Scan the full head, not just first_line: the first record may be a
+	# metadata-only entry (e.g. permission-mode) without a timestamp.
 	var created_at = null
-	var first_timestamp = _extract_json_string_field(first_line, "timestamp")
+	var first_timestamp = _extract_json_string_field(lite.head, "timestamp")
 	if first_timestamp != null:
 		var unix_time = Time.get_unix_time_from_datetime_string(str(first_timestamp))
 		if unix_time > 0.0:
