@@ -785,3 +785,103 @@ func test_build_command_args_emits_strict_mcp_config_only_when_enabled() -> void
 
 	var enabled_args := _make_transport({"strict_mcp_config": true}).build_command_args()
 	assert_int(enabled_args.count("--strict-mcp-config")).is_equal(1)
+
+
+func test_skills_unset_does_not_inject_skill_tool_or_default_setting_sources() -> void:
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"allowed_tools": ["Read"],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Read"])
+	assert_bool(args.has("--setting-sources")).is_false()
+	assert_bool(str(",".join(args)).contains("Skill")).is_false()
+
+
+func test_skills_all_injects_bare_skill_tool_and_defaults_setting_sources() -> void:
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": "all",
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Skill"])
+	assert_array(args).contains(["--setting-sources", "user,project"])
+
+
+func test_skills_all_appends_to_existing_allowed_tools_without_overriding_setting_sources() -> void:
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": "all",
+		"allowed_tools": ["Read", "Glob"],
+		"setting_sources": ["project"],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Read,Glob,Skill"])
+	assert_array(args).contains(["--setting-sources", "project"])
+
+
+func test_skills_list_injects_named_skill_rules_and_defaults_setting_sources() -> void:
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": ["code-review", "test-runner"],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Skill(code-review),Skill(test-runner)"])
+	assert_array(args).contains(["--setting-sources", "user,project"])
+
+
+func test_skills_list_does_not_duplicate_existing_skill_patterns() -> void:
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": ["code-review", "test-runner"],
+		"allowed_tools": ["Read", "Skill(code-review)"],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Read,Skill(code-review),Skill(test-runner)"])
+
+
+func test_skills_empty_list_suppresses_skill_injection_but_still_defaults_setting_sources() -> void:
+	# Mirrors Python: an explicit empty skills list adds no Skill rules but
+	# still triggers the setting_sources default so the CLI is in the
+	# skills-aware mode the caller opted into by setting the field at all.
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": [],
+		"allowed_tools": ["Read"],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Read"])
+	assert_array(args).contains(["--setting-sources", "user,project"])
+	assert_bool(str(",".join(args)).contains("Skill")).is_false()
+
+
+func test_skills_does_not_mutate_caller_allowed_tools_list() -> void:
+	var options := ClaudeAgentOptions.new({
+		"skills": "all",
+		"allowed_tools": ["Read"],
+	})
+	var transport := ClaudeSubprocessCLITransport.new(options)
+
+	transport.build_command_args()
+	transport.build_command_args()
+
+	assert_array(options.allowed_tools).is_equal(["Read"])
+
+
+func test_skills_preserves_explicit_empty_setting_sources() -> void:
+	# Mirrors Python: when the caller explicitly opts out of filesystem
+	# setting sources via ``setting_sources=[]`` it must NOT be replaced by
+	# the skills auto-default ``["user", "project"]``. The explicit empty
+	# array still surfaces the ``--setting-sources`` flag so the CLI
+	# disables filesystem setting sources.
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": "all",
+		"setting_sources": [],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Skill"])
+	assert_bool(args.has("--setting-sources")).is_true()
+	# Explicit empty must be emitted as an empty join, not as user,project.
+	assert_array(args).contains(["--setting-sources", ""])
+	assert_bool(str(",".join(args)).contains("user,project")).is_false()

@@ -276,6 +276,47 @@ func test_initialize_omits_transport_only_advanced_cli_fields() -> void:
 	assert_bool(request.has("stderr")).is_false()
 
 
+func test_initialize_includes_skills_list_and_omits_for_default_or_all() -> void:
+	# Mirrors Python: only an explicit ``skills`` list is forwarded via the
+	# initialize control request so the CLI filters which skills it loads.
+	# ``null`` (default) and ``"all"`` are no-ops at the wire level.
+	var transport_default := FakeTransportScript.new()
+	var session_default := ClaudeQuerySession.new(transport_default, ClaudeAgentOptions.new({}))
+	session_default.open_session()
+	var default_initialize: Dictionary = JSON.parse_string(transport_default.writes[0])
+	var default_request: Dictionary = default_initialize.get("request", {}) if default_initialize.get("request", {}) is Dictionary else {}
+	assert_bool(default_request.has("skills")).is_false()
+
+	var transport_all := FakeTransportScript.new()
+	var session_all := ClaudeQuerySession.new(transport_all, ClaudeAgentOptions.new({"skills": "all"}))
+	session_all.open_session()
+	var all_initialize: Dictionary = JSON.parse_string(transport_all.writes[0])
+	var all_request: Dictionary = all_initialize.get("request", {}) if all_initialize.get("request", {}) is Dictionary else {}
+	assert_bool(all_request.has("skills")).is_false()
+
+	var transport_list := FakeTransportScript.new()
+	var session_list := ClaudeQuerySession.new(
+		transport_list,
+		ClaudeAgentOptions.new({"skills": ["code-review", "test-runner"]})
+	)
+	session_list.open_session()
+	var list_initialize: Dictionary = JSON.parse_string(transport_list.writes[0])
+	var list_request: Dictionary = list_initialize.get("request", {}) if list_initialize.get("request", {}) is Dictionary else {}
+	assert_bool(list_request.has("skills")).is_true()
+	assert_array(list_request.get("skills", [])).contains_exactly(["code-review", "test-runner"])
+
+	var transport_empty := FakeTransportScript.new()
+	var session_empty := ClaudeQuerySession.new(
+		transport_empty,
+		ClaudeAgentOptions.new({"skills": []})
+	)
+	session_empty.open_session()
+	var empty_initialize: Dictionary = JSON.parse_string(transport_empty.writes[0])
+	var empty_request: Dictionary = empty_initialize.get("request", {}) if empty_initialize.get("request", {}) is Dictionary else {}
+	assert_bool(empty_request.has("skills")).is_true()
+	assert_array(empty_request.get("skills", [])).is_empty()
+
+
 func test_initialize_error_fails_pending_streams() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
