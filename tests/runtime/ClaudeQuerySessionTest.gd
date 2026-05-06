@@ -2077,6 +2077,73 @@ func test_dynamic_controls_send_expected_control_requests() -> void:
 	})
 
 
+func test_session_store_receives_one_append_per_parsed_message() -> void:
+	var transport = FakeTransportScript.new()
+	var store := ClaudeInMemorySessionStore.new()
+	var options = ClaudeAgentOptions.new({"cwd": "/tmp/store-mirror-cwd", "session_store": store})
+	var session = ClaudeQuerySession.new(transport, options)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi", "store-mirror-session", true)
+	var response_stream = session.receive_response()
+	transport.emit_stdout_message(_result_payload("done", "store-mirror-session"))
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+
+	# Exactly one append per parsed CLI message that carries a session id.
+	assert_int(store.size()).is_equal(1)
+	var listed: Array = store.list_sessions(ClaudeSessions.project_key_for_directory("/tmp/store-mirror-cwd"))
+	assert_int(listed.size()).is_equal(1)
+	assert_str((listed[0] as ClaudeSessionStoreListEntry).session_id).is_equal("store-mirror-session")
+
+
+func test_session_store_failure_does_not_abort_receive_loop() -> void:
+	var transport = FakeTransportScript.new()
+	var failing_store := FailingSessionStore.new()
+	var options = ClaudeAgentOptions.new({"cwd": "/tmp/store-mirror-fail", "session_store": failing_store})
+	var session = ClaudeQuerySession.new(transport, options)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi", "store-mirror-fail", true)
+	var response_stream = session.receive_response()
+	transport.emit_stdout_message(_result_payload("done", "store-mirror-fail"))
+	# Receive loop must keep delivering the result even though the store rejects every append.
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_bool(failing_store.append_call_count > 0).is_true()
+
+
+class FailingSessionStore extends ClaudeSessionStore:
+	var append_call_count := 0
+
+	func capabilities() -> int:
+		return 0
+
+	func append(_key: ClaudeSessionKey, _entries: Array) -> int:
+		append_call_count += 1
+		_set_last_error("synthetic store failure")
+		return ERR_CANT_OPEN
+
+	func load(_key: ClaudeSessionKey) -> Array:
+		return []
+
+
 func _result_payload(result_text: String, session_id: String = "default", num_turns: int = 1) -> Dictionary:
 	return {
 		"type": "result",

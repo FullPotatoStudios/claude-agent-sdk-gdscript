@@ -151,6 +151,7 @@ func _ready() -> void:
 - Scene-free built-in tool catalog metadata and selection helpers for custom panel/tool-picker UIs
 - Godot-native adapter and node layers with session-history and transcript-detail convenience passthroughs
 - A reusable chat panel plus demo validation scene, now including a conversation-first main view, quick model/effort/permission controls, a secondary settings view for prompt/tool/MCP configuration plus connected-session context/MCP diagnostics, session browsing, transcript restoration, transcript granularity filters for thinking/tasks/tools/results/system/raw, disconnected connect-and-send composer flows, truthful saved-session reconnect handoff, basic rename/tag/delete/fork actions, saved-session cutoff forks from chat bubbles and detail cards, and live task stop controls
+- **Pluggable session storage** (`ClaudeSessionStore` interface with `ClaudeInMemorySessionStore` and `ClaudeOnDiskSessionStore` adapters) — store transcripts in memory, on `user://`, or your own backend by pointing `ClaudeAgentOptions.session_store` at a custom adapter; the runtime mirrors each parsed CLI message into the store synchronously after the parser
 
 ## Current Gaps
 

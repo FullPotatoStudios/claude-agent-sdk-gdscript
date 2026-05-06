@@ -422,6 +422,17 @@ static func get_last_error() -> String:
 	return _last_error
 
 
+static func project_key_for_directory(directory: String) -> String:
+	# Returns the sanitized projects-dir key the on-disk layout uses for `directory`.
+	# Empty when `directory` is empty or unresolvable.
+	if directory.is_empty():
+		return ""
+	var resolved := _resolve_directory(directory)
+	if resolved.is_empty():
+		return ""
+	return _sanitize_path(resolved)
+
+
 static func _is_valid_uuid(maybe_uuid: String) -> bool:
 	if maybe_uuid.is_empty():
 		return false

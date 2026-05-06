@@ -52,6 +52,7 @@ var setting_sources: Array[String]:
 		_setting_sources = _to_string_array(value)
 		_setting_sources_configured = true
 var skills: Variant = null
+var session_store: ClaudeSessionStore = null
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -149,6 +150,8 @@ func apply(config: Dictionary):
 		sandbox = _normalize_sandbox(config["sandbox"])
 	if config.has("skills"):
 		skills = _normalize_skills(config["skills"])
+	if config.has("session_store"):
+		session_store = _normalize_session_store(config["session_store"])
 	return self
 
 
@@ -194,6 +197,7 @@ func duplicate_options():
 			"agents": _duplicate_agents(agents),
 			"sandbox": _duplicate_variant(sandbox),
 			"skills": _duplicate_variant(skills),
+			"session_store": session_store,
 		})
 	if _setting_sources_configured:
 		duplicated.apply({"setting_sources": setting_sources.duplicate()})
@@ -406,6 +410,15 @@ static func _normalize_skills(value: Variant) -> Variant:
 			if not name.is_empty():
 				names.append(name)
 		return names
+	return null
+
+
+static func _normalize_session_store(value: Variant) -> ClaudeSessionStore:
+	if value == null:
+		return null
+	if value is ClaudeSessionStore:
+		return value as ClaudeSessionStore
+	push_warning("ClaudeAgentOptions.session_store must be a ClaudeSessionStore instance; ignoring %s" % str(value))
 	return null
 
 

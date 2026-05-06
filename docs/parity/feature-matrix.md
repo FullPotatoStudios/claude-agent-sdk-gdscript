@@ -109,6 +109,25 @@ Phase 1 findings that constrain this matrix:
 | Rename/tag/delete session helpers | `_internal/session_mutations.py`, `tests/test_session_mutations.py` | Useful for history management UIs | session file layout and mutation rules | `v1 later` | Delivered in Phase 10B through `ClaudeSessions.rename_session()`, `tag_session()`, and `delete_session()`; higher-layer wrapper and panel support shipped in Phase 10C |
 | Session forking helpers | `_internal/session_mutations.py` | Advanced workflow for branching conversation history | session transcript mutation | `v1 later` | Delivered post-v1 in Phase 10H through `ClaudeSessions.fork_session()` plus adapter/node passthroughs |
 
+## Pluggable session storage (SessionStore)
+
+| Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `SessionStore` abstract interface | `_internal/session_store.py`, upstream Python `0.1.64` | Lets game and editor authors persist transcripts in their own backend (RAM, save file, custom store) | parser, options wiring | `v1 later` | Delivered as MVP through `ClaudeSessionStore` (required `append`/`load`, optional `delete`/`list_sessions`/`list_session_summaries`/`list_subkeys`) plus capability bitmask. See `docs/investigations/session-store-scope-risk-memo.md`. |
+| In-memory reference adapter | `_internal/session_store.py` (InMemory) | Required for tests and short-lived gameplay flows | session store interface | `v1 later` | Delivered as MVP through `ClaudeInMemorySessionStore` with full optional surface and strictly-monotonic mtime. |
+| On-disk reference adapter | `_internal/session_store.py` (OnDisk) | Only adapter most Godot games need; mirrors the `ClaudeSessions` JSONL layout | session store interface, `ClaudeSessions` path resolution | `v1 later` | Delivered as MVP through `ClaudeOnDiskSessionStore` wrapping `~/.claude/projects/<sanitized>/<session>.jsonl`. |
+| `ClaudeAgentOptions.session_store` wiring | `_internal/query.py` (transcript_mirror frame), upstream Python `0.1.64` | Hooks the store into the parsed-message stream so callers do not have to wire signals manually | options wiring, query session | `v1 later` | Delivered as MVP through synchronous mirror in `ClaudeQuerySession._mirror_message_to_session_store`; failures `push_warning` and never abort the receive loop. |
+| `TranscriptMirrorBatcher` async serialization | `_internal/transcript_mirror_batcher.py`, upstream Python `0.1.64` | Throughput on chatty sessions | batcher state machine, retry/backoff timers | `deferred` | v2 follow-up. The GDScript SDK is a *reader* over the CLI's JSONL, not a writer — sync append is sufficient at game-loop scale. |
+| Eager flush mode (`session_store_flush`) | `types.py`, upstream Python `0.1.73` | Knob over flush cadence | mirror batcher | `deferred` | v2 follow-up; only meaningful once the batcher ships. |
+| In-band `MirrorErrorMessage` system frames | `_internal/query.py` mirror error routing | Surface store failures inline in the message stream | mirror batcher | `deferred` | v2 follow-up; current MVP routes failures through `push_warning` only. |
+| Resume materialization | `_internal/sessions.py` (`materialize_resume_session`) | Required for non-disk stores to participate in `--resume` | non-disk adapter, temp-dir staging | `deferred` | v2 follow-up; the on-disk adapter does not need this because the CLI reads the same files. |
+| `import_session_to_store` JSONL importer | `_internal/sessions.py`, upstream Python `0.1.65` | One-shot migration from existing on-disk transcripts | session store interface | `deferred` | v2 follow-up; pure migration tool. |
+| Batch session summaries (multi-session reads) | upstream Python `0.1.65` | Low-effort once the interface lands | session store interface | `deferred` | v2 follow-up; no MVP demand. |
+| `validate_session_store_options` validator | `types.py`, upstream Python `0.1.65` | Up-front diagnostics of incompatible option combos | options validation | `deferred` | v2 follow-up; lazy errors at first call suffice for MVP. |
+| Optional `store` parameter on existing `ClaudeSessions.list_sessions()` / `.get_session_info()` | upstream Python statics | Statics route through a store transparently | session store interface | `deferred` | v2 follow-up; would double the static surface and is not needed for the MVP. |
+| HTTP/REST reference adapter | upstream examples | Custom remote backends | session store interface | `not applicable` | Permanently skipped in this port; the auth/retry/schema design space is unbounded and there is no committed Godot consumer. |
+| Redis / S3 / Postgres reference adapters | upstream examples | Server-style backends | external Godot driver | `not applicable` | Permanently skipped in this port; no native Godot client and shipping placeholders is misleading. |
+
 ## MCP integration and SDK MCP helpers
 
 | Capability | Upstream entrypoints | Why it matters in Godot | Dependency chain | Bucket | Notes |
