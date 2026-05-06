@@ -753,7 +753,11 @@ func _push_to_turn_response_streams(turn_id: String, message: Variant) -> void:
 
 
 func _transport_supports_end_input() -> bool:
-	return _transport != null and _transport.supports_end_input()
+	if _transport == null:
+		return false
+	if not _transport.has_method("supports_end_input"):
+		return false
+	return _transport.supports_end_input()
 
 
 func _can_logically_end_input_without_transport(state: Dictionary) -> bool:
