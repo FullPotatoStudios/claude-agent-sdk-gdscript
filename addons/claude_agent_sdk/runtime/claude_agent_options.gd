@@ -35,6 +35,7 @@ var max_thinking_tokens: Variant = null
 var thinking: Variant = null
 var include_partial_messages: bool = false
 var include_hook_events: bool = false
+var strict_mcp_config: bool = false
 var enable_file_checkpointing: bool = false
 var user: String = ""
 var fork_session: bool = false
@@ -120,6 +121,8 @@ func apply(config: Dictionary):
 		include_partial_messages = bool(config["include_partial_messages"])
 	if config.has("include_hook_events"):
 		include_hook_events = bool(config["include_hook_events"])
+	if config.has("strict_mcp_config"):
+		strict_mcp_config = bool(config["strict_mcp_config"])
 	if config.has("enable_file_checkpointing"):
 		enable_file_checkpointing = bool(config["enable_file_checkpointing"])
 	if config.has("user"):
@@ -179,6 +182,7 @@ func duplicate_options():
 				"thinking": _duplicate_variant(thinking),
 				"include_partial_messages": include_partial_messages,
 				"include_hook_events": include_hook_events,
+				"strict_mcp_config": strict_mcp_config,
 				"enable_file_checkpointing": enable_file_checkpointing,
 				"user": user,
 				"fork_session": fork_session,

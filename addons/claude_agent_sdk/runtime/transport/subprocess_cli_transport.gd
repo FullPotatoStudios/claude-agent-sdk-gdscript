@@ -100,6 +100,8 @@ func build_command_args() -> PackedStringArray:
 	var mcp_config := _build_mcp_config_argument()
 	if not mcp_config.is_empty():
 		args.append_array(["--mcp-config", mcp_config])
+	if _options.strict_mcp_config:
+		args.append("--strict-mcp-config")
 	if _options.include_partial_messages:
 		args.append("--include-partial-messages")
 	if _options.include_hook_events:

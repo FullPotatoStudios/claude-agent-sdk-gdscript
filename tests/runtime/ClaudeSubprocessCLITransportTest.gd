@@ -777,3 +777,11 @@ func test_close_does_not_wait_or_kill_again_after_process_has_already_exited() -
 	assert_int(transport._pid).is_equal(0)
 	assert_dict(transport._process).is_empty()
 	assert_int(int(close_events[0])).is_equal(1)
+
+
+func test_build_command_args_emits_strict_mcp_config_only_when_enabled() -> void:
+	var default_args := _make_transport().build_command_args()
+	assert_bool(default_args.has("--strict-mcp-config")).is_false()
+
+	var enabled_args := _make_transport({"strict_mcp_config": true}).build_command_args()
+	assert_int(enabled_args.count("--strict-mcp-config")).is_equal(1)
