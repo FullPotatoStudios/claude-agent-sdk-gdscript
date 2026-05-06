@@ -102,6 +102,8 @@ func build_command_args() -> PackedStringArray:
 		args.append_array(["--mcp-config", mcp_config])
 	if _options.include_partial_messages:
 		args.append("--include-partial-messages")
+	if _options.include_hook_events:
+		args.append("--include-hook-events")
 	if _options.fork_session:
 		args.append("--fork-session")
 	if _options.has_setting_sources():
