@@ -115,6 +115,9 @@ func build_command_args() -> PackedStringArray:
 		var resolved_max_thinking_tokens := _resolved_max_thinking_tokens()
 		if resolved_max_thinking_tokens != null:
 			args.append_array(["--max-thinking-tokens", str(int(resolved_max_thinking_tokens))])
+	var resolved_thinking_display := _resolved_thinking_display()
+	if not resolved_thinking_display.is_empty():
+		args.append_array(["--thinking-display", resolved_thinking_display])
 	if not _options.effort.is_empty():
 		args.append_array(["--effort", _options.effort])
 	args.append_array(["--input-format", "stream-json"])
@@ -693,6 +696,13 @@ func _resolved_max_thinking_tokens() -> Variant:
 			_:
 				return null
 	return resolved
+
+
+func _resolved_thinking_display() -> String:
+	if _options.thinking is not Dictionary:
+		return ""
+	var thinking_config := _options.thinking as Dictionary
+	return str(thinking_config.get("display", "")).strip_edges()
 
 
 func _build_settings_argument() -> String:

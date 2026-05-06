@@ -9,6 +9,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 ### Added
 
 - `"defer"` PreToolUse hook permission decision and `ClaudeDeferredToolUse` payload on `ClaudeResultMessage.deferred_tool_use`, parsed from CLI `result` messages so callers can inspect the deferred tool call (upstream parity with Python 0.1.74)
+- forwarded `ClaudeAgentOptions.thinking.display` as `--thinking-display <value>` to the Claude CLI, mirroring upstream Python `0.1.65` so callers can request `"summarized"` or `"omitted"` thinking text independently of the `type` and `budget_tokens` fields
 
 ### Fixed
 
