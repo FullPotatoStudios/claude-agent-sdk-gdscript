@@ -14,6 +14,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - typed `ClaudeServerToolUseBlock` and `ClaudeServerToolResultBlock` content blocks plus matching parser support so assistant `server_tool_use` and `advisor_tool_result` payloads (e.g. advisor, web_search) round-trip as typed instances instead of being silently dropped (parity with upstream Python `claude-agent-sdk` v0.1.65)
 - forwarded `ClaudeAgentOptions.strict_mcp_config` as `--strict-mcp-config` to the Claude CLI, mirroring upstream Python `0.1.74` so callers can restrict MCP servers to only those passed via `mcp_servers` and ignore any from settings/config files
 - `ClaudeAgentOptions.skills` accepting `null` (CLI default), `"all"` (auto-discover all installed skills), or `Array[String]` of named skills; the subprocess CLI transport now mirrors upstream's `_apply_skills_defaults` so the `Skill` / `Skill(name)` tool rules and a default `setting_sources` of `["user", "project"]` are injected only when the caller opts in (parity with Python SDK 0.1.62)
+- extended `ClaudeAgentOptions.sandbox.network` with the new `allowed_domains`, `denied_domains`, `allow_managed_domains_only`, and `allow_mach_lookup` fields (camelCase aliases also accepted), mirroring upstream Python `0.1.71` (#893) and forwarding them to the CLI under their `allowedDomains`, `deniedDomains`, `allowManagedDomainsOnly`, and `allowMachLookup` wire keys; unknown network keys are now preserved verbatim for forward compatibility
 
 ### Fixed
 

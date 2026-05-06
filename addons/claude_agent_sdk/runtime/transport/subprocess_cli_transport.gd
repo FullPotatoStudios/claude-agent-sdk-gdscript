@@ -821,6 +821,17 @@ func _serialize_sandbox_config(config: Dictionary) -> Dictionary:
 
 
 func _serialize_sandbox_network(config: Dictionary) -> Dictionary:
+	const SNAKE_TO_CAMEL := {
+		"allow_unix_sockets": "allowUnixSockets",
+		"allow_all_unix_sockets": "allowAllUnixSockets",
+		"allow_local_binding": "allowLocalBinding",
+		"http_proxy_port": "httpProxyPort",
+		"socks_proxy_port": "socksProxyPort",
+		"allowed_domains": "allowedDomains",
+		"denied_domains": "deniedDomains",
+		"allow_managed_domains_only": "allowManagedDomainsOnly",
+		"allow_mach_lookup": "allowMachLookup",
+	}
 	var serialized: Dictionary = {}
 	if config.has("allow_unix_sockets"):
 		serialized["allowUnixSockets"] = (config["allow_unix_sockets"] as Array).duplicate()
@@ -832,6 +843,25 @@ func _serialize_sandbox_network(config: Dictionary) -> Dictionary:
 		serialized["httpProxyPort"] = int(config["http_proxy_port"])
 	if config.has("socks_proxy_port"):
 		serialized["socksProxyPort"] = int(config["socks_proxy_port"])
+	if config.has("allowed_domains"):
+		serialized["allowedDomains"] = (config["allowed_domains"] as Array).duplicate()
+	if config.has("denied_domains"):
+		serialized["deniedDomains"] = (config["denied_domains"] as Array).duplicate()
+	if config.has("allow_managed_domains_only"):
+		serialized["allowManagedDomainsOnly"] = bool(config["allow_managed_domains_only"])
+	if config.has("allow_mach_lookup"):
+		serialized["allowMachLookup"] = (config["allow_mach_lookup"] as Array).duplicate()
+	for key_variant in config.keys():
+		var key_str := str(key_variant)
+		if SNAKE_TO_CAMEL.has(key_str):
+			continue
+		var raw_value: Variant = config[key_variant]
+		if raw_value is Dictionary:
+			serialized[key_str] = (raw_value as Dictionary).duplicate(true)
+		elif raw_value is Array:
+			serialized[key_str] = (raw_value as Array).duplicate(true)
+		else:
+			serialized[key_str] = raw_value
 	return serialized
 
 

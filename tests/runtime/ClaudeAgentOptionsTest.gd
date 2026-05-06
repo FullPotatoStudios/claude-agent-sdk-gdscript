@@ -465,6 +465,123 @@ func test_apply_normalizes_sandbox_from_snake_case_and_camel_case_keys() -> void
 	})
 
 
+func test_apply_normalizes_sandbox_network_domain_allowlist_from_snake_case() -> void:
+	var options = ClaudeAgentOptions.new({
+		"sandbox": {
+			"enabled": true,
+			"network": {
+				"allowed_domains": ["example.com", "api.example.com"],
+				"denied_domains": ["evil.example.com"],
+				"allow_managed_domains_only": true,
+				"allow_mach_lookup": ["com.apple.*", "com.example.service"],
+			},
+		},
+	})
+
+	assert_dict(options.sandbox).is_equal({
+		"enabled": true,
+		"network": {
+			"allowed_domains": ["example.com", "api.example.com"],
+			"denied_domains": ["evil.example.com"],
+			"allow_managed_domains_only": true,
+			"allow_mach_lookup": ["com.apple.*", "com.example.service"],
+		},
+	})
+
+
+func test_apply_normalizes_sandbox_network_domain_allowlist_from_camel_case() -> void:
+	var options = ClaudeAgentOptions.new({
+		"sandbox": {
+			"enabled": true,
+			"network": {
+				"allowedDomains": ["example.com", "api.example.com"],
+				"deniedDomains": ["evil.example.com"],
+				"allowManagedDomainsOnly": true,
+				"allowMachLookup": ["com.apple.*", "com.example.service"],
+			},
+		},
+	})
+
+	assert_dict(options.sandbox).is_equal({
+		"enabled": true,
+		"network": {
+			"allowed_domains": ["example.com", "api.example.com"],
+			"denied_domains": ["evil.example.com"],
+			"allow_managed_domains_only": true,
+			"allow_mach_lookup": ["com.apple.*", "com.example.service"],
+		},
+	})
+
+
+func test_apply_preserves_unknown_sandbox_network_keys_for_forward_compat() -> void:
+	var options = ClaudeAgentOptions.new({
+		"sandbox": {
+			"enabled": true,
+			"network": {
+				"allowed_domains": ["example.com"],
+				"futureKnob": "tomorrow",
+				"future_array": [1, 2, 3],
+				"future_nested": {"deep": {"value": true}},
+			},
+		},
+	})
+
+	var sandbox: Dictionary = options.sandbox as Dictionary
+	var network: Dictionary = sandbox["network"] as Dictionary
+	assert_array(network["allowed_domains"] as Array).is_equal(["example.com"])
+	assert_str(str(network["futureKnob"])).is_equal("tomorrow")
+	assert_array(network["future_array"] as Array).is_equal([1, 2, 3])
+	assert_dict(network["future_nested"] as Dictionary).is_equal({"deep": {"value": true}})
+
+
+func test_apply_preserves_default_sandbox_without_domain_fields() -> void:
+	var options = ClaudeAgentOptions.new({
+		"sandbox": {
+			"enabled": true,
+			"network": {
+				"allow_local_binding": true,
+			},
+		},
+	})
+
+	assert_dict(options.sandbox).is_equal({
+		"enabled": true,
+		"network": {
+			"allow_local_binding": true,
+		},
+	})
+
+
+func test_subprocess_transport_forwards_sandbox_network_domain_allowlist() -> void:
+	var transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"sandbox": {
+			"enabled": true,
+			"network": {
+				"allowed_domains": ["example.com", "api.example.com"],
+				"denied_domains": ["evil.example.com"],
+				"allow_managed_domains_only": true,
+				"allow_mach_lookup": ["com.apple.*"],
+			},
+		},
+	}))
+
+	var args := transport.build_command_args()
+	var settings_index := args.find("--settings")
+	assert_int(settings_index).is_greater_equal(0)
+	var settings: Dictionary = JSON.parse_string(args[settings_index + 1])
+	assert_dict(settings).is_equal({
+		"sandbox": {
+			"enabled": true,
+			"network": {
+				"allowedDomains": ["example.com", "api.example.com"],
+				"deniedDomains": ["evil.example.com"],
+				"allowManagedDomainsOnly": true,
+				"allowMachLookup": ["com.apple.*"],
+			},
+		},
+	})
+
+
 func test_apply_preserves_extra_args_and_stderr_callback() -> void:
 	var stderr_lines: Array[String] = []
 	var stderr_callback := func(line: String) -> void:

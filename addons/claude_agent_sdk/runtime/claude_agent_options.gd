@@ -438,6 +438,17 @@ static func _normalize_sandbox(value: Variant) -> Variant:
 
 
 static func _normalize_sandbox_network(value: Dictionary) -> Dictionary:
+	const KNOWN_KEYS := {
+		"allow_unix_sockets": true, "allowUnixSockets": true,
+		"allow_all_unix_sockets": true, "allowAllUnixSockets": true,
+		"allow_local_binding": true, "allowLocalBinding": true,
+		"http_proxy_port": true, "httpProxyPort": true,
+		"socks_proxy_port": true, "socksProxyPort": true,
+		"allowed_domains": true, "allowedDomains": true,
+		"denied_domains": true, "deniedDomains": true,
+		"allow_managed_domains_only": true, "allowManagedDomainsOnly": true,
+		"allow_mach_lookup": true, "allowMachLookup": true,
+	}
 	var normalized: Dictionary = {}
 	if value.has("allow_unix_sockets") or value.has("allowUnixSockets"):
 		var allow_sockets: Variant = value.get("allow_unix_sockets", value.get("allowUnixSockets", []))
@@ -451,6 +462,25 @@ static func _normalize_sandbox_network(value: Dictionary) -> Dictionary:
 		normalized["http_proxy_port"] = int(value.get("http_proxy_port", value.get("httpProxyPort", 0)))
 	if value.has("socks_proxy_port") or value.has("socksProxyPort"):
 		normalized["socks_proxy_port"] = int(value.get("socks_proxy_port", value.get("socksProxyPort", 0)))
+	if value.has("allowed_domains") or value.has("allowedDomains"):
+		var allowed_domains: Variant = value.get("allowed_domains", value.get("allowedDomains", []))
+		if allowed_domains is Array:
+			normalized["allowed_domains"] = _to_string_array(allowed_domains as Array)
+	if value.has("denied_domains") or value.has("deniedDomains"):
+		var denied_domains: Variant = value.get("denied_domains", value.get("deniedDomains", []))
+		if denied_domains is Array:
+			normalized["denied_domains"] = _to_string_array(denied_domains as Array)
+	if value.has("allow_managed_domains_only") or value.has("allowManagedDomainsOnly"):
+		normalized["allow_managed_domains_only"] = bool(value.get("allow_managed_domains_only", value.get("allowManagedDomainsOnly", false)))
+	if value.has("allow_mach_lookup") or value.has("allowMachLookup"):
+		var allow_mach: Variant = value.get("allow_mach_lookup", value.get("allowMachLookup", []))
+		if allow_mach is Array:
+			normalized["allow_mach_lookup"] = _to_string_array(allow_mach as Array)
+	for key_variant in value.keys():
+		var key_str := str(key_variant)
+		if KNOWN_KEYS.has(key_str):
+			continue
+		normalized[key_str] = _duplicate_nested_variant(value[key_variant])
 	return normalized
 
 
