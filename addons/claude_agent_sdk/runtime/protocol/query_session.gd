@@ -4,6 +4,7 @@ class_name ClaudeQuerySession
 signal control_request_completed(request_id: String)
 signal session_initialized(server_info: Dictionary)
 signal error_occurred(message: String)
+signal turn_state_changed(session_id: String)
 
 const ClaudeMessageStreamScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_message_stream.gd")
 const ClaudeMessageParserScript := preload("res://addons/claude_agent_sdk/runtime/parser/message_parser.gd")
@@ -21,6 +22,24 @@ const ClaudeAgentDefinitionScript := preload("res://addons/claude_agent_sdk/runt
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 const DEFAULT_INITIALIZE_TIMEOUT_SEC := 60.0
 
+
+class InitializeTimeoutHandler extends RefCounted:
+	var _session_ref: WeakRef
+	var _token := 0
+
+
+	func _init(session_ref: WeakRef, token: int) -> void:
+		_session_ref = session_ref
+		_token = token
+
+
+	func expire() -> void:
+		var session = _session_ref.get_ref()
+		if session == null:
+			return
+		session._on_initialize_timeout_expired(_token)
+
+
 var _transport = null
 var _options = null
 var _server_info: Dictionary = {}
@@ -35,15 +54,20 @@ var _next_hook_callback_id := 0
 var _inflight_control_requests: Dictionary = {}
 var _message_stream = ClaudeMessageStreamScript.new(false)
 var _global_response_streams: Array = []
-var _session_response_streams: Dictionary = {}
+var _turn_response_streams: Dictionary = {}
 var _active_turns_by_session: Dictionary = {}
+var _turn_states_by_id: Dictionary = {}
 var _pending_prompt_order: Array[String] = []
 var _next_prompt_drain_token := 0
+var _next_turn_id := 0
+var _last_assigned_turn_counts_by_session: Dictionary = {}
 var _last_error := ""
 var _sdk_mcp_servers: Dictionary = {}
 var _initialize_timeout_sec := DEFAULT_INITIALIZE_TIMEOUT_SEC
 var _initialize_timeout_token := 0
 var _initialize_timeout_error := ""
+var _initialize_timeout_timer: Timer = null
+var _initialize_timeout_handler = null
 
 
 func _init(transport, options = null, sdk_mcp_servers: Dictionary = {}) -> void:
@@ -83,6 +107,7 @@ func close() -> void:
 	_closed = true
 	_connected = false
 	_initialize_timeout_token += 1
+	_clear_initialize_timeout_timer()
 	_cancel_all_inflight_control_requests()
 	_complete_pending_control_requests("Claude session closed")
 	_finish_streams()
@@ -90,43 +115,68 @@ func close() -> void:
 	_transport.close()
 
 
-func send_user_prompt(prompt: String, session_id: String = "default") -> void:
-	send_prompt(prompt, session_id, true)
+func send_user_prompt(
+	prompt: String,
+	session_id: String = "default",
+	close_input_after_turn := false
+) -> void:
+	send_prompt(prompt, session_id, true, close_input_after_turn)
 
 
-func send_prompt_stream(prompt_stream, session_id: String = "default", backfill_session_id := true) -> void:
-	send_prompt(prompt_stream, session_id, backfill_session_id)
+func send_prompt_stream(
+	prompt_stream,
+	session_id: String = "default",
+	backfill_session_id := true,
+	close_input_after_turn := false
+) -> void:
+	send_prompt(prompt_stream, session_id, backfill_session_id, close_input_after_turn)
 
 
-func send_prompt(prompt, session_id: String = "default", backfill_session_id := true) -> void:
+func send_prompt(
+	prompt,
+	session_id: String = "default",
+	backfill_session_id := true,
+	close_input_after_turn := false
+) -> void:
 	if not _connected:
 		_emit_error("Cannot query before connect() completes")
-		return
-	if _active_turns_by_session.has(session_id):
-		_emit_error("Cannot start a new query for session '%s' while another response is still in flight" % session_id)
 		return
 
 	_set_last_error("")
 	_next_prompt_drain_token += 1
+	_next_turn_id += 1
+	var turn_id := "turn_%d" % _next_turn_id
 	var turn_state := {
+		"turn_id": turn_id,
+		"session_id": session_id,
 		"pending_prompt_payloads": [],
 		"pending_prompt_stream": null,
 		"backfill_session_id": backfill_session_id,
 		"drain_token": _next_prompt_drain_token,
 		"promoted_session_id": "",
+		"close_input_after_turn": close_input_after_turn,
+		"wait_for_result_before_end_input": close_input_after_turn and _should_wait_for_result_before_end_input(),
+		"input_drained": false,
+		"input_ended": false,
+		"result_seen": false,
+		"end_input_task_started": false,
+		"response_stream_reservations": 0,
+		"expected_num_turns": 0,
 	}
+	if not session_id.is_empty() and session_id != "default":
+		turn_state["expected_num_turns"] = _reserve_expected_num_turn_count(session_id)
 
 	if prompt is ClaudePromptStreamScript:
 		turn_state["pending_prompt_stream"] = prompt
 	else:
 		(turn_state["pending_prompt_payloads"] as Array).append(_build_user_prompt_payload(str(prompt), session_id))
 
-	_active_turns_by_session[session_id] = turn_state
-	if not _pending_prompt_order.has(session_id):
-		_pending_prompt_order.append(session_id)
+	_turn_states_by_id[turn_id] = turn_state
+	_enqueue_active_turn(session_id, turn_id)
+	_pending_prompt_order.append(turn_id)
 
 	if _initialized:
-		_flush_pending_prompt_for_session(session_id)
+		_flush_pending_prompt_for_turn(turn_id)
 
 
 func receive_messages():
@@ -140,12 +190,13 @@ func receive_response():
 
 
 func receive_response_for_session(session_id: String):
-	if not _active_turns_by_session.has(session_id):
+	var turn_id := _reserve_turn_for_session_response_stream(session_id)
+	if turn_id.is_empty():
 		var missing_stream = ClaudeMessageStreamScript.new(true)
 		missing_stream.fail("No response stream is available for session '%s' before query() is called" % session_id)
 		return missing_stream
 	var session_stream = ClaudeMessageStreamScript.new(true)
-	_register_session_response_stream(session_id, session_stream)
+	_register_turn_response_stream(turn_id, session_stream)
 	return session_stream
 
 
@@ -264,56 +315,64 @@ func _send_control_request_and_wait(request: Dictionary) -> Dictionary:
 
 
 func _flush_pending_prompts() -> void:
-	var session_ids := _pending_prompt_order.duplicate()
+	var turn_ids := _pending_prompt_order.duplicate()
 	_pending_prompt_order.clear()
-	for session_id_variant in session_ids:
-		_flush_pending_prompt_for_session(str(session_id_variant))
+	for turn_id_variant in turn_ids:
+		_flush_pending_prompt_for_turn(str(turn_id_variant))
 
 
-func _flush_pending_prompt_for_session(session_id: String) -> void:
-	var state := _turn_state(session_id)
+func _flush_pending_prompt_for_turn(turn_id: String) -> void:
+	var state := _turn_state(turn_id)
 	if state.is_empty():
 		return
+	var session_id := _turn_session_id(turn_id)
 	var payloads: Array = state.get("pending_prompt_payloads", []) if state.get("pending_prompt_payloads", []) is Array else []
 	for payload_variant in payloads:
 		var payload := str(payload_variant)
 		if not _transport.write(payload):
-			_fail_turn(session_id, _transport.get_last_error())
+			_fail_turn(turn_id, _transport.get_last_error())
 			return
 	payloads.clear()
 	state["pending_prompt_payloads"] = payloads
 
 	var prompt_stream: Variant = state.get("pending_prompt_stream", null)
 	if prompt_stream == null:
-		_active_turns_by_session[session_id] = state
+		_turn_states_by_id[turn_id] = state
+		_mark_turn_input_drained(turn_id)
 		return
 	var token := int(state.get("drain_token", 0))
 	var should_backfill := bool(state.get("backfill_session_id", false))
 	state["pending_prompt_stream"] = null
-	_active_turns_by_session[session_id] = state
-	Callable(self, "_drain_prompt_stream").call_deferred(prompt_stream, session_id, should_backfill, token)
+	_turn_states_by_id[turn_id] = state
+	Callable(self, "_drain_prompt_stream").call_deferred(prompt_stream, turn_id, should_backfill, token)
 
 
-func _drain_prompt_stream(prompt_stream, session_id: String, backfill_session_id: bool, token: int) -> void:
+func _drain_prompt_stream(prompt_stream, turn_id: String, backfill_session_id: bool, token: int) -> void:
 	var wrote_any_message := false
-	while _is_prompt_drain_active(session_id, token) and not _closed:
+	while _is_prompt_drain_active(turn_id, token) and not _closed:
 		var next_message: Variant = await prompt_stream.next_message()
-		if not _is_prompt_drain_active(session_id, token) or _closed:
+		if not _is_prompt_drain_active(turn_id, token) or _closed:
 			return
 		if next_message == null:
 			var prompt_error := str(prompt_stream.get_error())
 			if not prompt_error.is_empty():
-				_fail_turn(session_id, prompt_error)
+				_fail_turn(turn_id, prompt_error)
 			elif not wrote_any_message:
-				_fail_turn(session_id, "ClaudePromptStream finished without emitting any prompt items")
+				_fail_turn(turn_id, "ClaudePromptStream finished without emitting any prompt items")
+			else:
+				_mark_turn_input_drained(turn_id)
 			return
 		if next_message is not Dictionary:
-			_fail_turn(session_id, "ClaudePromptStream must emit Dictionary items")
+			_fail_turn(turn_id, "ClaudePromptStream must emit Dictionary items")
 			return
 
-		var payload := _prepare_prompt_stream_payload(next_message as Dictionary, session_id, backfill_session_id)
+		var payload := _prepare_prompt_stream_payload(
+			next_message as Dictionary,
+			_turn_session_id(turn_id),
+			backfill_session_id
+		)
 		if not _transport.write(JSON.stringify(payload)):
-			_fail_turn(session_id, _transport.get_last_error())
+			_fail_turn(turn_id, _transport.get_last_error())
 			return
 		wrote_any_message = true
 
@@ -337,12 +396,78 @@ func _build_user_prompt_payload(prompt: String, session_id: String) -> String:
 	})
 
 
-func _fail_turn(session_id: String, message: String) -> void:
+func _should_wait_for_result_before_end_input() -> bool:
+	if not _sdk_mcp_servers.is_empty():
+		return true
+	if _options == null:
+		return false
+	return _options.hooks is Dictionary and not (_options.hooks as Dictionary).is_empty()
+
+
+func _mark_turn_input_drained(turn_id: String) -> void:
+	var state := _turn_state(turn_id)
+	if state.is_empty():
+		return
+	state["input_drained"] = true
+	_turn_states_by_id[turn_id] = state
+	if not _transport_supports_end_input() and _can_logically_end_input_without_transport(state):
+		state = _mark_turn_input_ended(turn_id)
+		if not state.is_empty() and bool(state.get("result_seen", false)):
+			_finalize_turn(turn_id)
+			return
+	_ensure_end_input_task(turn_id)
+
+
+func _ensure_end_input_task(turn_id: String) -> void:
+	var state := _turn_state(turn_id)
+	if state.is_empty():
+		return
+	if not bool(state.get("close_input_after_turn", false)):
+		return
+	if not bool(state.get("input_drained", false)):
+		return
+	if not _transport_supports_end_input():
+		return
+	if bool(state.get("input_ended", false)):
+		return
+	if bool(state.get("end_input_task_started", false)):
+		return
+	state["end_input_task_started"] = true
+	_turn_states_by_id[turn_id] = state
+	Callable(self, "_wait_for_turn_result_and_end_input").call_deferred(turn_id)
+
+
+func _wait_for_turn_result_and_end_input(turn_id: String) -> void:
+	while true:
+		var state := _turn_state(turn_id)
+		if state.is_empty() or _closed:
+			return
+		if bool(state.get("input_ended", false)):
+			if bool(state.get("result_seen", false)):
+				_finalize_turn(turn_id)
+			return
+		if bool(state.get("wait_for_result_before_end_input", false)) and not bool(state.get("result_seen", false)):
+			var changed_session_id: String = await turn_state_changed
+			if changed_session_id != _turn_session_id(turn_id):
+				continue
+			continue
+
+		state = _attempt_turn_end_input(turn_id)
+		if state.is_empty() or _closed:
+			return
+		if bool(state.get("result_seen", false)):
+			_finalize_turn(turn_id)
+		return
+
+
+func _fail_turn(turn_id: String, message: String) -> void:
+	var session_id := _turn_session_id(turn_id)
 	_emit_error(message)
-	_fail_session_response_streams(session_id, _last_error)
-	_active_turns_by_session.erase(session_id)
-	_pending_prompt_order.erase(session_id)
-	if _active_turns_by_session.is_empty():
+	_fail_turn_response_streams(turn_id, _last_error)
+	_remove_turn(turn_id)
+	_pending_prompt_order.erase(turn_id)
+	_notify_turn_state_changed(session_id)
+	if _turn_states_by_id.is_empty():
 		for stream in _global_response_streams.duplicate():
 			stream.fail(_last_error)
 
@@ -380,14 +505,14 @@ func _on_transport_stdout_line(line: String) -> void:
 	if message == null:
 		return
 
-	var message_session_id := _message_session_id(message)
-	var routed_session_id := _active_turn_session_key_for_message(message_session_id)
+	var routed_turn_id := _routed_turn_id_for_message(message)
 	_message_stream.push_message(message)
 	_push_to_global_response_streams(message)
-	if not routed_session_id.is_empty():
-		_push_to_session_response_streams(routed_session_id, message)
+	if not routed_turn_id.is_empty():
+		_push_to_turn_response_streams(routed_turn_id, message)
 	if message is ClaudeResultMessage:
-		_complete_turn(routed_session_id)
+		_record_result_turn_count(message as ClaudeResultMessage, routed_turn_id)
+		_complete_turn(routed_turn_id)
 
 
 func _on_transport_stderr_line(_line: String) -> void:
@@ -443,6 +568,7 @@ func _handle_control_response(data: Dictionary) -> void:
 		_server_info = response_payload
 		_initialized = true
 		_initialize_timeout_token += 1
+		_clear_initialize_timeout_timer()
 		_initialize_request_id = ""
 		session_initialized.emit(_server_info.duplicate(true))
 		_flush_pending_prompts()
@@ -471,6 +597,7 @@ func _fail_session(message: String) -> void:
 	if _last_error != message:
 		_set_last_error(message)
 	_initialize_timeout_token += 1
+	_clear_initialize_timeout_timer()
 	_complete_pending_control_requests(message)
 	_cancel_all_inflight_control_requests()
 	_fail_all_streams(message)
@@ -480,24 +607,38 @@ func _fail_session(message: String) -> void:
 
 func _arm_initialize_timeout() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null:
+	if tree == null or tree.root == null:
 		return
+	_clear_initialize_timeout_timer()
 	_initialize_timeout_token += 1
 	var token := _initialize_timeout_token
-	Callable(self, "_watch_initialize_timeout").call_deferred(tree, token)
+	var timer := Timer.new()
+	timer.one_shot = true
+	timer.wait_time = _initialize_timeout_sec
+	var handler := InitializeTimeoutHandler.new(weakref(self), token)
+	_initialize_timeout_timer = timer
+	_initialize_timeout_handler = handler
+	timer.timeout.connect(Callable(handler, "expire"))
+	timer.timeout.connect(Callable(timer, "queue_free"))
+	tree.root.add_child(timer)
+	timer.start()
 
 
-func _watch_initialize_timeout(tree: SceneTree, token: int) -> void:
-	if _initialize_request_id.is_empty() or _initialized or _closed:
+func _on_initialize_timeout_expired(token: int) -> void:
+	if token != _initialize_timeout_token or _initialize_request_id.is_empty() or _initialized or _closed:
 		return
-	await tree.create_timer(_initialize_timeout_sec).timeout
-	if token != _initialize_timeout_token:
-		return
-	if _initialize_request_id.is_empty() or _initialized or _closed:
-		return
+	_clear_initialize_timeout_timer()
 	_fail_session(
 		"Claude session initialize timed out after %.1f seconds" % _initialize_timeout_sec
 	)
+
+
+func _clear_initialize_timeout_timer() -> void:
+	if _initialize_timeout_timer != null and is_instance_valid(_initialize_timeout_timer):
+		_initialize_timeout_timer.stop()
+		_initialize_timeout_timer.queue_free()
+	_initialize_timeout_timer = null
+	_initialize_timeout_handler = null
 
 
 func _resolve_initialize_timeout_seconds() -> float:
@@ -541,19 +682,33 @@ func _disconnect_transport_signals() -> void:
 
 
 func _finish_streams() -> void:
+	var active_turn_session_ids := _active_turn_session_ids()
 	_pending_prompt_order.clear()
 	_active_turns_by_session.clear()
+	_turn_states_by_id.clear()
+	for session_id in active_turn_session_ids:
+		_notify_turn_state_changed(session_id)
 	_message_stream.finish()
 	_finish_global_response_streams()
-	_finish_all_session_response_streams()
+	_finish_all_turn_response_streams()
 
 
-func _turn_state(session_id: String) -> Dictionary:
-	return _active_turns_by_session.get(session_id, {}) if _active_turns_by_session.get(session_id, {}) is Dictionary else {}
+func _turn_state(turn_id: String) -> Dictionary:
+	return _turn_states_by_id.get(turn_id, {}) if _turn_states_by_id.get(turn_id, {}) is Dictionary else {}
 
 
-func _is_prompt_drain_active(session_id: String, token: int) -> bool:
-	var state := _turn_state(session_id)
+func _active_turn_session_ids() -> Array[String]:
+	var session_ids: Array[String] = []
+	for session_id_variant in _active_turns_by_session.keys():
+		var session_id := str(session_id_variant)
+		var queue := _active_turn_queue(session_id)
+		if not queue.is_empty():
+			session_ids.append(session_id)
+	return session_ids
+
+
+func _is_prompt_drain_active(turn_id: String, token: int) -> bool:
+	var state := _turn_state(turn_id)
 	if state.is_empty():
 		return false
 	return int(state.get("drain_token", -1)) == token
@@ -568,22 +723,22 @@ func _on_global_response_stream_finished(stream) -> void:
 	_global_response_streams.erase(stream)
 
 
-func _register_session_response_stream(session_id: String, stream) -> void:
-	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+func _register_turn_response_stream(turn_id: String, stream) -> void:
+	var streams: Array = _turn_response_streams.get(turn_id, []) if _turn_response_streams.get(turn_id, []) is Array else []
 	streams.append(stream)
-	_session_response_streams[session_id] = streams
-	stream.set_finish_callback(Callable(self, "_on_session_response_stream_finished").bind(session_id, stream))
+	_turn_response_streams[turn_id] = streams
+	stream.set_finish_callback(Callable(self, "_on_turn_response_stream_finished").bind(turn_id, stream))
 
 
-func _on_session_response_stream_finished(session_id: String, stream) -> void:
-	if not _session_response_streams.has(session_id):
+func _on_turn_response_stream_finished(turn_id: String, stream) -> void:
+	if not _turn_response_streams.has(turn_id):
 		return
-	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+	var streams: Array = _turn_response_streams.get(turn_id, []) if _turn_response_streams.get(turn_id, []) is Array else []
 	streams.erase(stream)
 	if streams.is_empty():
-		_session_response_streams.erase(session_id)
+		_turn_response_streams.erase(turn_id)
 	else:
-		_session_response_streams[session_id] = streams
+		_turn_response_streams[turn_id] = streams
 
 
 func _push_to_global_response_streams(message: Variant) -> void:
@@ -591,31 +746,113 @@ func _push_to_global_response_streams(message: Variant) -> void:
 		stream.push_message(message)
 
 
-func _push_to_session_response_streams(session_id: String, message: Variant) -> void:
-	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+func _push_to_turn_response_streams(turn_id: String, message: Variant) -> void:
+	var streams: Array = _turn_response_streams.get(turn_id, []) if _turn_response_streams.get(turn_id, []) is Array else []
 	for stream in streams.duplicate():
 		stream.push_message(message)
 
 
-func _complete_turn(session_id: String) -> void:
+func _transport_supports_end_input() -> bool:
+	if _transport == null:
+		return false
+	if not _transport.has_method("supports_end_input"):
+		return false
+	return _transport.supports_end_input()
+
+
+func _can_logically_end_input_without_transport(state: Dictionary) -> bool:
+	if state.is_empty():
+		return false
+	if not bool(state.get("close_input_after_turn", false)):
+		return false
+	if bool(state.get("input_ended", false)):
+		return true
+	if bool(state.get("wait_for_result_before_end_input", false)):
+		return bool(state.get("result_seen", false))
+	return true
+
+
+func _mark_turn_input_ended(turn_id: String) -> Dictionary:
+	var state := _turn_state(turn_id)
+	if state.is_empty():
+		return {}
+	if bool(state.get("input_ended", false)):
+		return state
+	state["input_ended"] = true
+	_turn_states_by_id[turn_id] = state
+	_notify_turn_state_changed(_turn_session_id(turn_id))
+	return state
+
+
+func _attempt_turn_end_input(turn_id: String) -> Dictionary:
+	var state := _turn_state(turn_id)
+	if state.is_empty():
+		return {}
+	if _transport_supports_end_input():
+		var end_input_succeeded: bool = _transport.end_input()
+		if not end_input_succeeded:
+			var transport_error: String = _transport.get_last_error()
+			if transport_error.is_empty():
+				transport_error = "Claude transport failed to end input"
+			_emit_error(transport_error)
+	return _mark_turn_input_ended(turn_id)
+
+
+func _notify_turn_state_changed(session_id: String) -> void:
 	if session_id.is_empty():
 		return
-	_active_turns_by_session.erase(session_id)
-	_pending_prompt_order.erase(session_id)
+	turn_state_changed.emit(session_id)
+
+
+func _complete_turn(turn_id: String) -> void:
+	var state := _turn_state(turn_id)
+	if state.is_empty():
+		return
+	var session_id := _turn_session_id(turn_id)
+	state["result_seen"] = true
+	_turn_states_by_id[turn_id] = state
+	_notify_turn_state_changed(session_id)
+	if bool(state.get("close_input_after_turn", false)) and not bool(state.get("input_ended", false)):
+		if not _transport_supports_end_input():
+			if not bool(state.get("input_drained", false)):
+				return
+			state = _mark_turn_input_ended(turn_id)
+			if state.is_empty():
+				return
+		else:
+			if bool(state.get("end_input_task_started", false)) and bool(state.get("input_drained", false)):
+				state = _attempt_turn_end_input(turn_id)
+				if state.is_empty():
+					return
+			else:
+				_ensure_end_input_task(turn_id)
+				return
+	_finalize_turn(turn_id)
+
+
+func _finalize_turn(turn_id: String) -> void:
+	var session_id := _turn_session_id(turn_id)
+	_remove_turn(turn_id)
+	_pending_prompt_order.erase(turn_id)
+	_notify_turn_state_changed(session_id)
 
 
 func _fail_all_streams(message: String) -> void:
+	var active_turn_session_ids := _active_turn_session_ids()
 	_pending_prompt_order.clear()
 	_active_turns_by_session.clear()
+	_turn_states_by_id.clear()
+	for session_id in active_turn_session_ids:
+		_notify_turn_state_changed(session_id)
 	_message_stream.fail(message)
 	for stream in _global_response_streams.duplicate():
 		stream.fail(message)
-	for session_id_variant in _session_response_streams.keys():
-		_fail_session_response_streams(str(session_id_variant), message)
+	for turn_id_variant in _turn_response_streams.keys():
+		_fail_turn_response_streams(str(turn_id_variant), message)
 
 
-func _fail_session_response_streams(session_id: String, message: String) -> void:
-	var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+func _fail_turn_response_streams(turn_id: String, message: String) -> void:
+	var streams: Array = _turn_response_streams.get(turn_id, []) if _turn_response_streams.get(turn_id, []) is Array else []
 	for stream in streams.duplicate():
 		stream.fail(message)
 
@@ -626,13 +863,13 @@ func _finish_global_response_streams() -> void:
 	_global_response_streams.clear()
 
 
-func _finish_all_session_response_streams() -> void:
-	for session_id_variant in _session_response_streams.keys().duplicate():
-		var session_id := str(session_id_variant)
-		var streams: Array = _session_response_streams.get(session_id, []) if _session_response_streams.get(session_id, []) is Array else []
+func _finish_all_turn_response_streams() -> void:
+	for turn_id_variant in _turn_response_streams.keys().duplicate():
+		var turn_id := str(turn_id_variant)
+		var streams: Array = _turn_response_streams.get(turn_id, []) if _turn_response_streams.get(turn_id, []) is Array else []
 		for stream in streams.duplicate():
 			stream.finish()
-	_session_response_streams.clear()
+	_turn_response_streams.clear()
 
 
 func _message_session_id(message: Variant) -> String:
@@ -648,34 +885,54 @@ func _message_session_id(message: Variant) -> String:
 	return ""
 
 
-func _active_turn_session_key_for_message(message_session_id: String) -> String:
+func _routed_turn_id_for_message(message: Variant) -> String:
+	var message_session_id := _message_session_id(message)
+	if message is ClaudeResultMessage:
+		var result_turn_id := _matching_turn_id_for_result(message as ClaudeResultMessage)
+		if not result_turn_id.is_empty():
+			return result_turn_id
+	return _active_turn_id_for_message(message_session_id)
+
+
+func _active_turn_id_for_message(message_session_id: String) -> String:
 	if message_session_id.is_empty():
-		return _fallback_active_turn_session_key_for_unlabeled_message()
-	if _active_turns_by_session.has(message_session_id):
-		return message_session_id
+		return _fallback_active_turn_id_for_unlabeled_message()
+	if message_session_id == "default":
+		var empty_turn_id := _head_turn_id_for_session("")
+		if not empty_turn_id.is_empty():
+			return empty_turn_id
+	var direct_turn_id := _head_turn_id_for_session(message_session_id)
+	if not direct_turn_id.is_empty():
+		return direct_turn_id
 	if message_session_id != "default":
-		var default_state := _turn_state("default")
+		var default_turn_id := _head_turn_id_for_session("default")
+		var default_state := _turn_state(default_turn_id)
 		if not default_state.is_empty():
 			var promoted_session_id := str(default_state.get("promoted_session_id", ""))
 			if promoted_session_id == message_session_id:
-				return "default"
+				return default_turn_id
 			if promoted_session_id.is_empty() and _can_promote_default_turn_to_session(message_session_id):
 				default_state["promoted_session_id"] = message_session_id
-				_active_turns_by_session["default"] = default_state
-				return "default"
+				_turn_states_by_id[default_turn_id] = default_state
+				return default_turn_id
 	return ""
 
 
-func _fallback_active_turn_session_key_for_unlabeled_message() -> String:
-	if _active_turns_by_session.size() != 1:
+func _fallback_active_turn_id_for_unlabeled_message() -> String:
+	if _active_session_count() != 1:
 		return ""
-	return str(_active_turns_by_session.keys()[0])
+	for session_id_variant in _active_turns_by_session.keys():
+		var session_id := str(session_id_variant)
+		var queue := _active_turn_queue(session_id)
+		if not queue.is_empty():
+			return str(queue[0])
+	return ""
 
 
 func _can_promote_default_turn_to_session(message_session_id: String) -> bool:
 	if message_session_id.is_empty() or message_session_id == "default":
 		return false
-	if not _active_turns_by_session.has("default"):
+	if _head_turn_id_for_session("default").is_empty():
 		return false
 	return not _is_session_claimed_by_non_default_turn(message_session_id)
 
@@ -687,10 +944,123 @@ func _is_session_claimed_by_non_default_turn(message_session_id: String) -> bool
 			continue
 		if active_session_id == message_session_id:
 			return true
-		var active_turn_state := _turn_state(active_session_id)
-		if str(active_turn_state.get("promoted_session_id", "")) == message_session_id:
-			return true
+		for turn_id_variant in _active_turn_queue(active_session_id):
+			var active_turn_state := _turn_state(str(turn_id_variant))
+			if str(active_turn_state.get("promoted_session_id", "")) == message_session_id:
+				return true
 	return false
+
+
+func _turn_session_id(turn_id: String) -> String:
+	var state := _turn_state(turn_id)
+	return str(state.get("session_id", ""))
+
+
+func _active_turn_queue(session_id: String) -> Array:
+	return _active_turns_by_session.get(session_id, []) if _active_turns_by_session.get(session_id, []) is Array else []
+
+
+func _enqueue_active_turn(session_id: String, turn_id: String) -> void:
+	var queue := _active_turn_queue(session_id)
+	queue.append(turn_id)
+	_active_turns_by_session[session_id] = queue
+	_notify_turn_state_changed(session_id)
+
+
+func _remove_turn(turn_id: String) -> void:
+	if turn_id.is_empty():
+		return
+	var session_id := _turn_session_id(turn_id)
+	if not session_id.is_empty():
+		var queue := _active_turn_queue(session_id)
+		queue.erase(turn_id)
+		if queue.is_empty():
+			_active_turns_by_session.erase(session_id)
+		else:
+			_active_turns_by_session[session_id] = queue
+	_turn_states_by_id.erase(turn_id)
+	_turn_response_streams.erase(turn_id)
+
+
+func _head_turn_id_for_session(session_id: String) -> String:
+	var queue := _active_turn_queue(session_id)
+	if queue.is_empty():
+		return ""
+	return str(queue[0])
+
+
+func _active_turn_count() -> int:
+	var count := 0
+	for session_id_variant in _active_turns_by_session.keys():
+		count += _active_turn_queue(str(session_id_variant)).size()
+	return count
+
+
+func _active_session_count() -> int:
+	var count := 0
+	for session_id_variant in _active_turns_by_session.keys():
+		if not _active_turn_queue(str(session_id_variant)).is_empty():
+			count += 1
+	return count
+
+
+func _reserve_turn_for_session_response_stream(session_id: String) -> String:
+	var queue := _active_turn_queue(session_id)
+	if queue.is_empty():
+		return ""
+	for turn_id_variant in queue:
+		var turn_id := str(turn_id_variant)
+		var state := _turn_state(turn_id)
+		if int(state.get("response_stream_reservations", 0)) != 0:
+			continue
+		state["response_stream_reservations"] = 1
+		_turn_states_by_id[turn_id] = state
+		return turn_id
+	var fallback_turn_id := str(queue[0])
+	var fallback_state := _turn_state(fallback_turn_id)
+	fallback_state["response_stream_reservations"] = int(fallback_state.get("response_stream_reservations", 0)) + 1
+	_turn_states_by_id[fallback_turn_id] = fallback_state
+	return fallback_turn_id
+
+
+func _reserve_expected_num_turn_count(session_id: String) -> int:
+	var next_expected := int(_last_assigned_turn_counts_by_session.get(session_id, 0)) + 1
+	_last_assigned_turn_counts_by_session[session_id] = next_expected
+	return next_expected
+
+
+func _matching_turn_id_for_result(message: ClaudeResultMessage) -> String:
+	var session_id := message.session_id.strip_edges()
+	if session_id.is_empty() or session_id == "default":
+		return ""
+	var result_num_turns := int(message.num_turns)
+	if result_num_turns <= 0:
+		return ""
+	for turn_id_variant in _active_turn_queue(session_id):
+		var turn_id := str(turn_id_variant)
+		if int(_turn_state(turn_id).get("expected_num_turns", 0)) == result_num_turns:
+			return turn_id
+	return ""
+
+
+func _record_result_turn_count(message: ClaudeResultMessage, turn_id: String) -> void:
+	var session_id := message.session_id.strip_edges()
+	if session_id.is_empty() or session_id == "default":
+		return
+	var result_num_turns := int(message.num_turns)
+	if result_num_turns <= 0:
+		return
+	var prior_max := int(_last_assigned_turn_counts_by_session.get(session_id, 0))
+	if result_num_turns > prior_max:
+		_last_assigned_turn_counts_by_session[session_id] = result_num_turns
+	if turn_id.is_empty():
+		return
+	var state := _turn_state(turn_id)
+	if state.is_empty():
+		return
+	if int(state.get("expected_num_turns", 0)) == 0:
+		state["expected_num_turns"] = result_num_turns
+		_turn_states_by_id[turn_id] = state
 
 
 func _build_initialize_request() -> Dictionary:
@@ -701,6 +1071,9 @@ func _build_initialize_request() -> Dictionary:
 	var agents_config := _build_agents_configuration()
 	if agents_config != null:
 		request["agents"] = agents_config
+	var exclude_dynamic_sections := _build_exclude_dynamic_sections_configuration()
+	if exclude_dynamic_sections != null:
+		request["excludeDynamicSections"] = exclude_dynamic_sections
 	return request
 
 
@@ -765,6 +1138,20 @@ func _build_agents_configuration() -> Variant:
 			continue
 		agents_config[agent_name] = definition.to_initialize_dict()
 	return agents_config if not agents_config.is_empty() else null
+
+
+func _build_exclude_dynamic_sections_configuration() -> Variant:
+	if _options == null or not (_options.system_prompt is Dictionary):
+		return null
+
+	var prompt_config := _options.system_prompt as Dictionary
+	if str(prompt_config.get("type", "")).strip_edges() != "preset":
+		return null
+
+	var exclude_dynamic_sections := prompt_config.get("exclude_dynamic_sections", prompt_config.get("excludeDynamicSections", null))
+	if exclude_dynamic_sections is bool:
+		return bool(exclude_dynamic_sections)
+	return null
 
 
 func _coerce_agent_definition(value: Variant):

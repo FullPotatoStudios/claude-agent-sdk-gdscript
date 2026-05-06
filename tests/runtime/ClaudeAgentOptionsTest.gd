@@ -72,7 +72,12 @@ func test_max_buffer_size_stays_transport_only_and_survives_duplicate() -> void:
 
 func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() -> void:
 	var preset_options = ClaudeAgentOptions.new({
-		"system_prompt": {"type": "preset", "preset": "claude_code", "append": "Stay in character."},
+		"system_prompt": {
+			"type": "preset",
+			"preset": "claude_code",
+			"append": "Stay in character.",
+			"excludeDynamicSections": true,
+		},
 		"tools": ["Read", "Glob"],
 	})
 	var preset_duplicate = preset_options.duplicate_options()
@@ -80,6 +85,7 @@ func test_duplicate_options_preserves_system_prompt_variants_and_tools_shapes() 
 		"type": "preset",
 		"preset": "claude_code",
 		"append": "Stay in character.",
+		"exclude_dynamic_sections": true,
 	})
 	assert_array(preset_duplicate.tools).is_equal(["Read", "Glob"])
 
@@ -184,6 +190,30 @@ func test_duplicate_options_preserves_agents_and_setting_sources() -> void:
 	assert_str(doc_writer.description).is_equal("Writes docs")
 	assert_str(doc_writer.prompt).is_equal("Explain clearly.")
 	assert_that(doc_writer.tools).is_null()
+	assert_array(duplicated.setting_sources).is_equal(["user", "project"])
+	assert_bool(duplicated.has_setting_sources()).is_true()
+
+
+func test_duplicate_options_preserves_explicit_empty_setting_sources() -> void:
+	var options = ClaudeAgentOptions.new({
+		"setting_sources": [],
+	})
+
+	var duplicated = options.duplicate_options()
+
+	assert_bool(options.has_setting_sources()).is_true()
+	assert_bool(duplicated.has_setting_sources()).is_true()
+	assert_array(duplicated.setting_sources).is_empty()
+
+
+func test_duplicate_options_preserves_directly_assigned_setting_sources() -> void:
+	var options := ClaudeAgentOptions.new()
+	options.setting_sources = ["user", "project"]
+
+	var duplicated = options.duplicate_options()
+
+	assert_bool(options.has_setting_sources()).is_true()
+	assert_bool(duplicated.has_setting_sources()).is_true()
 	assert_array(duplicated.setting_sources).is_equal(["user", "project"])
 
 
@@ -591,7 +621,7 @@ func test_subprocess_transport_supports_tools_unset_empty_and_preset() -> void:
 	assert_array(normalized_preset_args).contains(["--tools", "default"])
 
 
-func test_subprocess_transport_supports_setting_sources_only_when_non_empty() -> void:
+func test_subprocess_transport_supports_unset_empty_and_configured_setting_sources() -> void:
 	var unset_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new())
 	var unset_args := unset_transport.build_command_args()
 	assert_bool(unset_args.has("--setting-sources")).is_false()
@@ -600,13 +630,25 @@ func test_subprocess_transport_supports_setting_sources_only_when_non_empty() ->
 		"setting_sources": [],
 	}))
 	var empty_args := empty_transport.build_command_args()
-	assert_bool(empty_args.has("--setting-sources")).is_false()
+	assert_array(empty_args).contains(["--setting-sources", ""])
 
 	var configured_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"setting_sources": ["user", "project", "local"],
 	}))
 	var configured_args := configured_transport.build_command_args()
 	assert_array(configured_args).contains(["--setting-sources", "user,project,local"])
+
+	var direct_options := ClaudeAgentOptions.new()
+	direct_options.setting_sources = ["local"]
+	var direct_transport = ClaudeSubprocessCLITransport.new(direct_options)
+	var direct_args := direct_transport.build_command_args()
+	assert_array(direct_args).contains(["--setting-sources", "local"])
+
+	var direct_empty_options := ClaudeAgentOptions.new()
+	direct_empty_options.setting_sources = []
+	var direct_empty_transport = ClaudeSubprocessCLITransport.new(direct_empty_options)
+	var direct_empty_args := direct_empty_transport.build_command_args()
+	assert_array(direct_empty_args).contains(["--setting-sources", ""])
 
 
 func test_subprocess_transport_supports_transport_first_advanced_cli_flags() -> void:
@@ -861,25 +903,32 @@ func test_subprocess_transport_resolves_thinking_precedence() -> void:
 	var adaptive_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"thinking": {"type": "adaptive"},
 	}))
-	assert_array(adaptive_transport.build_command_args()).contains(["--max-thinking-tokens", "32000"])
+	var adaptive_args := adaptive_transport.build_command_args()
+	assert_array(adaptive_args).contains(["--thinking", "adaptive"])
+	assert_bool(adaptive_args.has("--max-thinking-tokens")).is_false()
 
 	var adaptive_with_deprecated_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
 		"thinking": {"type": "adaptive"},
 	}))
-	assert_array(adaptive_with_deprecated_transport.build_command_args()).contains(["--max-thinking-tokens", "2048"])
+	var adaptive_with_deprecated_args := adaptive_with_deprecated_transport.build_command_args()
+	assert_array(adaptive_with_deprecated_args).contains(["--thinking", "adaptive"])
+	assert_bool(adaptive_with_deprecated_args.has("--max-thinking-tokens")).is_false()
 
 	var enabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
 		"thinking": {"type": "enabled", "budget_tokens": 8192},
 	}))
 	assert_array(enabled_transport.build_command_args()).contains(["--max-thinking-tokens", "8192"])
+	assert_bool(enabled_transport.build_command_args().has("--thinking")).is_false()
 
 	var disabled_transport = ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
 		"max_thinking_tokens": 2048,
 		"thinking": {"type": "disabled"},
 	}))
-	assert_array(disabled_transport.build_command_args()).contains(["--max-thinking-tokens", "0"])
+	var disabled_args := disabled_transport.build_command_args()
+	assert_array(disabled_args).contains(["--thinking", "disabled"])
+	assert_bool(disabled_args.has("--max-thinking-tokens")).is_false()
 
 
 func test_subprocess_transport_rejects_explicit_permission_prompt_when_can_use_tool_is_configured() -> void:

@@ -281,6 +281,7 @@ func test_get_session_messages_returns_visible_root_to_leaf_messages_with_pagina
 
 	var messages := ClaudeSessions.get_session_messages(session_id, project_path)
 	var paged_messages := ClaudeSessions.get_session_messages(session_id, project_path, 1, 1)
+	var negative_offset_messages := ClaudeSessions.get_session_messages(session_id, project_path, 6, -2)
 
 	assert_int(messages.size()).is_equal(3)
 	assert_str(messages[0].type).is_equal("user")
@@ -289,6 +290,9 @@ func test_get_session_messages_returns_visible_root_to_leaf_messages_with_pagina
 	assert_str(str((messages[2].message as Dictionary).get("content"))).contains("Summary survives")
 	assert_int(paged_messages.size()).is_equal(1)
 	assert_str(paged_messages[0].uuid).is_equal("a-1")
+	assert_int(negative_offset_messages.size()).is_equal(2)
+	assert_str(negative_offset_messages[0].uuid).is_equal("a-1")
+	assert_str(negative_offset_messages[1].uuid).is_equal("a-2")
 
 
 func test_get_session_messages_returns_empty_for_invalid_or_missing_session() -> void:
@@ -353,6 +357,7 @@ func test_get_session_transcript_expands_assistant_detail_blocks_without_changin
 	var messages := ClaudeSessions.get_session_messages(session_id, project_path)
 	var transcript := ClaudeSessions.get_session_transcript(session_id, project_path)
 	var paged_transcript := ClaudeSessions.get_session_transcript(session_id, project_path, 2, 1)
+	var negative_offset_transcript := ClaudeSessions.get_session_transcript(session_id, project_path, 10, -2)
 
 	assert_int(messages.size()).is_equal(2)
 	assert_int(transcript.size()).is_equal(8)
@@ -377,6 +382,9 @@ func test_get_session_transcript_expands_assistant_detail_blocks_without_changin
 	assert_int(paged_transcript.size()).is_equal(2)
 	assert_str(paged_transcript[0].kind).is_equal("system")
 	assert_str(paged_transcript[1].kind).is_equal("progress")
+	assert_int(negative_offset_transcript.size()).is_equal(2)
+	assert_str(negative_offset_transcript[0].kind).is_equal("tool_use")
+	assert_str(negative_offset_transcript[1].kind).is_equal("tool_result")
 
 
 func test_rename_session_validates_inputs_and_updates_visible_title() -> void:
@@ -538,6 +546,164 @@ func test_delete_session_removes_file_and_visibility() -> void:
 	assert_bool(FileAccess.file_exists(session_file)).is_false()
 	assert_that(ClaudeSessions.get_session_info(session_id, project_path)).is_null()
 	assert_array(ClaudeSessions.list_sessions(project_path, 0, 0, false)).is_empty()
+
+
+func test_delete_session_best_effort_removes_subagent_transcript_tree() -> void:
+	var config_root := _create_config_root("delete-subagents")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/delete-subagents-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "34343434-3434-4343-8343-343434343434"
+	var session_file := project_dir.path_join("%s.jsonl" % session_id)
+	var subagent_file := project_dir.path_join(session_id).path_join("subagents").path_join("workflows").path_join("run-1").path_join("agent-helper.jsonl")
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Delete me"}},
+		{"type": "summary", "summary": "Delete me"},
+	], 1712301510)
+	_write_subagent_file(subagent_file, [
+		{"type": "user", "uuid": "sub-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Nested task"}},
+	])
+
+	assert_bool(FileAccess.file_exists(session_file)).is_true()
+	assert_bool(FileAccess.file_exists(subagent_file)).is_true()
+	assert_int(ClaudeSessions.delete_session(session_id, project_path)).is_equal(OK)
+	assert_bool(FileAccess.file_exists(session_file)).is_false()
+	assert_bool(DirAccess.dir_exists_absolute(project_dir.path_join(session_id))).is_false()
+
+
+func test_list_subagents_handles_missing_inputs_and_discovers_nested_files() -> void:
+	var config_root := _create_config_root("subagents-list")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	assert_array(ClaudeSessions.list_subagents("not-a-uuid")).is_empty()
+	assert_array(ClaudeSessions.list_subagents("35353535-3535-4353-8353-353535353535")).is_empty()
+
+	var project_path := "/tmp/subagents-list-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "36363636-3636-4363-8363-363636363636"
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Parent session"}},
+	], 1712301520)
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("agent-top.jsonl"), [
+		{"type": "user", "uuid": "top-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Top task"}},
+	])
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("workflows").path_join("run-2").path_join("agent-nested.jsonl"), [
+		{"type": "user", "uuid": "nested-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Nested task"}},
+	])
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("other.jsonl"), [
+		{"type": "user", "uuid": "ignored-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Ignore me"}},
+	])
+
+	assert_array(ClaudeSessions.list_subagents(session_id, project_path)).is_equal(["top", "nested"])
+	assert_array(ClaudeSessions.list_subagents(session_id)).is_equal(["top", "nested"])
+
+
+func test_list_subagents_unscoped_lookup_does_not_require_visible_parent_metadata() -> void:
+	var config_root := _create_config_root("subagents-unscoped")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/subagents-unscoped-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "39393939-3939-4393-8393-393939393939"
+	_write_session_file(project_dir, session_id, [
+		{"type": "system", "sessionId": session_id, "message": {"message": "metadata only"}},
+	], 1712301525)
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("agent-helper.jsonl"), [
+		{"type": "user", "uuid": "plain-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Helper task"}},
+	])
+
+	assert_array(ClaudeSessions.list_subagents(session_id)).is_equal(["helper"])
+
+
+func test_list_subagents_preserves_upstream_lexicographic_recursive_order() -> void:
+	var config_root := _create_config_root("subagents-order")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var project_path := "/tmp/subagents-order-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "40404040-4040-4404-8404-404040404040"
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Parent session"}},
+	], 1712301526)
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("aaa").path_join("agent-deep.jsonl"), [
+		{"type": "user", "uuid": "deep-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Deep task"}},
+	])
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("agent-top.jsonl"), [
+		{"type": "user", "uuid": "top-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Top task"}},
+	])
+
+	assert_array(ClaudeSessions.list_subagents(session_id, project_path)).is_equal(["deep", "top"])
+
+
+func test_unscoped_subagent_lookup_follows_raw_project_scan_order_for_duplicate_ids() -> void:
+	var config_root := _create_config_root("subagents-duplicate-order")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	var first_project := "/tmp/subagents-duplicate-first"
+	var second_project := "/tmp/subagents-duplicate-second"
+	var first_project_dir := _make_project_dir(config_root, first_project)
+	var second_project_dir := _make_project_dir(config_root, second_project)
+	var session_id := "41414141-4141-4414-8414-414141414141"
+	_write_session_file(first_project_dir, session_id, [
+		{"type": "system", "sessionId": session_id, "message": {"message": "first duplicate"}},
+	], 1712301527)
+	_write_session_file(second_project_dir, session_id, [
+		{"type": "system", "sessionId": session_id, "message": {"message": "second duplicate"}},
+	], 1712301528)
+	_write_subagent_file(first_project_dir.path_join(session_id).path_join("subagents").path_join("agent-first.jsonl"), [
+		{"type": "user", "uuid": "dup-first-u-1", "sessionId": session_id, "message": {"role": "user", "content": "First duplicate"}},
+	])
+	_write_subagent_file(second_project_dir.path_join(session_id).path_join("subagents").path_join("agent-second.jsonl"), [
+		{"type": "user", "uuid": "dup-second-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Second duplicate"}},
+	])
+
+	var projects_dir := ClaudeSessionsScript._get_projects_dir()
+	var raw_names := _list_directory_names_in_scan_order(projects_dir)
+	var first_name := raw_names[0] if not raw_names.is_empty() else ""
+	var expected_agent := "first" if first_name == first_project_dir.get_file() else "second"
+
+	assert_array(ClaudeSessions.list_subagents(session_id)).is_equal([expected_agent])
+
+
+func test_get_subagent_messages_reads_chain_and_applies_pagination() -> void:
+	var config_root := _create_config_root("subagents-messages")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+
+	assert_array(ClaudeSessions.get_subagent_messages("not-a-uuid", "helper")).is_empty()
+	assert_array(ClaudeSessions.get_subagent_messages("37373737-3737-4373-8373-373737373737", "")).is_empty()
+
+	var project_path := "/tmp/subagents-message-project"
+	var project_dir := _make_project_dir(config_root, project_path)
+	var session_id := "38383838-3838-4383-8383-383838383838"
+	_write_session_file(project_dir, session_id, [
+		{"type": "user", "cwd": project_path, "message": {"content": "Parent session"}},
+	], 1712301530)
+	_write_subagent_file(project_dir.path_join(session_id).path_join("subagents").path_join("workflows").path_join("run-3").path_join("agent-helper.jsonl"), [
+		{"type": "user", "uuid": "sub-u-1", "sessionId": session_id, "message": {"role": "user", "content": "Task"}},
+		{"type": "assistant", "uuid": "sub-a-1", "parentUuid": "sub-u-1", "sessionId": session_id, "message": {"role": "assistant", "content": "Working"}},
+		{"type": "system", "uuid": "sub-skip-1", "parentUuid": "sub-a-1", "sessionId": session_id, "message": {"message": "ignore"}},
+		{"type": "user", "uuid": "sub-u-2", "parentUuid": "sub-a-1", "sessionId": session_id, "message": {"role": "user", "content": "Continue"}},
+		"not-json",
+		{"type": "assistant", "uuid": "sub-a-2", "parentUuid": "sub-u-2", "sessionId": session_id, "message": {"role": "assistant", "content": "Done"}},
+	])
+
+	var messages := ClaudeSessions.get_subagent_messages(session_id, "helper", project_path)
+	var paged_messages := ClaudeSessions.get_subagent_messages(session_id, "helper", project_path, 2, 1)
+	var negative_offset_messages := ClaudeSessions.get_subagent_messages(session_id, "helper", project_path, 6, -2)
+
+	assert_int(messages.size()).is_equal(4)
+	assert_str(messages[0].uuid).is_equal("sub-u-1")
+	assert_str(messages[1].uuid).is_equal("sub-a-1")
+	assert_str(messages[2].uuid).is_equal("sub-u-2")
+	assert_str(messages[3].uuid).is_equal("sub-a-2")
+	assert_int(paged_messages.size()).is_equal(2)
+	assert_str(paged_messages[0].uuid).is_equal("sub-a-1")
+	assert_str(paged_messages[1].uuid).is_equal("sub-u-2")
+	assert_int(negative_offset_messages.size()).is_equal(2)
+	assert_str(negative_offset_messages[0].uuid).is_equal("sub-u-2")
+	assert_str(negative_offset_messages[1].uuid).is_equal("sub-a-2")
+	assert_array(ClaudeSessions.get_subagent_messages(session_id, "missing", project_path)).is_empty()
 
 
 func test_session_mutations_remain_worktree_aware() -> void:
@@ -980,6 +1146,34 @@ func _write_session_text_file(project_dir: String, session_id: String, content: 
 	file.store_string(content)
 	file.close()
 	_set_session_file_mtime(path, mtime)
+
+
+func _write_subagent_file(path: String, entries: Array) -> void:
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	for entry in entries:
+		if entry is Dictionary:
+			file.store_line(JSON.stringify(entry))
+		else:
+			file.store_line(str(entry))
+	file.close()
+
+
+func _list_directory_names_in_scan_order(path: String) -> Array[String]:
+	var access := DirAccess.open(path)
+	if access == null:
+		return []
+	var result: Array[String] = []
+	access.list_dir_begin()
+	while true:
+		var entry_name := access.get_next()
+		if entry_name.is_empty():
+			break
+		if entry_name == "." or entry_name == ".." or not access.current_is_dir():
+			continue
+		result.append(entry_name)
+	access.list_dir_end()
+	return result
 
 
 func _read_session_entries(path: String) -> Array[Dictionary]:

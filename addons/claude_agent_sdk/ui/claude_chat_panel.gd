@@ -67,10 +67,12 @@ var _last_cli_diagnostic_line := ""
 var _forwarded_stderr_callback: Callable = Callable()
 var _did_apply_initial_split := false
 var _suppress_configuration_sync := false
+var _system_prompt_exclude_dynamic_sections := false
 var _built_in_tool_checks: Dictionary = {}
 var _built_in_tool_group_buttons: Dictionary = {}
 var _current_view := PANEL_VIEW_CHAT
 var _transcript_entries: Array[Dictionary] = []
+var _transcript_entry_indices: Dictionary = {}
 var _transcript_entry_views := {}
 var _task_entry_ids := {}
 var _tool_use_names := {}
@@ -284,10 +286,6 @@ func submit_prompt(prompt: String) -> void:
 				_display_selected_content()
 		return
 	var target_session_id := _current_live_query_session_id()
-	if _client_node.is_session_busy(target_session_id):
-		_emit_error("Wait for the current session turn to finish before sending another prompt")
-		return
-
 	var target_session_key := _live_session_key_for_query_target()
 	if _selected_session_requires_disconnect_handoff(target_session_key):
 		_emit_error("Disconnect and resume to continue a saved session; shared live overlap only covers sessions started in this connection")
@@ -437,7 +435,7 @@ func _populate_quick_setting_choices() -> void:
 			_chat_effort_option.add_item(effort_name)
 	if _chat_permission_mode.item_count > 0:
 		return
-	for mode in ["default", "plan", "acceptEdits", "bypassPermissions"]:
+	for mode in ["default", "plan", "acceptEdits", "bypassPermissions", "auto"]:
 		_chat_permission_mode.add_item(mode)
 
 
@@ -550,10 +548,12 @@ func _apply_system_prompt_controls_from_options() -> void:
 	var system_prompt: Variant = _configured_options.system_prompt
 	_system_prompt_text_input.text = ""
 	_system_prompt_file_input.text = ""
+	_system_prompt_exclude_dynamic_sections = false
 	if system_prompt is Dictionary:
 		var prompt_config := system_prompt as Dictionary
 		var prompt_type := str(prompt_config.get("type", ""))
 		if prompt_type == "preset":
+			_system_prompt_exclude_dynamic_sections = bool(prompt_config.get("exclude_dynamic_sections", prompt_config.get("excludeDynamicSections", false)))
 			var append_text := str(prompt_config.get("append", ""))
 			if append_text.is_empty():
 				_system_prompt_mode.select(SYSTEM_PROMPT_MODE_PRESET)
@@ -857,6 +857,7 @@ func _apply_transcript_state(state: Dictionary) -> void:
 		if entry_variant is Dictionary:
 			transcript_entries.append(entry_variant)
 	_transcript_entries = transcript_entries
+	_rebuild_transcript_entry_indices()
 	_task_entry_ids = state.get("task_entry_ids", {}) as Dictionary
 	_tool_use_names = state.get("tool_use_names", {}) as Dictionary
 	_next_transcript_entry_id = int(state.get("next_transcript_entry_id", 1))
@@ -1055,10 +1056,11 @@ func _refresh_mcp_authoring_control_state() -> void:
 		if row_variant is not Control:
 			continue
 		var row := row_variant as Control
-		var name_input := row.find_child("McpServerNameInput", true, false) as LineEdit
-		var command_input := row.find_child("McpServerCommandInput", true, false) as LineEdit
-		var args_input := row.find_child("McpServerArgsInput", true, false) as LineEdit
-		var remove_button := row.find_child("McpRemoveServerButton", true, false) as Button
+		var controls := _mcp_editable_row_controls(row)
+		var name_input := controls.get("name_input") as LineEdit
+		var command_input := controls.get("command_input") as LineEdit
+		var args_input := controls.get("args_input") as LineEdit
+		var remove_button := controls.get("remove_button") as Button
 		if name_input != null:
 			name_input.editable = not locked
 		if command_input != null:
@@ -1073,6 +1075,10 @@ func _clear_container_children(container: Node) -> void:
 	for child in container.get_children():
 		container.remove_child(child)
 		child.queue_free()
+
+
+func _mcp_editable_row_controls(row: Control) -> Dictionary:
+	return row.get_meta("mcp_row_controls", {}) as Dictionary
 
 
 func _classify_mcp_servers(value: Variant) -> Dictionary:
@@ -1252,6 +1258,12 @@ func _build_mcp_editable_row(index: int, entry: Dictionary) -> Control:
 	args_input.text = ",".join(args_parts)
 	args_input.text_changed.connect(_on_mcp_editable_row_text_changed.bind(card))
 	body.add_child(args_input)
+	card.set_meta("mcp_row_controls", {
+		"name_input": name_input,
+		"command_input": command_input,
+		"args_input": args_input,
+		"remove_button": remove_button,
+	})
 
 	return card
 
@@ -1297,9 +1309,10 @@ func _editable_mcp_row_entries(skip_row: Control = null) -> Array[Dictionary]:
 
 
 func _editable_mcp_entry_from_row(row: Control) -> Dictionary:
-	var name_input := row.find_child("McpServerNameInput", true, false) as LineEdit
-	var command_input := row.find_child("McpServerCommandInput", true, false) as LineEdit
-	var args_input := row.find_child("McpServerArgsInput", true, false) as LineEdit
+	var controls := _mcp_editable_row_controls(row)
+	var name_input := controls.get("name_input") as LineEdit
+	var command_input := controls.get("command_input") as LineEdit
+	var args_input := controls.get("args_input") as LineEdit
 	var flags := row.get_meta("mcp_row_flags", {}) as Dictionary
 	return {
 		"name": name_input.text.strip_edges() if name_input != null else "",
@@ -1631,12 +1644,19 @@ func _system_prompt_from_controls() -> Variant:
 		SYSTEM_PROMPT_MODE_TEXT:
 			return _system_prompt_text_input.text
 		SYSTEM_PROMPT_MODE_PRESET:
-			return {"type": "preset", "preset": "claude_code"}
+			var preset_prompt: Dictionary = {"type": "preset", "preset": "claude_code"}
+			if _system_prompt_exclude_dynamic_sections:
+				preset_prompt["exclude_dynamic_sections"] = true
+			return preset_prompt
 		SYSTEM_PROMPT_MODE_PRESET_APPEND:
 			var append_text := _system_prompt_text_input.text
+			var preset_append_prompt: Dictionary = {"type": "preset", "preset": "claude_code"}
+			if _system_prompt_exclude_dynamic_sections:
+				preset_append_prompt["exclude_dynamic_sections"] = true
 			if append_text.strip_edges().is_empty():
-				return {"type": "preset", "preset": "claude_code"}
-			return {"type": "preset", "preset": "claude_code", "append": append_text}
+				return preset_append_prompt
+			preset_append_prompt["append"] = append_text
+			return preset_append_prompt
 		SYSTEM_PROMPT_MODE_FILE:
 			var path := _system_prompt_file_input.text.strip_edges()
 			return "" if path.is_empty() else {"type": "file", "path": path}
@@ -1823,6 +1843,10 @@ func _reload_selected_session_transcript() -> void:
 	_selected_session_transcript = _client_node.get_session_transcript(_selected_session_id, _selected_session_directory())
 	_render_selected_session_transcript()
 	_refresh_selected_session_metadata()
+	_refresh_session_controls()
+	_update_status_from_state()
+	_refresh_composer_state()
+	_refresh_transcript_entry_views_visibility()
 
 
 func _render_selected_session_transcript() -> void:
@@ -2591,6 +2615,7 @@ func _append_transcript_entry(kind: String, data: Dictionary) -> int:
 	entry["kind"] = kind
 	_next_transcript_entry_id += 1
 	_transcript_entries.append(entry)
+	_transcript_entry_indices[int(entry.get("id", -1))] = _transcript_entries.size() - 1
 	if not _suppress_transcript_view_updates:
 		_ensure_transcript_entry_view(entry)
 	return int(entry.get("id", -1))
@@ -2606,19 +2631,23 @@ func _append_pending_user_prompt(text: String) -> void:
 
 
 func _get_transcript_entry(entry_id: int) -> Dictionary:
-	for entry in _transcript_entries:
-		if int(entry.get("id", -1)) == entry_id:
-			return entry
+	var index := _transcript_entry_index(entry_id)
+	if index >= 0:
+		return _transcript_entries[index]
 	return {}
 
 
 func _set_transcript_entry(entry_id: int, updated_entry: Dictionary) -> void:
-	for index in range(_transcript_entries.size()):
-		if int(_transcript_entries[index].get("id", -1)) == entry_id:
-			_transcript_entries[index] = updated_entry
-			if not _suppress_transcript_view_updates:
-				_update_transcript_entry_view(updated_entry)
-			return
+	var index := _transcript_entry_index(entry_id)
+	if index < 0:
+		return
+	_transcript_entries[index] = updated_entry
+	var updated_entry_id := int(updated_entry.get("id", entry_id))
+	if updated_entry_id != entry_id:
+		_transcript_entry_indices.erase(entry_id)
+	_transcript_entry_indices[updated_entry_id] = index
+	if not _suppress_transcript_view_updates:
+		_update_transcript_entry_view(updated_entry)
 
 
 func _discard_pending_prompt_echo_entry() -> void:
@@ -2627,11 +2656,8 @@ func _discard_pending_prompt_echo_entry() -> void:
 	_pending_prompt_entry_id = -1
 	if entry_id < 0:
 		return
-	for index in range(_transcript_entries.size()):
-		if int(_transcript_entries[index].get("id", -1)) != entry_id:
-			continue
-		_transcript_entries.remove_at(index)
-		break
+	if not _remove_transcript_entry(entry_id):
+		return
 	if _suppress_transcript_view_updates:
 		return
 	var view: Dictionary = _transcript_entry_views.get(entry_id, {})
@@ -2729,6 +2755,41 @@ func _refresh_transcript_entry_views_visibility() -> void:
 		return
 	for entry in _transcript_entries:
 		_refresh_transcript_entry_view(entry)
+
+
+func _rebuild_transcript_entry_indices() -> void:
+	_transcript_entry_indices.clear()
+	for index in range(_transcript_entries.size()):
+		var entry := _transcript_entries[index]
+		var entry_id := int(entry.get("id", -1))
+		if entry_id >= 0:
+			_transcript_entry_indices[entry_id] = index
+
+
+func _transcript_entry_index(entry_id: int) -> int:
+	if entry_id < 0:
+		return -1
+	var index := int(_transcript_entry_indices.get(entry_id, -1))
+	if index >= 0 and index < _transcript_entries.size():
+		var entry := _transcript_entries[index]
+		if int(entry.get("id", -1)) == entry_id:
+			return index
+	_rebuild_transcript_entry_indices()
+	index = int(_transcript_entry_indices.get(entry_id, -1))
+	if index >= 0 and index < _transcript_entries.size():
+		var rebuilt_entry := _transcript_entries[index]
+		if int(rebuilt_entry.get("id", -1)) == entry_id:
+			return index
+	return -1
+
+
+func _remove_transcript_entry(entry_id: int) -> bool:
+	var index := _transcript_entry_index(entry_id)
+	if index < 0:
+		return false
+	_transcript_entries.remove_at(index)
+	_rebuild_transcript_entry_indices()
+	return true
 
 
 func _create_transcript_primary_view(entry: Dictionary) -> Control:
@@ -3394,10 +3455,8 @@ func _update_status_from_state(server_info: Dictionary = {}) -> void:
 
 func _refresh_composer_state() -> void:
 	var logged_in := bool(_last_auth_status.get("logged_in", false))
-	var selected_session_id := _current_live_query_session_id()
-	var selected_session_busy: bool = _client_node != null and _client_node.is_session_busy(selected_session_id)
 	var requires_disconnect_handoff := _selected_session_requires_disconnect_handoff(_live_session_key_for_query_target())
-	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in and not selected_session_busy
+	var can_draft: bool = not _is_connecting and not _has_pending_live_fork() and logged_in
 	var can_send: bool = can_draft and not requires_disconnect_handoff and not _prompt_input.text.strip_edges().is_empty()
 	_prompt_input.editable = can_draft
 	_send_button.disabled = not can_send
@@ -3422,7 +3481,9 @@ func _composer_hint_text() -> String:
 		return "Send the prompt to connect and start a new chat."
 	var selected_session_id := _current_live_query_session_id()
 	if _client_node != null and _client_node.is_session_busy(selected_session_id):
-		return "Claude is responding in the selected session."
+		if _prompt_input.text.strip_edges().is_empty():
+			return "Claude is responding in the selected session. You can still send another prompt; replies stay in transcript arrival order."
+		return "Send another prompt into the selected live session while Claude is still responding."
 	if _client_node != null and _client_node.is_busy():
 		return "Another live session is busy. You can still work in this selected session, or interrupt the shared connection."
 	if _selected_session_requires_disconnect_handoff(_live_session_key_for_query_target()):

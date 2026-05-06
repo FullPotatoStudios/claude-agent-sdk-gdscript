@@ -5,6 +5,7 @@ var read_only_hint: Variant = null
 var destructive_hint: Variant = null
 var idempotent_hint: Variant = null
 var open_world_hint: Variant = null
+var max_result_size_chars: Variant = null
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -24,6 +25,10 @@ func _init(config: Dictionary = {}) -> void:
 		open_world_hint = bool(config["open_world_hint"])
 	elif config.has("openWorldHint"):
 		open_world_hint = bool(config["openWorldHint"])
+	if config.has("max_result_size_chars"):
+		max_result_size_chars = int(config["max_result_size_chars"])
+	elif config.has("maxResultSizeChars"):
+		max_result_size_chars = int(config["maxResultSizeChars"])
 
 
 func to_mcp_dictionary() -> Dictionary:
@@ -36,4 +41,11 @@ func to_mcp_dictionary() -> Dictionary:
 		serialized["idempotentHint"] = bool(idempotent_hint)
 	if open_world_hint != null:
 		serialized["openWorldHint"] = bool(open_world_hint)
+	return serialized
+
+
+func to_meta_dictionary() -> Dictionary:
+	var serialized: Dictionary = {}
+	if max_result_size_chars != null:
+		serialized["anthropic/maxResultSizeChars"] = int(max_result_size_chars)
 	return serialized

@@ -13,6 +13,14 @@ var _cancelable_hook_state: Dictionary = {}
 var _cancelable_permission_state: Dictionary = {}
 
 
+class UnsupportedEndInputTransport extends FakeClaudeTransport:
+	func supports_end_input() -> bool:
+		return false
+
+	func end_input() -> bool:
+		return false
+
+
 func after_test() -> void:
 	_async_completions.clear()
 	_cancelable_hook_state.clear()
@@ -161,6 +169,12 @@ func test_initialize_includes_serialized_agents_and_preserves_hooks() -> void:
 					}),
 				],
 			},
+			"system_prompt": {
+				"type": "preset",
+				"preset": "claude_code",
+				"append": "Review with parity in mind.",
+				"exclude_dynamic_sections": true,
+			},
 			"agents": {
 				"code-reviewer": {
 					"description": "Reviews code for issues",
@@ -190,6 +204,7 @@ func test_initialize_includes_serialized_agents_and_preserves_hooks() -> void:
 
 	assert_dict(hooks_config).contains_keys(["PreToolUse"])
 	assert_dict(agents_config).contains_keys(["code-reviewer"])
+	assert_bool(bool(request.get("excludeDynamicSections", false))).is_true()
 	var agent_config: Dictionary = agents_config["code-reviewer"]
 	assert_int(int(agent_config.get("maxTurns", -1))).is_equal(2)
 	agent_config.erase("maxTurns")
@@ -283,6 +298,66 @@ func test_initialize_error_fails_pending_streams() -> void:
 	assert_str(response_stream.get_error()).contains("initialize failed")
 	assert_that(await response_stream.next_message()).is_null()
 	assert_bool(transport.connected).is_false()
+
+
+func test_result_finalizes_turn_when_transport_cannot_end_input() -> void:
+	var transport = UnsupportedEndInputTransport.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	var request_id := str(initialize_request.get("request_id", ""))
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": request_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi", "default", true)
+	var response_stream = session.receive_response()
+	await get_tree().process_frame
+	assert_int(transport.end_input_calls).is_equal(0)
+
+	transport.emit_stdout_message(_result_payload("done"))
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	await get_tree().process_frame
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_bool(session._active_turns_by_session.is_empty()).is_true()
+
+
+func test_result_finish_clears_registered_response_stream_callbacks() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("Hi")
+	var global_response_stream = session.receive_response()
+	var turn_response_stream = session.receive_response_for_session("default")
+
+	transport.emit_stdout_message(_result_payload("done"))
+
+	assert_object(await global_response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await global_response_stream.next_message()).is_null()
+	assert_object(await turn_response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await turn_response_stream.next_message()).is_null()
+	assert_bool((global_response_stream.get("_finish_callback") as Callable).is_valid()).is_false()
+	assert_bool((turn_response_stream.get("_finish_callback") as Callable).is_valid()).is_false()
+	assert_array(session.get("_global_response_streams") as Array).is_empty()
+	assert_dict(session.get("_turn_response_streams") as Dictionary).is_empty()
 
 
 func test_malformed_known_messages_fail_session_instead_of_silent_skip() -> void:
@@ -395,6 +470,42 @@ func test_initialize_timeout_fails_stalled_connect_and_closes_transport() -> voi
 	assert_bool(transport.connected).is_false()
 
 
+func test_initialize_timeout_cancels_cleanly_after_successful_initialize() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.set("_initialize_timeout_sec", 0.01)
+	session.open_session()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+
+	await get_tree().create_timer(0.05).timeout
+
+	assert_str(session.get_last_error()).is_empty()
+	assert_bool(transport.connected).is_true()
+
+
+func test_initialize_timeout_watcher_does_not_retain_closed_session() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.set("_initialize_timeout_sec", 0.01)
+	session.open_session()
+	session.close()
+
+	var session_ref: WeakRef = weakref(session)
+	session = null
+
+	await get_tree().create_timer(0.05).timeout
+
+	assert_that(session_ref.get_ref()).is_null()
+
+
 func test_prompt_stream_waits_for_initialize_and_preserves_stream_payloads() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -438,6 +549,8 @@ func test_prompt_stream_waits_for_initialize_and_preserves_stream_payloads() -> 
 	assert_str(str((first_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("First")
 	assert_str(str(second_prompt.get("session_id", ""))).is_equal("explicit-session")
 	assert_str(str((second_prompt.get("message", {}) as Dictionary).get("content", ""))).is_equal("Second")
+	session.close()
+	assert_that(await response_stream.next_message()).is_null()
 
 
 func test_prompt_stream_write_failure_fails_active_response_stream() -> void:
@@ -547,6 +660,80 @@ func test_prompt_stream_stops_accepting_new_items_after_first_result() -> void:
 	await get_tree().process_frame
 
 	assert_int(transport.writes.size()).is_equal(2)
+
+
+func test_close_input_after_turn_without_end_input_support_finalizes_turn_after_result() -> void:
+	var transport = FakeTransportScript.new()
+	transport.end_input_supported = false
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	session.send_user_prompt("Hi", "default", true)
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_bool((session.get("_active_turns_by_session") as Dictionary).is_empty()).is_true()
+
+
+func test_close_input_after_turn_reports_supported_end_input_failures() -> void:
+	var transport = FakeTransportScript.new()
+	transport.end_input_success = false
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	session.send_user_prompt("Hi", "default", true)
+	var response_stream = session.receive_response()
+	var initialize_request: Dictionary = JSON.parse_string(transport.writes[0])
+
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(initialize_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await get_tree().process_frame
+
+	assert_str(session.get_last_error()).contains("failed to end input")
+
+	transport.emit_stdout_message({
+		"type": "result",
+		"subtype": "success",
+		"duration_ms": 10,
+		"duration_api_ms": 5,
+		"is_error": false,
+		"num_turns": 1,
+		"session_id": "default",
+		"result": "done",
+	})
+
+	assert_object(await response_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await response_stream.next_message()).is_null()
+	assert_int(transport.end_input_calls).is_equal(0)
+	assert_bool((session.get("_active_turns_by_session") as Dictionary).is_empty()).is_true()
 
 
 func test_inbound_hook_callback_writes_success_response() -> void:
@@ -713,6 +900,7 @@ func test_inbound_mcp_message_handles_initialize_and_tools_list() -> void:
 	var annotations := ClaudeMcpToolAnnotations.new({
 		"read_only_hint": true,
 		"open_world_hint": false,
+		"max_result_size_chars": 500000,
 	})
 	var tool = ClaudeMcp.tool(
 		"echo",
@@ -768,6 +956,9 @@ func test_inbound_mcp_message_handles_initialize_and_tools_list() -> void:
 		"annotations": {
 			"readOnlyHint": true,
 			"openWorldHint": false,
+		},
+		"_meta": {
+			"anthropic/maxResultSizeChars": 500000.0,
 		},
 	})
 
@@ -1461,6 +1652,38 @@ func test_unlabeled_assistant_routes_to_only_active_session_stream() -> void:
 	assert_that(await response_stream.next_message()).is_null()
 
 
+func test_unlabeled_assistant_still_routes_when_only_one_session_has_overlapping_turns() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Unlabeled overlap"}]},
+	})
+
+	var assistant_message = await first_stream.next_message()
+	assert_object(assistant_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((assistant_message as ClaudeAssistantMessage).session_id).is_equal("")
+	session.close()
+	assert_that(await first_stream.next_message()).is_null()
+	assert_that(await second_stream.next_message()).is_null()
+
+
 func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_active() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
@@ -1504,7 +1727,7 @@ func test_default_turn_can_bind_runtime_session_id_while_named_turn_is_also_acti
 	assert_that(await default_stream.next_message()).is_null()
 
 
-func test_same_session_second_query_is_rejected_while_response_is_active() -> void:
+func test_same_session_queries_can_overlap_and_session_streams_follow_fifo_turn_order() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
 	session.open_session()
@@ -1520,12 +1743,74 @@ func test_same_session_second_query_is_rejected_while_response_is_active() -> vo
 
 	session.send_user_prompt("First", "session-a")
 	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
 
-	assert_str(session.get_last_error()).contains("session 'session-a'")
-	assert_int(transport.writes.size()).is_equal(2)
+	assert_str(session.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+	assert_str(str((JSON.parse_string(transport.writes[1]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+	assert_str(str((JSON.parse_string(transport.writes[2]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "First response"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-first", "session-a"))
+	transport.emit_stdout_message({
+		"type": "assistant",
+		"session_id": "session-a",
+		"message": {"model": "haiku", "content": [{"type": "text", "text": "Second response"}]},
+	})
+	transport.emit_stdout_message(_result_payload("done-second", "session-a"))
+
+	var first_message = await first_stream.next_message()
+	assert_object(first_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((first_message as ClaudeAssistantMessage).model).is_equal("haiku")
+	assert_object(await first_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await first_stream.next_message()).is_null()
+
+	var second_message = await second_stream.next_message()
+	assert_object(second_message).is_instanceof(ClaudeAssistantMessage)
+	assert_str((second_message as ClaudeAssistantMessage).model).is_equal("haiku")
+	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await second_stream.next_message()).is_null()
 
 
-func test_same_session_second_query_is_rejected_while_prompt_stream_is_active() -> void:
+func test_same_session_overlap_routes_out_of_order_results_by_turn_count() -> void:
+	var transport = FakeTransportScript.new()
+	var session = ClaudeQuerySession.new(transport)
+	session.open_session()
+	var init_id := str((JSON.parse_string(transport.writes[0]) as Dictionary).get("request_id", ""))
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": init_id,
+			"response": {},
+		},
+	})
+
+	session.send_user_prompt("First", "session-a")
+	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
+
+	transport.emit_stdout_message(_result_payload("done-second", "session-a", 2))
+	transport.emit_stdout_message(_result_payload("done-first", "session-a", 1))
+
+	var second_result = await second_stream.next_message()
+	assert_object(second_result).is_instanceof(ClaudeResultMessage)
+	assert_int((second_result as ClaudeResultMessage).num_turns).is_equal(2)
+	assert_that(await second_stream.next_message()).is_null()
+
+	var first_result = await first_stream.next_message()
+	assert_object(first_result).is_instanceof(ClaudeResultMessage)
+	assert_int((first_result as ClaudeResultMessage).num_turns).is_equal(1)
+	assert_that(await first_stream.next_message()).is_null()
+
+
+func test_same_session_query_can_start_while_prompt_stream_turn_is_still_active() -> void:
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(transport)
 	var prompt_stream = ClaudePromptStreamScript.new()
@@ -1541,9 +1826,29 @@ func test_same_session_second_query_is_rejected_while_prompt_stream_is_active() 
 	})
 
 	session.send_prompt_stream(prompt_stream, "session-a")
+	prompt_stream.push_message({
+		"type": "user",
+		"message": {"role": "user", "content": "First"},
+		"parent_tool_use_id": null,
+	})
+	await get_tree().process_frame
 	session.send_user_prompt("Second", "session-a")
+	var first_stream = session.receive_response_for_session("session-a")
+	var second_stream = session.receive_response_for_session("session-a")
+	prompt_stream.finish()
 
-	assert_str(session.get_last_error()).contains("session 'session-a'")
+	assert_str(session.get_last_error()).is_empty()
+	assert_int(transport.writes.size()).is_equal(3)
+	assert_str(str((JSON.parse_string(transport.writes[1]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+	assert_str(str((JSON.parse_string(transport.writes[2]) as Dictionary).get("session_id", ""))).is_equal("session-a")
+
+	transport.emit_stdout_message(_result_payload("done-first", "session-a"))
+	transport.emit_stdout_message(_result_payload("done-second", "session-a"))
+
+	assert_object(await first_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await first_stream.next_message()).is_null()
+	assert_object(await second_stream.next_message()).is_instanceof(ClaudeResultMessage)
+	assert_that(await second_stream.next_message()).is_null()
 
 
 func test_default_session_stream_tracks_promoted_runtime_session_id() -> void:
@@ -1731,14 +2036,14 @@ func test_dynamic_controls_send_expected_control_requests() -> void:
 	})
 
 
-func _result_payload(result_text: String, session_id: String = "default") -> Dictionary:
+func _result_payload(result_text: String, session_id: String = "default", num_turns: int = 1) -> Dictionary:
 	return {
 		"type": "result",
 		"subtype": "success",
 		"duration_ms": 20,
 		"duration_api_ms": 10,
 		"is_error": false,
-		"num_turns": 1,
+		"num_turns": num_turns,
 		"session_id": session_id,
 		"result": result_text,
 	}

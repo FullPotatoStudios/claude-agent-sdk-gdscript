@@ -8,6 +8,7 @@ var _finished := false
 var _finish_on_result := false
 var _error_message := ""
 var _finish_callback: Callable = Callable()
+var _finish_callbacks: Array[Callable] = []
 var _retained_refs: Array = []
 
 
@@ -34,8 +35,12 @@ func finish() -> void:
 		return
 	_finished = true
 	state_changed.emit()
-	if _finish_callback.is_valid():
-		_finish_callback.call()
+	var callbacks := _finish_callbacks.duplicate()
+	_finish_callback = Callable()
+	_finish_callbacks.clear()
+	for callback in callbacks:
+		if callback.is_valid():
+			callback.call()
 	_retained_refs.clear()
 
 
@@ -53,6 +58,16 @@ func get_error() -> String:
 
 
 func set_finish_callback(callback: Callable) -> void:
+	_finish_callbacks.clear()
+	if callback.is_valid():
+		_finish_callbacks.append(callback)
+	_finish_callback = callback
+
+
+func add_finish_callback(callback: Callable) -> void:
+	if not callback.is_valid():
+		return
+	_finish_callbacks.append(callback)
 	_finish_callback = callback
 
 

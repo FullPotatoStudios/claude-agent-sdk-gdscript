@@ -126,11 +126,14 @@ The panel intentionally does not yet include:
 - richer task dashboards beyond the current per-task transcript cards and stop control
 - shipped editor-plugin wiring inside the addon payload
 
-The lower runtime still rejects same-session overlap so one live conversation
-does not race itself inside the shared panel state, but the shipped panel now
-surfaces different-session overlap directly:
+The lower runtime now keeps same-session and different-session overlap in the
+same shared live connection through per-session turn tracking plus named-session
+result matching on Claude's reported `num_turns`, and the shipped panel
+surfaces that directly:
 
 - one connected panel can keep multiple live sessions active at once
+- one selected live session can accept another prompt while Claude is still
+  responding, with replies staying in transcript arrival order
 - selecting a saved or live session swaps the transcript/composer immediately
 - `New chat` while connected selects a fresh live draft session instead of
   disconnecting
@@ -138,9 +141,9 @@ surfaces different-session overlap directly:
   handoff unless that session was started in the current live connection
 - background messages, results, task cards, and draft-to-resolved-session
   promotion are tracked per session without overwriting the selected transcript
-- composer send/edit enablement is scoped to the selected session's busy state,
-  while `Interrupt` remains connection-global and stays available when any live
-  session is busy
+- composer editing stays available while a selected live session is busy so a
+  follow-up prompt can be queued into that same session, while `Interrupt`
+  remains connection-global and stays available when any live session is busy
 
 For a development-only editor-dock starting point that keeps `plugin.cfg` out
 of the distributable addon payload, see

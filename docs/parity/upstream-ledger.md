@@ -4,10 +4,10 @@
 
 - Upstream repository: `https://github.com/anthropics/claude-agent-sdk-python`
 - Local reference checkout: a sibling checkout of the upstream repo, if available
-- Version: `v0.1.54`
-- Commit: `574044a1fcbaf89afc821bb742ccd8d31c4d6944`
-- Reviewed on: `2026-04-02`
-- Local project phase at pin time: preliminary work / Phase 1 feasibility
+- Version: `post-v0.1.59 main`
+- Commit: `bbec84d9c5e79f709da3929db3615c742c103e84`
+- Reviewed on: `2026-04-16`
+- Local project phase at pin time: post-v1 parity maintenance / Phase 10 follow-up
 
 ## Initial parity cut
 
@@ -54,6 +54,8 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeSessions.get_session_info()`
   - `ClaudeSessions.get_session_messages()`
   - `ClaudeSessions.get_session_transcript()`
+  - `ClaudeSessions.list_subagents()`
+  - `ClaudeSessions.get_subagent_messages()`
   - typed read-only history models `ClaudeSessionInfo` and `ClaudeSessionMessage`
   - typed transcript-detail history model `ClaudeSessionTranscriptEntry`
   - `ClaudeSessions.rename_session()`
@@ -70,7 +72,7 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeMcp` scene-free SDK MCP builders and typed runtime MCP models
   - mixed external plus SDK-hosted `ClaudeAgentOptions.mcp_servers` handling
   - `ClaudeQuerySession` runtime JSON-RPC bridging for SDK-hosted MCP `initialize`, `notifications/initialized`, `tools/list`, and `tools/call`
-  - richer `ClaudeAgentOptions.system_prompt` variants: plain string, `claude_code` preset, preset+append, and file-backed prompts
+  - richer `ClaudeAgentOptions.system_prompt` variants: plain string, `claude_code` preset, preset+append, preset dynamic-section exclusion, and file-backed prompts
   - upstream-style base built-in tool selection through `ClaudeAgentOptions.tools`
   - `ClaudeChatPanel` disconnected prompt/tool configuration controls plus MCP environment summary
   - `ClaudeChatPanel` conversation-first `Chat` / `Settings` split with quick chat controls and secondary prompt/tool configuration
@@ -78,7 +80,10 @@ The first public implementation target is the scene-free core conversation loop,
   - richer saved-session transcript restoration using normalized thinking/tool/system/result detail
   - runtime-first session forking helpers with adapter/node passthroughs, UUID remapping, cutoff support, and preserved `content-replacement` / title metadata
   - runtime-first agent-definition parity through initialize-payload serialization and `setting_sources` CLI passthrough
+  - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough parity so `[]` still emits `--setting-sources ""`
   - transport-first advanced CLI option parity for `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
+  - `permission_mode = "auto"` parity on the runtime surfaces plus the shipped panel's quick permission selector
+  - explicit `--thinking adaptive|disabled` transport parity, while `thinking = {"type": "enabled"}` still lowers to `--max-thinking-tokens`
   - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
   - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and best-effort `ClaudeAgentOptions.stderr` callback delivery
   - transport-first plugin-dir parity through `ClaudeAgentOptions.plugins` with local `--plugin-dir` emission
@@ -115,6 +120,7 @@ The first public implementation target is the scene-free core conversation loop,
   - `ClaudeChatPanel` connected-session context-usage diagnostics with automatic post-connect / post-result refresh plus manual refresh controls
   - `ClaudeChatPanel` live MCP status cards with reconnect and enable/disable actions backed by the existing runtime MCP controls
   - `ClaudeChatPanel` disconnected MCP authoring controls for simple dictionary-backed external `stdio` server entries
+  - SDK-hosted MCP `maxResultSizeChars` parity via `_meta["anthropic/maxResultSizeChars"]` in `tools/list` responses
   - read-only panel MCP inventory for SDK-hosted servers, raw passthrough `mcp_servers` config, and external non-`stdio` configs that remain code-authored in this slice
   - typed `ClaudeContextUsageResponse`, `ClaudeContextUsageCategory`, `ClaudeContextUsageMemoryFile`, `ClaudeContextUsageMcpTool`, and `ClaudeContextUsageAgent` models for live context diagnostics
   - typed `ClaudeMcpStatusResponse`, `ClaudeMcpServerStatus`, `ClaudeMcpServerInfo`, `ClaudeMcpServerToolInfo`, and `ClaudeMcpServerToolAnnotations` models for live MCP status diagnostics
@@ -131,7 +137,9 @@ The first public implementation target is the scene-free core conversation loop,
   - subprocess transport shutdown grace parity after stdin EOF, with a 5-second wait before forced kill so final session-file flushes are less likely to be lost
   - malformed known-message payloads now fail loudly through `ClaudeMessageParser.parse_message_result()` and fatal `ClaudeQuerySession` stream/session errors, while unknown top-level message types still skip forward-compatibly
   - session-tag Unicode sanitization parity through generated whole-string normalization tables that now mirror upstream iterative Unicode normalization/composition plus format/private-use/unassigned stripping
-  - additive different-session overlap compatibility on connected clients through per-session active-turn tracking in `ClaudeQuerySession`, matching upstream's shared receive stream and lack of a client-wide busy guard without claiming explicit upstream overlap tests
+  - saved-session subagent discovery/history parity through `ClaudeSessions.list_subagents()` and `get_subagent_messages()`, lifted through `ClaudeClientAdapter` and `ClaudeClientNode`
+  - saved-session delete parity now best-effort removes the sibling subagent transcript tree alongside the main `.jsonl` file
+  - additive same-session and different-session overlap compatibility on connected clients through per-session turn tracking in `ClaudeQuerySession`, matching upstream's shared receive stream and lack of a client-wide busy guard more closely while keeping named-session result routing tied to Claude's reported `num_turns` and leaving transcript rendering in arrival order
   - additive `receive_response_for_session(session_id)` on `ClaudeQuerySession` and `ClaudeSDKClient`, while `receive_response()` now follows upstream global first-result convenience semantics
   - default-turn runtime-session promotion now binds once to the resolved runtime session ID instead of re-routing later foreign session traffic into `"default"`
   - aggregate plus per-session busy tracking on `ClaudeClientAdapter` and `ClaudeClientNode` through `is_busy()` and additive `is_session_busy(session_id)`
@@ -140,12 +148,46 @@ The first public implementation target is the scene-free core conversation loop,
 - Known GDScript/runtime difference:
   - upstream Python SDK can catch tool-handler exceptions inside its MCP server runtime
   - local GDScript MCP tool handlers should report tool-level failures with `is_error = true`; uncaught script runtime faults still surface as Godot errors
+  - upstream Python SDK injects active OpenTelemetry context through `opentelemetry.propagate.inject()`, while local GDScript mirrors the resulting `TRACEPARENT` / `TRACESTATE` launch env behavior through `ClaudeSubprocessCLITransport.set_trace_context_provider()` plus ambient env passthrough rather than a direct OpenTelemetry dependency
   - local session-scoped helpers can bind a brand-new `"default"` turn to the first unresolved runtime session ID seen on the owned connection because the shared CLI stream does not expose a stronger per-turn correlation primitive before the runtime session UUID appears
   - upstream `user=` process launch is modeled in local Godot runtime via a POSIX `sudo -n -u` shell-wrapper path; Windows shell-backed transports still reject `ClaudeAgentOptions.user`
   - hook callbacks remain dictionary-first in local GDScript for backward compatibility, even though additive typed hook-input wrappers are now also exposed on `ClaudeHookContext`
   - `control_cancel_request` now propagates a cooperative abort signal through local hook and permission callback contexts, but GDScript still cannot force-cancel an arbitrary awaited `Callable` the way upstream cancels in-flight asyncio tasks
-  - explicit stdin half-close / `end_input` parity remains pending because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
-  - same-session overlap now stays serialized locally as a determinism/truthfulness guard, even though upstream's shared-stream client does not currently add an explicit same-session query guard
+  - the runtime now models upstream-style `end_input()` timing for one-shot query flows, but the shipped subprocess transport still cannot perform a true stdin half-close because Godot `OS.execute_with_pipe()` exposes a single read/write `stdio` `FileAccess`
+
+## Reviewed upstream slice beyond the historical pin
+
+The sibling upstream checkout was advanced locally to inspect changes beyond the
+historical Phase 1 pin. The local runtime now matches the last meaningful
+upstream feature/fix point reviewed here, while the newer pulled upstream tip
+only adds release/version metadata that does not require local parity work.
+
+- Reviewed on: `2026-04-16`
+- Updated functional baseline commit: `bbec84d9c5e79f709da3929db3615c742c103e84`
+- Pulled upstream tip reviewed after the baseline update: `a0fbd1424bd52ae7f2cb7d0d8343f89f97701c96`
+- Reviewed upstream commits in this slice:
+  - `bbec84d`: propagate active W3C trace context into the CLI subprocess env
+  - `e94a74d`: SDK MCP `_meta["anthropic/maxResultSizeChars"]` forwarding for large tool results
+  - `841ee87`: add `"auto"` permission-mode parity
+  - `6617b9e`: `thinking adaptive|disabled` should use `--thinking`, not `--max-thinking-tokens`
+  - `3bf8fd5`: preset `exclude_dynamic_sections` initialize parity
+  - `2038a15`: `delete_session` best-effort subagent tree cleanup
+  - `ebc06f2`: `list_subagents()` and `get_subagent_messages()`
+  - `e621929`: explicit empty `setting_sources` should still pass `--setting-sources ""`
+  - `8a131ed`: bundled CLI version bump only
+  - `3414aa7`: release metadata/version bump only
+  - `a0fbd14`: changelog/docs update for `v0.1.60` only
+- Adopted locally in this slice:
+  - SDK-hosted MCP `_meta["anthropic/maxResultSizeChars"]` forwarding through `ClaudeMcpToolAnnotations`, `ClaudeSdkMcpServer`, and `ClaudeQuerySession`
+  - `permission_mode = "auto"` parity on the runtime surfaces and shipped panel selector
+  - explicit `--thinking adaptive|disabled` transport parity while preserving enabled-budget handling through `--max-thinking-tokens`
+  - preset `exclude_dynamic_sections` normalization plus initialize-request parity, preserved through panel configuration round-trips
+  - best-effort sibling subagent-tree cleanup in `ClaudeSessions.delete_session()`
+  - saved-session subagent discovery/history helpers in `ClaudeSessions`, `ClaudeClientAdapter`, and `ClaudeClientNode`
+  - explicit-empty `ClaudeAgentOptions.setting_sources` passthrough semantics
+  - upstream-inspired active W3C trace-context launch parity through a Godot-native `ClaudeSubprocessCLITransport.set_trace_context_provider()` shim, normalized `TRACEPARENT` / `TRACESTATE` env emission, ambient env passthrough, and truthful scrub/unset behavior on the POSIX `sudo -n -u` wrapper path
+- Reviewed but not adopted in this slice:
+  - no additional runtime parity work was required after `bbec84d`; the pulled upstream tip through `a0fbd14` only changed bundled CLI/release metadata and changelog text
 
 ## Update process
 

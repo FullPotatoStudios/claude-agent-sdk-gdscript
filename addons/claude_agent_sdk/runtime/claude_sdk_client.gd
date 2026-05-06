@@ -45,7 +45,12 @@ func connect_client(prompt = null) -> void:
 	_last_error = _session.get_last_error()
 
 
-func query(prompt, session_id: String = "default", backfill_session_id := true) -> void:
+func query(
+	prompt,
+	session_id: String = "default",
+	backfill_session_id := true,
+	close_input_after_turn := false
+) -> void:
 	if _session == null:
 		_emit_error("Call connect_client() before query()")
 		return
@@ -53,9 +58,9 @@ func query(prompt, session_id: String = "default", backfill_session_id := true) 
 		_emit_error("prompt must be either a String or ClaudePromptStream")
 		return
 	if prompt is ClaudePromptStreamScript:
-		_session.send_prompt_stream(prompt, session_id, backfill_session_id)
+		_session.send_prompt_stream(prompt, session_id, backfill_session_id, close_input_after_turn)
 	else:
-		_session.send_user_prompt(str(prompt), session_id)
+		_session.send_user_prompt(str(prompt), session_id, close_input_after_turn)
 	_last_error = _session.get_last_error()
 
 

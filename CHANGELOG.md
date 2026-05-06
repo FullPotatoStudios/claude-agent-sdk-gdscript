@@ -6,6 +6,11 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 
 ## [Unreleased]
 
+### Fixed
+
+- unscoped `delete_session()` now follows the same newest-by-mtime selection that `rename_session()`, `tag_session()`, and `_append_to_session` already use, so duplicate-session lookups consistently target the newest visible record regardless of filesystem iteration order
+- `_transport_supports_end_input()` now guards `transport.has_method("supports_end_input")` before calling it, so injected custom transports that predate the half-close hook are treated as not supporting `end_input` instead of raising an invalid-method error
+
 ## [0.2.2] - 2026-04-11
 
 ### Changed

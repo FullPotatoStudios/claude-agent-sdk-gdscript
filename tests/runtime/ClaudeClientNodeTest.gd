@@ -319,6 +319,23 @@ func test_node_exposes_session_passthrough_methods() -> void:
 		},
 		{"type": "summary", "summary": "Node summary"},
 	], 1712302100)
+	var subagent_dir := project_dir.path_join(session_id).path_join("subagents")
+	DirAccess.make_dir_recursive_absolute(subagent_dir)
+	var subagent_file := FileAccess.open(subagent_dir.path_join("agent-helper.jsonl"), FileAccess.WRITE)
+	subagent_file.store_line(JSON.stringify({
+		"type": "user",
+		"uuid": "node-sub-u-1",
+		"sessionId": session_id,
+		"message": {"role": "user", "content": "Node subagent prompt"},
+	}))
+	subagent_file.store_line(JSON.stringify({
+		"type": "assistant",
+		"uuid": "node-sub-a-1",
+		"parentUuid": "node-sub-u-1",
+		"sessionId": session_id,
+		"message": {"role": "assistant", "content": "Node subagent answer"},
+	}))
+	subagent_file.close()
 
 	var node = ClaudeClientNodeScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
 	get_tree().root.add_child(node)
@@ -326,6 +343,10 @@ func test_node_exposes_session_passthrough_methods() -> void:
 
 	var sessions := node.list_sessions(project_path, 0, 0, false)
 	assert_int(sessions.size()).is_equal(1)
+	assert_array(node.list_subagents(session_id, project_path)).is_equal(["helper"])
+	var subagent_messages := node.get_subagent_messages(session_id, "helper", project_path)
+	assert_int(subagent_messages.size()).is_equal(2)
+	assert_str(subagent_messages[1].uuid).is_equal("node-sub-a-1")
 	assert_int(node.rename_session(session_id, "Node renamed", project_path)).is_equal(OK)
 	var transcript := node.get_session_transcript(session_id, project_path)
 	assert_int(transcript.size()).is_equal(1)

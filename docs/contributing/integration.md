@@ -23,7 +23,7 @@ Use `ClaudeSDKClient` directly when:
 - you want transport-side stdout buffering control through `ClaudeAgentOptions.max_buffer_size`
 - you want to build your own built-in tool picker or configuration UI on top of `ClaudeBuiltInToolCatalog`
 - you want additive typed runtime helpers for hook callback inputs/outputs or permission updates while keeping the existing dictionary callback flow compatible
-- you want to overlap turns for different `session_id` values on one connected client while keeping same-session turns serialized
+- you want to overlap turns on one connected client, including repeated `query()` calls against the same `session_id`
 
 SDK-hosted MCP tool handlers should report tool-level failures by returning a
 normal result dictionary with `is_error = true`. Unlike the upstream Python
@@ -37,6 +37,7 @@ Use `ClaudeClientAdapter` when:
 - you want a thin wrapper that drains the session-wide message stream for you
 - you are building your own game/tool state around typed runtime messages
 - you want adapter-level convenience access to session history, richer transcript detail, and basic session mutations without calling `ClaudeSessions` directly
+- you want adapter-level convenience access to saved-session subagent discovery and subagent visible-message history without calling `ClaudeSessions` directly
 
 Use `ClaudeClientNode` when:
 
@@ -44,6 +45,7 @@ Use `ClaudeClientNode` when:
 - you want signal-based integration from a scene script with minimal glue code
 - you want optional `auto_connect_on_ready` and `auto_disconnect_on_exit`
 - you want the same session-history, transcript-detail, and basic session-mutation convenience methods from a `Node`
+- you want the same saved-session subagent discovery and subagent visible-message convenience methods from a `Node`
 
 Use `ClaudeChatPanel` when:
 
@@ -90,12 +92,14 @@ The integration layer is intentionally thin.
 - It does not replace the reusable chat panel for users who want a drop-in UI
 - It does not ship editor-plugin wiring inside `addons/claude_agent_sdk/`; the current editor-dock workflow lives as a development-only example under `tools/examples/editor_plugin_demo/`
 - It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`
+- It does not replace `ClaudeSessions` as the canonical scene-free session-history surface, including `get_session_transcript()`, `list_subagents()`, and `get_subagent_messages()`
 - SDK-hosted MCP tool/server helpers live in the scene-free runtime through `ClaudeMcp`, not in the adapter layer
 - agent definitions are also runtime-first and are sent through the initialize payload rather than through panel-specific configuration
 - `setting_sources` is transport/runtime configuration for Claude settings discovery, not a panel concern
 - advanced CLI fields such as `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget` are transport-only in the current parity slice and do not enter initialize payloads
 - `settings` and `sandbox` are also transport-only in the current parity slice; `sandbox` is implemented by constructing the CLI `--settings` value rather than by adding a separate runtime protocol field
 - `extra_args` and `stderr` are also transport-only in the current parity slice; `stderr` is a best-effort diagnostics callback and does not become a protocol/error channel
+- active W3C trace-context injection is also transport-only in the current parity slice; use `ClaudeSubprocessCLITransport.set_trace_context_provider(func(): return {"traceparent": ..., "tracestate": ...})` when you need a Godot-native equivalent of the upstream Python SDK's active trace-context propagation
 - `plugins` and `fork_session` are also transport-only in the current parity slice; they do not enter initialize payloads
 - `max_buffer_size` is also transport-only in the current parity slice; it controls local stdout buffering and does not enter initialize payloads or CLI argument serialization
 - `plugins` currently supports only local plugin configs with `{ "type": "local", "path": String }`, emitted as repeated `--plugin-dir` flags
@@ -105,7 +109,7 @@ The integration layer is intentionally thin.
 - `ClaudeToolPermissionContext` preserves raw `suggestions` and now also exposes additive typed suggestion coercion through `typed_suggestions`
 - hook and `can_use_tool` callback contexts now expose a cooperative `signal` object that is canceled when Claude retracts a control request or the local session closes; unlike the upstream Python SDK, GDScript still cannot force-preempt an arbitrary awaited `Callable`
 - `ClaudeSDKClient.connect_client()`, `ClaudeClientAdapter.connect_client()`, and `ClaudeClientNode.connect_client()` now accept `null`, a `String`, or `ClaudePromptStream` for prompt-on-connect parity; string connect prompts still send a literal `session_id = "default"` user payload, matching upstream connect behavior, and repeated local `connect_client()` calls now reopen the session instead of no-oping. When `can_use_tool` is configured, connect-time string prompts still require `ClaudePromptStream`
-- connected `query()` calls now allow overlap across different `session_id` values on one local client as an additive compatibility layer over upstream's shared-stream, no-global-busy-guard behavior; same-session overlap still rejects with an error as a local determinism/truthfulness guard, and the shipped panel continues to expose only one live session at a time
+- connected `query()` calls now allow overlap across different or repeated `session_id` values on one local client through per-session turn tracking, with named-session result routing matched against Claude's reported `num_turns`; this matches upstream's shared-stream, no-global-busy-guard behavior more closely while the shipped panel still keeps saved historical sessions on a disconnect-and-resume handoff unless that session was started in the current live connection
 - local `ClaudePromptStream` behavior is intentionally strict: an empty stream or `fail(...)` ends the active turn locally instead of leaving the query busy forever
 - `thinking` takes precedence over the deprecated `max_thinking_tokens` field when both are configured
 - `settings` stays string-based in the current slice, matching upstream transport behavior: either a raw JSON string or a file path

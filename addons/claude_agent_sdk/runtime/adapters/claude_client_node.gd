@@ -89,6 +89,20 @@ func get_session_messages(
 	return _adapter.get_session_messages(session_id, directory, limit, offset)
 
 
+func list_subagents(session_id: String, directory: String = "") -> Array[String]:
+	return _adapter.list_subagents(session_id, directory)
+
+
+func get_subagent_messages(
+	session_id: String,
+	agent_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionMessage]:
+	return _adapter.get_subagent_messages(session_id, agent_id, directory, limit, offset)
+
+
 func get_session_transcript(
 	session_id: String,
 	directory: String = "",

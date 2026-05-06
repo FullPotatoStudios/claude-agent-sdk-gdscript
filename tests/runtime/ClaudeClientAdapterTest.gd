@@ -720,16 +720,14 @@ func test_adapter_passes_rate_limit_events_through_turn_stream_without_finishing
 	await _cleanup_adapter(adapter)
 
 
-func test_adapter_emits_error_for_same_session_query_while_busy_without_interrupting_current_turn() -> void:
+func test_adapter_tracks_same_session_overlapping_turns_until_each_result_arrives() -> void:
 	var transport = FakeTransportScript.new()
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
-	var errors: Array[String] = []
 	var busy_events: Array[bool] = []
-	var turn_results: Array[int] = []
+	var turn_results: Array[String] = []
 
-	adapter.error_occurred.connect(func(message: String): errors.append(message))
 	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
-	adapter.turn_finished.connect(func(_message): turn_results.append(1))
+	adapter.turn_finished.connect(func(message): turn_results.append(str(message.result)))
 
 	adapter.connect_client()
 	var init_request := _read_last_write(transport)
@@ -745,14 +743,80 @@ func test_adapter_emits_error_for_same_session_query_while_busy_without_interrup
 
 	adapter.query("First", "session-a")
 	adapter.query("Second", "session-a")
-	transport.emit_stdout_message(_result_payload("done", "session-a"))
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-first", "session-a"))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-second", "session-a"))
 	await _await_frames(3)
 
 	assert_bool(adapter.is_busy()).is_false()
 	assert_array(busy_events).is_equal([true, false])
-	assert_int(turn_results.size()).is_equal(1)
-	assert_str(errors[-1]).contains("session 'session-a'")
+	assert_array(turn_results).is_equal(["done-first", "done-second"])
 	await _cleanup_adapter(adapter)
+
+
+func test_adapter_tracks_same_session_overlapping_turns_when_results_finish_out_of_order() -> void:
+	var transport = FakeTransportScript.new()
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), transport)
+	var busy_events: Array[bool] = []
+	var turn_results: Array[String] = []
+
+	adapter.busy_changed.connect(func(is_busy: bool): busy_events.append(is_busy))
+	adapter.turn_finished.connect(func(message): turn_results.append(str(message.result)))
+
+	adapter.connect_client()
+	var init_request := _read_last_write(transport)
+	transport.emit_stdout_message({
+		"type": "control_response",
+		"response": {
+			"subtype": "success",
+			"request_id": str(init_request.get("request_id", "")),
+			"response": {},
+		},
+	})
+	await _await_frames(1)
+
+	adapter.query("First", "session-a")
+	adapter.query("Second", "session-a")
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-second", "session-a", 2))
+	await _await_frames(2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+
+	transport.emit_stdout_message(_result_payload("done-first", "session-a", 1))
+	await _await_frames(3)
+
+	assert_bool(adapter.is_busy()).is_false()
+	assert_array(busy_events).is_equal([true, false])
+	assert_array(turn_results).is_equal(["done-second", "done-first"])
+	await _cleanup_adapter(adapter)
+
+
+func test_adapter_clear_active_turn_removes_matching_same_session_turn_token() -> void:
+	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
+	adapter._active_turns_by_session = {
+		"session-a": [
+			{"turn_token": 1, "promoted_session_id": ""},
+			{"turn_token": 2, "promoted_session_id": ""},
+		]
+	}
+	adapter.call("_refresh_busy")
+
+	adapter.call("_clear_active_turn", "session-a", 2)
+
+	assert_bool(adapter.is_busy()).is_true()
+	assert_bool(adapter.is_session_busy("session-a")).is_true()
+	var remaining_queue: Array = adapter._active_turns_by_session.get("session-a", [])
+	assert_int(remaining_queue.size()).is_equal(1)
+	assert_int(int((remaining_queue[0] as Dictionary).get("turn_token", -1))).is_equal(1)
 
 
 func test_adapter_emits_connection_error_and_supports_auth_probe_before_connect() -> void:
@@ -950,11 +1014,32 @@ func test_adapter_session_passthrough_reads_and_mutates_sessions() -> void:
 		},
 		{"type": "summary", "summary": "Saved summary"},
 	], 1712302000)
+	var subagent_dir := project_dir.path_join(session_id).path_join("subagents")
+	DirAccess.make_dir_recursive_absolute(subagent_dir)
+	var subagent_file := FileAccess.open(subagent_dir.path_join("agent-helper.jsonl"), FileAccess.WRITE)
+	subagent_file.store_line(JSON.stringify({
+		"type": "user",
+		"uuid": "adapter-sub-u-1",
+		"sessionId": session_id,
+		"message": {"role": "user", "content": "Subagent prompt"},
+	}))
+	subagent_file.store_line(JSON.stringify({
+		"type": "assistant",
+		"uuid": "adapter-sub-a-1",
+		"parentUuid": "adapter-sub-u-1",
+		"sessionId": session_id,
+		"message": {"role": "assistant", "content": "Subagent answer"},
+	}))
+	subagent_file.close()
 
 	var adapter = ClaudeClientAdapterScript.new(ClaudeAgentOptions.new(), FakeTransportScript.new())
 	var sessions := adapter.list_sessions(project_path, 0, 0, false)
 	assert_int(sessions.size()).is_equal(1)
 	assert_str(sessions[0].session_id).is_equal(session_id)
+	assert_array(adapter.list_subagents(session_id, project_path)).is_equal(["helper"])
+	var subagent_messages := adapter.get_subagent_messages(session_id, "helper", project_path)
+	assert_int(subagent_messages.size()).is_equal(2)
+	assert_str(subagent_messages[0].uuid).is_equal("adapter-sub-u-1")
 
 	assert_int(adapter.rename_session(session_id, "Adapter renamed", project_path)).is_equal(OK)
 	assert_int(adapter.tag_session(session_id, "review", project_path)).is_equal(OK)
@@ -1196,14 +1281,14 @@ func _read_last_write(transport) -> Dictionary:
 	return JSON.parse_string(transport.writes[-1])
 
 
-func _result_payload(result_text: String, session_id: String = "default") -> Dictionary:
+func _result_payload(result_text: String, session_id: String = "default", num_turns: int = 1) -> Dictionary:
 	return {
 		"type": "result",
 		"subtype": "success",
 		"duration_ms": 10,
 		"duration_api_ms": 5,
 		"is_error": false,
-		"num_turns": 1,
+		"num_turns": num_turns,
 		"session_id": session_id,
 		"result": result_text,
 	}

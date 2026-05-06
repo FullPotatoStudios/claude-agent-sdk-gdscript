@@ -19,6 +19,14 @@ func write(_payload: String) -> bool:
 	return false
 
 
+func supports_end_input() -> bool:
+	return false
+
+
+func end_input() -> bool:
+	return supports_end_input()
+
+
 func close() -> void:
 	pass
 

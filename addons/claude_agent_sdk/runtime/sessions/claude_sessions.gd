@@ -123,13 +123,73 @@ static func get_session_messages(
 		if _is_visible_message(entry):
 			messages.append(_to_session_message(entry))
 
-	var normalized_offset := maxi(offset, 0)
-	if normalized_offset > 0:
-		if normalized_offset >= messages.size():
+	if limit > 0:
+		var slice_bounds := _python_slice_bounds(messages.size(), offset, offset + limit)
+		messages = messages.slice(int(slice_bounds.get("start", 0)), int(slice_bounds.get("stop", 0)))
+	elif offset > 0:
+		if offset >= messages.size():
 			return []
-		messages = messages.slice(normalized_offset)
-	if limit > 0 and limit < messages.size():
-		messages = messages.slice(0, limit)
+		messages = messages.slice(offset)
+	return messages
+
+
+static func list_subagents(session_id: String, directory: String = "") -> Array[String]:
+	if not _is_valid_uuid(session_id):
+		return []
+
+	var subagents_dir := _resolve_subagents_dir(session_id, directory)
+	if subagents_dir.is_empty():
+		return []
+
+	var result: Array[String] = []
+	for item in _collect_agent_files(subagents_dir):
+		result.append(str(item.get("agent_id", "")))
+	return result
+
+
+static func get_subagent_messages(
+	session_id: String,
+	agent_id: String,
+	directory: String = "",
+	limit: int = 0,
+	offset: int = 0
+) -> Array[ClaudeSessionMessage]:
+	if not _is_valid_uuid(session_id):
+		return []
+	if agent_id.is_empty():
+		return []
+
+	var subagents_dir := _resolve_subagents_dir(session_id, directory)
+	if subagents_dir.is_empty():
+		return []
+
+	var match_path := ""
+	for item in _collect_agent_files(subagents_dir):
+		if str(item.get("agent_id", "")) == agent_id:
+			match_path = str(item.get("path", ""))
+			break
+	if match_path.is_empty():
+		return []
+
+	var content := FileAccess.get_file_as_string(match_path)
+	if content.is_empty():
+		return []
+
+	var entries := _parse_transcript_entries(content)
+	var chain := _build_subagent_chain(entries)
+	var messages: Array[ClaudeSessionMessage] = []
+	for entry in chain:
+		var entry_type := str(entry.get("type", ""))
+		if entry_type == "user" or entry_type == "assistant":
+			messages.append(_to_session_message(entry))
+
+	if limit > 0:
+		var slice_bounds := _python_slice_bounds(messages.size(), offset, offset + limit)
+		messages = messages.slice(int(slice_bounds.get("start", 0)), int(slice_bounds.get("stop", 0)))
+	elif offset > 0:
+		if offset >= messages.size():
+			return []
+		messages = messages.slice(offset)
 	return messages
 
 
@@ -156,13 +216,13 @@ static func get_session_transcript(
 	for entry in chain:
 		transcript.append_array(_expand_session_transcript_entry(entry))
 
-	var normalized_offset := maxi(offset, 0)
-	if normalized_offset > 0:
-		if normalized_offset >= transcript.size():
+	if limit > 0:
+		var slice_bounds := _python_slice_bounds(transcript.size(), offset, offset + limit)
+		transcript = transcript.slice(int(slice_bounds.get("start", 0)), int(slice_bounds.get("stop", 0)))
+	elif offset > 0:
+		if offset >= transcript.size():
 			return []
-		transcript = transcript.slice(normalized_offset)
-	if limit > 0 and limit < transcript.size():
-		transcript = transcript.slice(0, limit)
+		transcript = transcript.slice(offset)
 	return transcript
 
 
@@ -206,7 +266,13 @@ static func delete_session(session_id: String, directory: String = "") -> int:
 	if not _is_valid_uuid(session_id):
 		return _fail_mutation(ERR_INVALID_PARAMETER, "Invalid session_id: %s" % session_id)
 
-	var file_result := _find_session_file_with_dir(session_id, directory) if not directory.is_empty() else _find_latest_visible_session_file(session_id)
+	var file_result: Dictionary
+	if directory.is_empty():
+		file_result = _find_latest_visible_session_file(session_id)
+		if file_result.has("path"):
+			file_result["session_dir"] = str(file_result.get("path", "")).get_basename()
+	else:
+		file_result = _resolve_session_storage_target(session_id, directory)
 	if file_result.has("error"):
 		return _fail_mutation(
 			int(file_result.get("error", ERR_CANT_OPEN)),
@@ -224,6 +290,7 @@ static func delete_session(session_id: String, directory: String = "") -> int:
 	if delete_error != OK:
 		return _fail_mutation(delete_error, "Failed to delete session %s" % session_id)
 
+	_delete_tree_best_effort(str(file_result.get("session_dir", "")))
 	_clear_last_error()
 	return OK
 
@@ -979,15 +1046,30 @@ static func _find_session_file_with_dir(session_id: String, directory: String = 
 	if projects_access == null:
 		return {}
 	var first_error: Dictionary = {}
-	for project_name in _sorted_directory_names(projects_access):
+	projects_access.list_dir_begin()
+	while true:
+		var project_name := projects_access.get_next()
+		if project_name.is_empty():
+			break
+		if project_name == "." or project_name == ".." or not projects_access.current_is_dir():
+			continue
 		var project_dir := _join_path(projects_dir, project_name)
 		var result := _try_find_session_file(_join_path(project_dir, file_name), project_dir)
 		if result.has("error"):
 			if first_error.is_empty():
 				first_error = result
 		elif not result.is_empty():
+			projects_access.list_dir_end()
 			return result
+	projects_access.list_dir_end()
 	return first_error
+
+
+static func _resolve_session_storage_target(session_id: String, directory: String = "") -> Dictionary:
+	var result := _find_session_file_with_dir(session_id, directory)
+	if result.has("path"):
+		result["session_dir"] = str(result.get("path", "")).get_basename()
+	return result
 
 
 static func _try_find_session_file(file_path: String, project_dir: String) -> Dictionary:
@@ -1105,6 +1187,55 @@ static func _find_latest_visible_session_file(session_id: String) -> Dictionary:
 	return visible_matches[0]
 
 
+static func _resolve_subagents_dir(session_id: String, directory: String = "") -> String:
+	var target := _resolve_session_storage_target(session_id, directory)
+	if target.is_empty() or target.has("error"):
+		return ""
+	return _join_path(str(target.get("session_dir", "")), "subagents")
+
+
+static func _collect_agent_files(base_dir: String) -> Array[Dictionary]:
+	var results: Array[Dictionary] = []
+	_collect_agent_files_recursive(base_dir, results)
+	return results
+
+
+static func _collect_agent_files_recursive(current_dir: String, results: Array[Dictionary]) -> void:
+	var access := DirAccess.open(current_dir)
+	if access == null:
+		return
+
+	var entries: Array[Dictionary] = []
+	access.list_dir_begin()
+	while true:
+		var entry_name := access.get_next()
+		if entry_name.is_empty():
+			break
+		if entry_name == "." or entry_name == "..":
+			continue
+		entries.append({
+			"name": entry_name,
+			"is_dir": access.current_is_dir(),
+		})
+	access.list_dir_end()
+
+	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return str(a.get("name", "")) < str(b.get("name", ""))
+	)
+	for entry in entries:
+		var entry_name := str(entry.get("name", ""))
+		if bool(entry.get("is_dir", false)):
+			_collect_agent_files_recursive(_join_path(current_dir, entry_name), results)
+			continue
+		var file_name := entry_name
+		if not file_name.begins_with("agent-") or not file_name.ends_with(".jsonl"):
+			continue
+		results.append({
+			"agent_id": file_name.trim_prefix("agent-").trim_suffix(".jsonl"),
+			"path": _join_path(current_dir, file_name),
+		})
+
+
 static func _try_append(file_path: String, data: String) -> int:
 	var file := FileAccess.open(file_path, FileAccess.READ_WRITE)
 	if file == null:
@@ -1184,6 +1315,39 @@ static func _parse_fork_transcript(content: String, session_id: String) -> Dicti
 		"transcript": transcript,
 		"content_replacements": content_replacements,
 	}
+
+
+static func _build_subagent_chain(entries: Array[Dictionary]) -> Array[Dictionary]:
+	if entries.is_empty():
+		return []
+
+	var by_uuid := {}
+	for entry in entries:
+		by_uuid[str(entry.get("uuid", ""))] = entry
+
+	var leaf = null
+	for index in range(entries.size() - 1, -1, -1):
+		var candidate := entries[index]
+		var entry_type := str(candidate.get("type", ""))
+		if entry_type == "user" or entry_type == "assistant":
+			leaf = candidate
+			break
+	if leaf == null:
+		return []
+
+	var chain: Array[Dictionary] = []
+	var seen := {}
+	var current = leaf
+	while current != null:
+		var current_uuid := str(current.get("uuid", ""))
+		if seen.has(current_uuid):
+			break
+		seen[current_uuid] = true
+		chain.append(current)
+		var parent_uuid = current.get("parentUuid", "")
+		current = by_uuid.get(str(parent_uuid)) if parent_uuid is String and not str(parent_uuid).is_empty() else null
+	chain.reverse()
+	return chain
 
 
 static func _build_conversation_chain(entries: Array[Dictionary]) -> Array[Dictionary]:
@@ -1664,3 +1828,61 @@ static func _duplicate_variant(value: Variant) -> Variant:
 	if value is Array:
 		return (value as Array).duplicate(true)
 	return value
+
+
+static func _python_slice_bounds(size: int, start: int, stop: int) -> Dictionary:
+	var normalized_start := start
+	if normalized_start < 0:
+		normalized_start += size
+	if normalized_start < 0:
+		normalized_start = 0
+	elif normalized_start > size:
+		normalized_start = size
+
+	var normalized_stop := stop
+	if normalized_stop < 0:
+		normalized_stop += size
+	if normalized_stop < 0:
+		normalized_stop = 0
+	elif normalized_stop > size:
+		normalized_stop = size
+
+	if normalized_stop < normalized_start:
+		normalized_stop = normalized_start
+
+	return {
+		"start": normalized_start,
+		"stop": normalized_stop,
+	}
+
+
+static func _delete_tree_best_effort(path: String) -> void:
+	if path.is_empty():
+		return
+
+	var access := DirAccess.open(path)
+	if access == null:
+		return
+
+	var child_dirs: Array[String] = []
+	var child_files: Array[String] = []
+	access.list_dir_begin()
+	while true:
+		var entry_name := access.get_next()
+		if entry_name.is_empty():
+			break
+		if entry_name == "." or entry_name == "..":
+			continue
+		if access.current_is_dir():
+			child_dirs.append(entry_name)
+		else:
+			child_files.append(entry_name)
+	access.list_dir_end()
+
+	child_dirs.sort()
+	child_files.sort()
+	for file_name in child_files:
+		DirAccess.remove_absolute(_join_path(path, file_name))
+	for dir_name in child_dirs:
+		_delete_tree_best_effort(_join_path(path, dir_name))
+	DirAccess.remove_absolute(path)
