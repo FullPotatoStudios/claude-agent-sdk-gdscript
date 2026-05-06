@@ -3,6 +3,7 @@ extends SceneTree
 const ClaudeAgentOptionsScript := preload("res://addons/claude_agent_sdk/runtime/claude_agent_options.gd")
 const ClaudePermissionResultAllowScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_allow.gd")
 const ClaudePermissionResultDenyScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_result_deny.gd")
+const ClaudePermissionUpdateScript := preload("res://addons/claude_agent_sdk/runtime/claude_permission_update.gd")
 const ClaudePromptStreamScript := preload("res://addons/claude_agent_sdk/runtime/input/claude_prompt_stream.gd")
 const ClaudeQueryScript := preload("res://addons/claude_agent_sdk/runtime/query.gd")
 const ExampleSupportScript := preload("res://tools/examples/example_support.gd")
@@ -53,7 +54,7 @@ func _permission_callback(tool_name: String, input_data: Dictionary, context) ->
 	_tool_usage_log.append({
 		"tool": tool_name,
 		"input": input_data.duplicate(true),
-		"suggestions": context.suggestions if context != null else [],
+		"suggestions": ClaudePermissionUpdateScript.serialize_updates(context.suggestions) if context != null else [],
 	})
 	if tool_name in ["Read", "Glob", "Grep", "LS"]:
 		return ClaudePermissionResultAllowScript.new()
