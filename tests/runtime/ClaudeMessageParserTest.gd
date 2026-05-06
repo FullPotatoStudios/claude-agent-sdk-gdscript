@@ -7,6 +7,8 @@ const ClaudeTextBlockScript := preload("res://addons/claude_agent_sdk/runtime/me
 const ClaudeThinkingBlockScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_thinking_block.gd")
 const ClaudeToolUseBlockScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_tool_use_block.gd")
 const ClaudeToolResultBlockScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_tool_result_block.gd")
+const ClaudeServerToolUseBlockScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_server_tool_use_block.gd")
+const ClaudeServerToolResultBlockScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_server_tool_result_block.gd")
 const ClaudeUserMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_user_message.gd")
 const ClaudeSystemMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_system_message.gd")
 const ClaudeTaskStartedMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_task_started_message.gd")
@@ -44,6 +46,110 @@ func test_parse_assistant_message_into_typed_blocks() -> void:
 	assert_object(message.content[1]).is_instanceof(ClaudeThinkingBlockScript)
 	assert_object(message.content[2]).is_instanceof(ClaudeToolUseBlockScript)
 	assert_object(message.content[3]).is_instanceof(ClaudeToolResultBlockScript)
+
+
+func test_parse_assistant_message_into_server_tool_blocks() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "assistant",
+		"session_id": "session-server-tools",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{
+					"type": "server_tool_use",
+					"id": "srvtool-1",
+					"name": "advisor",
+					"input": {"query": "what is the weather"},
+				},
+				{
+					"type": "advisor_tool_result",
+					"tool_use_id": "srvtool-1",
+					"content": {"type": "advisor_response", "text": "Sunny"},
+				},
+			],
+		},
+	})
+
+	assert_object(message).is_instanceof(ClaudeAssistantMessageScript)
+	assert_int(message.content.size()).is_equal(2)
+
+	var server_use: Variant = message.content[0]
+	assert_object(server_use).is_instanceof(ClaudeServerToolUseBlockScript)
+	assert_str(server_use.id).is_equal("srvtool-1")
+	assert_str(server_use.name).is_equal("advisor")
+	assert_dict(server_use.input).is_equal({"query": "what is the weather"})
+	assert_str(server_use.block_type).is_equal("server_tool_use")
+	assert_dict(server_use.raw_data).is_equal({
+		"type": "server_tool_use",
+		"id": "srvtool-1",
+		"name": "advisor",
+		"input": {"query": "what is the weather"},
+	})
+
+	var server_result: Variant = message.content[1]
+	assert_object(server_result).is_instanceof(ClaudeServerToolResultBlockScript)
+	assert_str(server_result.tool_use_id).is_equal("srvtool-1")
+	assert_dict(server_result.content).is_equal({"type": "advisor_response", "text": "Sunny"})
+	assert_str(server_result.block_type).is_equal("advisor_tool_result")
+	assert_dict(server_result.raw_data).is_equal({
+		"type": "advisor_tool_result",
+		"tool_use_id": "srvtool-1",
+		"content": {"type": "advisor_response", "text": "Sunny"},
+	})
+
+
+func test_assistant_server_tool_blocks_require_upstream_mandatory_fields() -> void:
+	var missing_server_input := ClaudeMessageParserScript.parse_message_result({
+		"type": "assistant",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{"type": "server_tool_use", "id": "srvtool-2", "name": "web_search"},
+			],
+		},
+	})
+	var missing_advisor_content := ClaudeMessageParserScript.parse_message_result({
+		"type": "assistant",
+		"message": {
+			"model": "haiku",
+			"content": [
+				{"type": "advisor_tool_result", "tool_use_id": "srvtool-2"},
+			],
+		},
+	})
+
+	assert_str(str(missing_server_input.get("error", ""))).contains("Missing required field in assistant message block: input")
+	assert_str(str(missing_advisor_content.get("error", ""))).contains("Missing required field in assistant message block: content")
+
+
+func test_user_message_drops_server_only_blocks() -> void:
+	var user: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "user",
+		"uuid": "user-server-tools",
+		"message": {
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "hi"},
+				{
+					"type": "server_tool_use",
+					"id": "srvtool-3",
+					"name": "advisor",
+					"input": {"q": "x"},
+				},
+				{
+					"type": "advisor_tool_result",
+					"tool_use_id": "srvtool-3",
+					"content": {"type": "advisor_response"},
+				},
+			],
+		},
+	})
+
+	assert_object(user).is_instanceof(ClaudeUserMessageScript)
+	# Server-side blocks only appear in assistant payloads upstream;
+	# user-side parsing should silently drop them like any unknown block type.
+	assert_int((user.content as Array).size()).is_equal(1)
+	assert_object((user.content as Array)[0]).is_instanceof(ClaudeTextBlockScript)
 
 
 func test_parse_user_system_and_result_messages() -> void:
