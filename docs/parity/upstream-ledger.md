@@ -4,10 +4,10 @@
 
 - Upstream repository: `https://github.com/anthropics/claude-agent-sdk-python`
 - Local reference checkout: a sibling checkout of the upstream repo, if available
-- Version: `post-v0.1.59 main`
-- Commit: `bbec84d9c5e79f709da3929db3615c742c103e84`
-- Reviewed on: `2026-04-16`
-- Local project phase at pin time: post-v1 parity maintenance / Phase 10 follow-up
+- Version: `v0.1.75 + post-release fix 6597529`
+- Commit: `bdb3291` (v0.1.75) plus `6597529` (PR #920) cherry-picked review point
+- Reviewed on: `2026-05-07`
+- Local project phase at pin time: post-`0.2.2` parity maintenance / SessionStore deferred
 
 ## Initial parity cut
 
@@ -188,6 +188,48 @@ only adds release/version metadata that does not require local parity work.
   - upstream-inspired active W3C trace-context launch parity through a Godot-native `ClaudeSubprocessCLITransport.set_trace_context_provider()` shim, normalized `TRACEPARENT` / `TRACESTATE` env emission, ambient env passthrough, and truthful scrub/unset behavior on the POSIX `sudo -n -u` wrapper path
 - Reviewed but not adopted in this slice:
   - no additional runtime parity work was required after `bbec84d`; the pulled upstream tip through `a0fbd14` only changed bundled CLI/release metadata and changelog text
+
+## Reviewed upstream slice v0.1.60 → v0.1.75 + post-release fix
+
+The sibling upstream checkout was advanced again to bring the local runtime up
+to the v0.1.75 release plus the immediate post-release `permission_suggestions`
+fix. The previous baseline was post-`v0.1.59` main (`bbec84d`); this slice
+inspects every meaningful change through `bdb3291` (v0.1.75) plus
+`6597529` (PR #920).
+
+- Reviewed on: `2026-05-07`
+- Updated functional baseline commit: `bdb3291` (v0.1.75)
+- Post-release fix reviewed in this slice: `6597529` (PR #920 — deserialize `permission_suggestions` into `PermissionUpdate` instances)
+- Reviewed upstream commits in this slice:
+  - `0.1.62`: top-level `skills` option for `ClaudeAgentOptions` (#804)
+  - `0.1.64`: `SessionStore` protocol, transcript mirror, three reference adapters, and `--session-mirror` integration (#837, #842)
+  - `0.1.65`: `ThinkingConfig.display` → `--thinking-display` (#830); `ServerToolUseBlock` and `ServerToolResultBlock` parser fix (#836); batch session summaries (#847); `import_session_to_store` (#858)
+  - `0.1.67`: trio compatibility regression fix (#870)
+  - `0.1.70`: in-process MCP tool result handling and trio nursery corruption (#891, #885)
+  - `0.1.71`: `SandboxNetworkConfig` `allowedDomains` / `deniedDomains` / `allowManagedDomainsOnly` / `allowMachLookup` (#893)
+  - `0.1.73`: eager `session_store_flush` (#905)
+  - `0.1.74`: `include_hook_events` + `HookEventMessage` (#917); `"defer"` PreToolUse decision + `DeferredToolUse` (#865); `strict_mcp_config` (#917 / #909); `list_sessions()` `created_at` regression fix (#907); `ResourceWarning` cleanup on disconnect (#908)
+  - `0.1.75`: release-only metadata
+  - `6597529` (post-release): typed `PermissionUpdate` instances on `ToolPermissionContext.suggestions`
+- Adopted locally in this slice:
+  - `ClaudeAgentOptions.skills` (`null` / `"all"` / `Array[String]`) plus mirroring of upstream `_apply_skills_defaults` (Skill / `Skill(name)` rules, default `setting_sources`) and skills inclusion in the initialize control payload — parity with upstream `0.1.62`
+  - `ClaudeAgentOptions.thinking.display` → `--thinking-display` independent of `type` / `budget_tokens` — parity with upstream `0.1.65`
+  - typed `ClaudeServerToolUseBlock` and `ClaudeServerToolResultBlock` parser support so `server_tool_use` / `advisor_tool_result` round-trip — parity with upstream `0.1.65`
+  - `ClaudeAgentOptions.sandbox.network.{allowed_domains,denied_domains,allow_managed_domains_only,allow_mach_lookup}` (camelCase aliases also accepted), forwarded under their wire keys; unknown nested keys preserved — parity with upstream `0.1.71`
+  - `ClaudeAgentOptions.include_hook_events` → `--include-hook-events`, plus typed `ClaudeHookEventMessage` extending `ClaudeSystemMessage` for `system` subtypes `"hook_started"` / `"hook_response"` — parity with upstream `0.1.74`
+  - `"defer"` PreToolUse hook permission decision plus `ClaudeDeferredToolUse` payload on `ClaudeResultMessage.deferred_tool_use` — parity with upstream `0.1.74`
+  - `ClaudeAgentOptions.strict_mcp_config` → `--strict-mcp-config` — parity with upstream `0.1.74`
+  - `ClaudeSessions.list_sessions()` head-buffer `created_at` scan fix — parity with upstream `0.1.74`
+  - `ClaudeToolPermissionContext.suggestions` populated with typed `ClaudePermissionUpdate` instances (`typed_suggestions` retained as a backward-compat alias) — parity with upstream post-`0.1.75` fix `6597529`
+  - opportunistic local-main fixes that surfaced during this review: `delete_session()` unscoped lookup now picks the newest visible duplicate (matching `rename_session()` / `tag_session()` / `_append_to_session`) instead of the first filesystem-iteration match, and `_transport_supports_end_input()` guards `transport.has_method("supports_end_input")` so duck-typed custom transports do not raise an invalid-method error
+- Reviewed but not adopted in this slice (deferred):
+  - `SessionStore` protocol / transcript mirror / reference adapters / `--session-mirror` (`0.1.64`, #837, #842): a substantial, async-protocol-heavy surface in upstream Python whose semantics need a Godot-native design pass; tracked as a follow-up parity slice
+  - batch session summaries (`0.1.65`, #847) and `import_session_to_store` (`0.1.65`, #858): both gated on the `SessionStore` adapter above
+  - eager `session_store_flush` (`0.1.73`, #905): also gated on `SessionStore`
+- Reviewed and not applicable:
+  - trio compatibility regressions (`0.1.67`, `0.1.70`): Python `anyio` / trio runtime concerns that have no GDScript analogue
+  - `ResourceWarning` cleanup on disconnect (`0.1.74`, #908): Python `MemoryObjectReceiveStream` lifecycle
+  - bundled CLI version metadata bumps (`0.1.59`, `0.1.75`): the GDScript addon does not bundle a `claude` CLI
 
 ## Update process
 
