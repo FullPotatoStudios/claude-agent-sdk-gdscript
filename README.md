@@ -53,7 +53,7 @@ See `NOTICE` for the short attribution note used by this repository.
 - `ClaudeSessionTranscriptEntry` for normalized historical transcript detail
 - `ClaudeForkSessionResult` plus explicit session forking helpers for branching saved conversations
 - `ClaudeAgentDefinition` plus runtime-first agent-definition support and `setting_sources` control
-- transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, `max_thinking_tokens`, and `task_budget`
+- transport-first advanced CLI option parity through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, `max_thinking_tokens`, `task_budget`, and `strict_mcp_config`
 - transport-first `settings` and `sandbox` parity through `ClaudeAgentOptions`, including upstream-style `--settings` pass-through and sandbox merge behavior
 - transport-first diagnostics parity through `ClaudeAgentOptions.extra_args` and `ClaudeAgentOptions.stderr`
 - transport-owned buffered stdout parsing parity through `ClaudeAgentOptions.max_buffer_size`, including split/minified JSON recovery and stray non-JSON stdout skip behavior
@@ -135,7 +135,7 @@ func _ready() -> void:
 - Scene-free SDK-hosted MCP tool/server builders plus mixed external/SDK `mcp_servers` runtime support
 - Runtime-first agent definitions through `ClaudeAgentOptions.agents` and initialize-payload serialization
 - `setting_sources` support for controlling user/project/local Claude settings loading, including explicit empty-list passthrough when you need to disable those sources at the CLI layer
-- transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, and `task_budget`
+- transport-first advanced CLI options through `ClaudeAgentOptions`, including `continue_conversation`, `fallback_model`, `betas`, `permission_prompt_tool_name`, `add_dirs`, `max_budget_usd`, `thinking`, deprecated `max_thinking_tokens`, `task_budget`, and `strict_mcp_config`
 - transport-first `settings` and `sandbox` support through `ClaudeAgentOptions`, including plain `settings` pass-through and sandbox-to-`--settings` JSON merging
 - transport-first diagnostics support through `ClaudeAgentOptions.extra_args` and per-line stderr callback delivery
 - transport-owned buffered stdout parsing support through `ClaudeAgentOptions.max_buffer_size`, including split/minified JSON recovery and non-JSON stdout skip behavior
