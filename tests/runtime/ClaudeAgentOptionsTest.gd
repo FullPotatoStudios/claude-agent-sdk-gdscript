@@ -1086,6 +1086,50 @@ func test_subprocess_transport_allows_explicit_claudecode_override() -> void:
 	})
 
 
+func test_apply_normalizes_skills_into_supported_shapes() -> void:
+	var unset_options = ClaudeAgentOptions.new()
+	assert_that(unset_options.skills).is_null()
+
+	var all_options = ClaudeAgentOptions.new({"skills": "all"})
+	assert_str(str(all_options.skills)).is_equal("all")
+
+	var list_options = ClaudeAgentOptions.new({"skills": ["code-review", "test-runner"]})
+	assert_array(list_options.skills).is_equal(["code-review", "test-runner"])
+
+	var empty_list_options = ClaudeAgentOptions.new({"skills": []})
+	assert_array(empty_list_options.skills).is_empty()
+
+	var stringname_options = ClaudeAgentOptions.new({"skills": &"all"})
+	assert_str(str(stringname_options.skills)).is_equal("all")
+
+	var typed_list_options = ClaudeAgentOptions.new({"skills": [StringName("foo"), "bar", "  ", ""]})
+	assert_array(typed_list_options.skills).is_equal(["foo", "bar"])
+
+	var invalid_string_options = ClaudeAgentOptions.new({"skills": "not-a-known-literal"})
+	assert_that(invalid_string_options.skills).is_null()
+
+	var invalid_type_options = ClaudeAgentOptions.new({"skills": 42})
+	assert_that(invalid_type_options.skills).is_null()
+
+
+func test_duplicate_options_preserves_skills_field() -> void:
+	var all_options = ClaudeAgentOptions.new({"skills": "all"})
+	assert_str(str(all_options.duplicate_options().skills)).is_equal("all")
+
+	var list_options = ClaudeAgentOptions.new({"skills": ["alpha", "beta"]})
+	var duplicated_list = list_options.duplicate_options()
+	assert_array(duplicated_list.skills).is_equal(["alpha", "beta"])
+	# Ensure we duplicated by value, not reference.
+	(duplicated_list.skills as Array).append("gamma")
+	assert_array(list_options.skills).is_equal(["alpha", "beta"])
+
+	var empty_options = ClaudeAgentOptions.new({"skills": []})
+	assert_array(empty_options.duplicate_options().skills).is_empty()
+
+	var unset_options = ClaudeAgentOptions.new()
+	assert_that(unset_options.duplicate_options().skills).is_null()
+
+
 func test_sdk_version_reads_canonical_version_file() -> void:
 	var version_file := FileAccess.open("res://addons/claude_agent_sdk/VERSION", FileAccess.READ)
 	assert_that(version_file).is_not_null()

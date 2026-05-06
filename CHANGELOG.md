@@ -13,6 +13,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - forwarded `ClaudeAgentOptions.include_hook_events` as `--include-hook-events` to the Claude CLI and routed `system` messages with subtype `"hook_started"` / `"hook_response"` into a typed `ClaudeHookEventMessage` (extends `ClaudeSystemMessage`), mirroring upstream Python `0.1.74` so callers can observe hook lifecycle events alongside the rest of the message stream
 - typed `ClaudeServerToolUseBlock` and `ClaudeServerToolResultBlock` content blocks plus matching parser support so assistant `server_tool_use` and `advisor_tool_result` payloads (e.g. advisor, web_search) round-trip as typed instances instead of being silently dropped (parity with upstream Python `claude-agent-sdk` v0.1.65)
 - forwarded `ClaudeAgentOptions.strict_mcp_config` as `--strict-mcp-config` to the Claude CLI, mirroring upstream Python `0.1.74` so callers can restrict MCP servers to only those passed via `mcp_servers` and ignore any from settings/config files
+- `ClaudeAgentOptions.skills` accepting `null` (CLI default), `"all"` (auto-discover all installed skills), or `Array[String]` of named skills; the subprocess CLI transport now mirrors upstream's `_apply_skills_defaults` so the `Skill` / `Skill(name)` tool rules and a default `setting_sources` of `["user", "project"]` are injected only when the caller opts in (parity with Python SDK 0.1.62)
 
 ### Fixed
 

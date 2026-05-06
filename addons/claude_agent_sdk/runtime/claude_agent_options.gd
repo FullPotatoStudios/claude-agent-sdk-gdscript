@@ -51,6 +51,7 @@ var setting_sources: Array[String]:
 	set(value):
 		_setting_sources = _to_string_array(value)
 		_setting_sources_configured = true
+var skills: Variant = null
 
 
 func _init(config: Dictionary = {}) -> void:
@@ -146,6 +147,8 @@ func apply(config: Dictionary):
 			_setting_sources_configured = config["setting_sources"] != null
 	if config.has("sandbox"):
 		sandbox = _normalize_sandbox(config["sandbox"])
+	if config.has("skills"):
+		skills = _normalize_skills(config["skills"])
 	return self
 
 
@@ -190,6 +193,7 @@ func duplicate_options():
 			"mcp_servers": _duplicate_mcp_servers(mcp_servers),
 			"agents": _duplicate_agents(agents),
 			"sandbox": _duplicate_variant(sandbox),
+			"skills": _duplicate_variant(skills),
 		})
 	if _setting_sources_configured:
 		duplicated.apply({"setting_sources": setting_sources.duplicate()})
@@ -388,6 +392,21 @@ static func _normalize_thinking(value: Variant) -> Variant:
 	if normalized.is_empty():
 		return null
 	return normalized
+
+
+static func _normalize_skills(value: Variant) -> Variant:
+	if value == null:
+		return null
+	if value is String or value is StringName:
+		return "all" if str(value) == "all" else null
+	if value is Array:
+		var names: Array[String] = []
+		for entry in value as Array:
+			var name := str(entry).strip_edges()
+			if not name.is_empty():
+				names.append(name)
+		return names
+	return null
 
 
 static func _normalize_sandbox(value: Variant) -> Variant:

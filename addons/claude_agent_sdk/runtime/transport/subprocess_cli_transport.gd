@@ -61,8 +61,11 @@ func build_command_args() -> PackedStringArray:
 	])
 	_append_system_prompt_args(args)
 	_append_tools_args(args)
-	if not _options.allowed_tools.is_empty():
-		args.append_array(["--allowedTools", ",".join(_options.allowed_tools)])
+	var skills_defaults := _apply_skills_defaults()
+	var effective_allowed_tools: Array[String] = skills_defaults["allowed_tools"]
+	var effective_setting_sources: Variant = skills_defaults["setting_sources"]
+	if not effective_allowed_tools.is_empty():
+		args.append_array(["--allowedTools", ",".join(effective_allowed_tools)])
 	if _options.max_turns > 0:
 		args.append_array(["--max-turns", str(_options.max_turns)])
 	if _options.max_budget_usd != null:
@@ -108,8 +111,8 @@ func build_command_args() -> PackedStringArray:
 		args.append("--include-hook-events")
 	if _options.fork_session:
 		args.append("--fork-session")
-	if _options.has_setting_sources():
-		args.append_array(["--setting-sources", ",".join(_options.setting_sources)])
+	if effective_setting_sources is Array:
+		args.append_array(["--setting-sources", ",".join(effective_setting_sources as Array)])
 	_append_plugin_args(args)
 	_append_extra_args(args)
 	var resolved_thinking_flag := _resolved_thinking_flag()
@@ -688,6 +691,44 @@ func _resolved_thinking_flag() -> String:
 			return str(thinking_config.get("type", ""))
 		_:
 			return ""
+
+
+func _apply_skills_defaults() -> Dictionary:
+	# Mirrors Python's _apply_skills_defaults: returns the effective
+	# allowed_tools list and setting_sources for skills auto-configuration
+	# without mutating the underlying options. ``setting_sources`` mirrors
+	# the caller's explicit configuration (including an explicit empty
+	# array) so an opted-in `setting_sources=[]` keeps disabling filesystem
+	# setting sources even when ``skills`` is set.
+	var allowed_tools: Array[String] = _options.allowed_tools.duplicate()
+	var setting_sources: Variant = null
+	if _options.has_setting_sources():
+		setting_sources = _options.setting_sources.duplicate()
+
+	var skills: Variant = _options.skills
+	if skills == null:
+		return {
+			"allowed_tools": allowed_tools,
+			"setting_sources": setting_sources,
+		}
+
+	if skills is String and str(skills) == "all":
+		if not allowed_tools.has("Skill"):
+			allowed_tools.append("Skill")
+	elif skills is Array:
+		for name_variant in skills as Array:
+			var pattern := "Skill(%s)" % str(name_variant)
+			if not allowed_tools.has(pattern):
+				allowed_tools.append(pattern)
+
+	if setting_sources == null:
+		var defaults: Array[String] = ["user", "project"]
+		setting_sources = defaults
+
+	return {
+		"allowed_tools": allowed_tools,
+		"setting_sources": setting_sources,
+	}
 
 
 func _resolved_max_thinking_tokens() -> Variant:
