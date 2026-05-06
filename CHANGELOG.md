@@ -90,3 +90,4 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - Godot support target is `4.6` only
 - the addon depends on a user-installed `claude` CLI and reuses its existing auth
 - exported macOS support is limited to unsandboxed desktop scenarios validated so far
+
