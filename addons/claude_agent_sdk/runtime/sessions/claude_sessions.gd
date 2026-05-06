@@ -266,7 +266,13 @@ static func delete_session(session_id: String, directory: String = "") -> int:
 	if not _is_valid_uuid(session_id):
 		return _fail_mutation(ERR_INVALID_PARAMETER, "Invalid session_id: %s" % session_id)
 
-	var file_result := _resolve_session_storage_target(session_id, directory)
+	var file_result: Dictionary
+	if directory.is_empty():
+		file_result = _find_latest_visible_session_file(session_id)
+		if file_result.has("path"):
+			file_result["session_dir"] = str(file_result.get("path", "")).get_basename()
+	else:
+		file_result = _resolve_session_storage_target(session_id, directory)
 	if file_result.has("error"):
 		return _fail_mutation(
 			int(file_result.get("error", ERR_CANT_OPEN)),
