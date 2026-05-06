@@ -96,7 +96,7 @@ func test_permission_update_serializes_rule_mode_and_directory_variants() -> voi
 	})
 
 
-func test_permission_context_keeps_raw_suggestions_and_exposes_typed_updates() -> void:
+func test_permission_context_coerces_suggestions_into_typed_updates() -> void:
 	var raw_suggestions := [{
 		"type": "addRules",
 		"rules": [{"toolName": "Write", "ruleContent": "tmp/*"}],
@@ -107,12 +107,17 @@ func test_permission_context_keeps_raw_suggestions_and_exposes_typed_updates() -
 
 	assert_that(context.signal).is_equal("abort-signal")
 	assert_that(context.callback_signal).is_equal("abort-signal")
-	assert_array(context.suggestions).is_equal(raw_suggestions)
-	assert_int(context.typed_suggestions.size()).is_equal(1)
-	var typed_update = context.typed_suggestions[0] as ClaudePermissionUpdate
+	assert_int(context.suggestions.size()).is_equal(1)
+	var typed_update = context.suggestions[0] as ClaudePermissionUpdate
 	assert_object(typed_update).is_not_null()
 	assert_str(typed_update.type).is_equal("addRules")
+	assert_str(typed_update.behavior).is_equal("allow")
+	assert_str(typed_update.destination).is_equal("session")
 	assert_str((typed_update.rules[0] as ClaudePermissionRuleValue).tool_name).is_equal("Write")
+	assert_str((typed_update.rules[0] as ClaudePermissionRuleValue).rule_content).is_equal("tmp/*")
+	# typed_suggestions is preserved as a backward-compat alias for the same typed array.
+	assert_int(context.typed_suggestions.size()).is_equal(1)
+	assert_object(context.typed_suggestions[0] as ClaudePermissionUpdate).is_same(typed_update)
 	assert_that(context.tool_use_id).is_equal("tool-77")
 	assert_that(context.agent_id).is_equal("agent-9")
 
@@ -486,22 +491,19 @@ func test_hook_specific_output_helpers_cover_permission_request_and_post_tool_us
 
 func test_query_session_permission_callback_accepts_typed_permission_updates() -> void:
 	var callback_state := {
-		"raw_suggestions": [],
 		"typed_count": 0,
+		"first_destination": "",
 	}
 	var callback := func(_tool_name: String, input_data: Dictionary, context):
-		callback_state["raw_suggestions"] = context.suggestions.duplicate(true)
-		callback_state["typed_count"] = context.typed_suggestions.size()
+		callback_state["typed_count"] = context.suggestions.size()
+		if not context.suggestions.is_empty():
+			var first = context.suggestions[0] as ClaudePermissionUpdate
+			callback_state["first_destination"] = first.destination
+		# Round-trip the typed suggestion back into PermissionResultAllow without
+		# re-coercing; the response path must serialize ClaudePermissionUpdate instances.
 		var updated_input := input_data.duplicate(true)
 		updated_input["safe_mode"] = true
-		return ClaudePermissionResultAllowScript.new(updated_input, [
-			ClaudePermissionUpdateScript.new({
-				"type": "addRules",
-				"rules": [{"toolName": "Write", "ruleContent": "tmp/*"}],
-				"behavior": "allow",
-				"destination": "session",
-			}),
-		])
+		return ClaudePermissionResultAllowScript.new(updated_input, context.suggestions)
 
 	var transport = FakeTransportScript.new()
 	var session = ClaudeQuerySession.new(
@@ -529,18 +531,20 @@ func test_query_session_permission_callback_accepts_typed_permission_updates() -
 	})
 	await get_tree().process_frame
 
-	assert_array(callback_state["raw_suggestions"] as Array).is_equal(suggestions)
 	assert_int(int(callback_state["typed_count"])).is_equal(1)
+	assert_str(str(callback_state["first_destination"])).is_equal("session")
 
 	var response: Dictionary = JSON.parse_string(transport.writes[-1])
 	var payload: Dictionary = ((response.get("response", {}) as Dictionary).get("response", {}) as Dictionary)
 	assert_str(str(payload.get("behavior", ""))).is_equal("allow")
 	assert_bool(bool((payload.get("updatedInput", {}) as Dictionary).get("safe_mode", false))).is_true()
+	# Round-trip: the typed suggestion echoed back through PermissionResultAllow
+	# must serialize to the same wire shape that was received.
 	assert_array(payload.get("updatedPermissions", []) as Array).is_equal([{
 		"type": "addRules",
 		"destination": "session",
-		"rules": [{"toolName": "Write", "ruleContent": "tmp/*"}],
-		"behavior": "allow",
+		"rules": [{"toolName": "Write", "ruleContent": "project/*"}],
+		"behavior": "ask",
 	}])
 
 
