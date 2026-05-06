@@ -275,6 +275,11 @@ func _validate_key_for_disk(key: ClaudeSessionKey) -> int:
 func _is_safe_project_key(project_key: String) -> bool:
 	if project_key.is_empty():
 		return false
+	# Reject `.` and `..` standalone; under `path_join` they collapse to the
+	# projects root (or its parent), letting append/delete/list operate
+	# outside any real project directory.
+	if project_key == "." or project_key == "..":
+		return false
 	if project_key.contains("..") or project_key.contains("/") or project_key.contains("\\"):
 		return false
 	if project_key.contains(" "):

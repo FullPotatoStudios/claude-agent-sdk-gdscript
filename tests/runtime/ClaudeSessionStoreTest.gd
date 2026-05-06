@@ -293,6 +293,26 @@ func test_on_disk_store_rejects_invalid_session_id() -> void:
 	assert_str(store.get_last_error()).contains("session_id")
 
 
+func test_on_disk_store_rejects_dot_project_key() -> void:
+	var config_root := _create_config_root("on-disk-dot-project-key")
+	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
+	var store := ClaudeOnDiskSessionStoreScript.new()
+	var session_id := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+	# `.` collapses to the projects root under path_join, so a write would land
+	# at <projects>/<uuid>.jsonl rather than under any real project directory.
+	var dot_key := ClaudeSessionKeyScript.new(".", session_id)
+	assert_int(store.append(dot_key, [{"type": "user"}])).is_equal(ERR_INVALID_PARAMETER)
+	assert_int(store.delete(dot_key)).is_equal(ERR_INVALID_PARAMETER)
+	assert_array(store.list_sessions(".")).is_empty()
+	assert_array(store.list_subkeys(ClaudeSessionListSubkeysKeyScript.new(".", session_id))).is_empty()
+
+	# `..` walks one level up out of the projects root.
+	var dotdot_key := ClaudeSessionKeyScript.new("..", session_id)
+	assert_int(store.append(dotdot_key, [{"type": "user"}])).is_equal(ERR_INVALID_PARAMETER)
+	assert_int(store.delete(dotdot_key)).is_equal(ERR_INVALID_PARAMETER)
+
+
 func test_on_disk_store_rejects_path_traversal_in_subpath() -> void:
 	var config_root := _create_config_root("on-disk-traversal-subpath")
 	OS.set_environment("CLAUDE_CONFIG_DIR", config_root)
