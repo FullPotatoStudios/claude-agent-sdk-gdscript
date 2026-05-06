@@ -866,3 +866,22 @@ func test_skills_does_not_mutate_caller_allowed_tools_list() -> void:
 	transport.build_command_args()
 
 	assert_array(options.allowed_tools).is_equal(["Read"])
+
+
+func test_skills_preserves_explicit_empty_setting_sources() -> void:
+	# Mirrors Python: when the caller explicitly opts out of filesystem
+	# setting sources via ``setting_sources=[]`` it must NOT be replaced by
+	# the skills auto-default ``["user", "project"]``. The explicit empty
+	# array still surfaces the ``--setting-sources`` flag so the CLI
+	# disables filesystem setting sources.
+	var transport := ClaudeSubprocessCLITransport.new(ClaudeAgentOptions.new({
+		"skills": "all",
+		"setting_sources": [],
+	}))
+	var args := transport.build_command_args()
+
+	assert_array(args).contains(["--allowedTools", "Skill"])
+	assert_bool(args.has("--setting-sources")).is_true()
+	# Explicit empty must be emitted as an empty join, not as user,project.
+	assert_array(args).contains(["--setting-sources", ""])
+	assert_bool(str(",".join(args)).contains("user,project")).is_false()
