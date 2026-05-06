@@ -17,6 +17,7 @@ const ClaudeRateLimitInfoScript := preload("res://addons/claude_agent_sdk/runtim
 const ClaudeResultMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_result_message.gd")
 const ClaudeStreamEventScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_stream_event.gd")
 const ClaudeDeferredToolUseScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_deferred_tool_use.gd")
+const ClaudeHookEventMessageScript := preload("res://addons/claude_agent_sdk/runtime/messages/claude_hook_event_message.gd")
 
 
 func test_parse_assistant_message_into_typed_blocks() -> void:
@@ -277,6 +278,57 @@ func test_task_system_messages_preserve_backward_compatible_base_fields() -> voi
 	assert_object(message).is_instanceof(ClaudeSystemMessageScript)
 	assert_str(message.subtype).is_equal("task_started")
 	assert_dict(message.raw_data).is_equal(raw)
+
+
+func test_parse_hook_started_system_message_into_typed_hook_event_message() -> void:
+	var raw := {
+		"type": "system",
+		"subtype": "hook_started",
+		"hook_event": "PreToolUse",
+		"session_id": "session-7",
+		"uuid": "uuid-7",
+		"tool_name": "Bash",
+	}
+	var message: Variant = ClaudeMessageParserScript.parse_message(raw)
+
+	assert_object(message).is_instanceof(ClaudeHookEventMessageScript)
+	assert_object(message).is_instanceof(ClaudeSystemMessageScript)
+	assert_str(message.subtype).is_equal("hook_started")
+	assert_str(message.hook_event_name).is_equal("PreToolUse")
+	assert_str(message.session_id).is_equal("session-7")
+	assert_str(message.uuid).is_equal("uuid-7")
+	assert_dict(message.raw_data).is_equal(raw)
+
+
+func test_parse_hook_response_system_message_into_typed_hook_event_message() -> void:
+	var raw := {
+		"type": "system",
+		"subtype": "hook_response",
+		"hook_event": "PostToolUse",
+		"session_id": "session-8",
+		"uuid": "uuid-8",
+		"output": "ok",
+		"exit_code": 0,
+		"outcome": "allow",
+	}
+	var message: Variant = ClaudeMessageParserScript.parse_message(raw)
+
+	assert_object(message).is_instanceof(ClaudeHookEventMessageScript)
+	assert_str(message.subtype).is_equal("hook_response")
+	assert_str(message.hook_event_name).is_equal("PostToolUse")
+	assert_dict(message.raw_data).is_equal(raw)
+
+
+func test_hook_event_message_defaults_when_optional_fields_missing() -> void:
+	var message: Variant = ClaudeMessageParserScript.parse_message({
+		"type": "system",
+		"subtype": "hook_started",
+	})
+
+	assert_object(message).is_instanceof(ClaudeHookEventMessageScript)
+	assert_str(message.hook_event_name).is_empty()
+	assert_str(message.session_id).is_empty()
+	assert_str(message.uuid).is_empty()
 
 
 func test_unknown_system_subtypes_still_fall_back_to_generic_system_message() -> void:

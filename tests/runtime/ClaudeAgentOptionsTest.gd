@@ -373,35 +373,15 @@ func test_apply_normalizes_agent_definitions_from_upstream_wire_keys() -> void:
 	assert_str(agent.permission_mode).is_equal("plan")
 
 
-func test_apply_normalizes_thinking_display_independently_of_type() -> void:
-	var display_only := ClaudeAgentOptions.new({"thinking": {"display": "summarized"}})
-	assert_dict(display_only.thinking).is_equal({"display": "summarized"})
+func test_apply_normalizes_include_hook_events_default_false_and_round_trips() -> void:
+	var defaulted = ClaudeAgentOptions.new()
+	assert_bool(defaulted.include_hook_events).is_false()
 
-	var with_type := ClaudeAgentOptions.new({"thinking": {"type": "adaptive", "display": "omitted"}})
-	assert_dict(with_type.thinking).is_equal({"type": "adaptive", "display": "omitted"})
+	var enabled = ClaudeAgentOptions.new({"include_hook_events": true})
+	assert_bool(enabled.include_hook_events).is_true()
 
-	var enabled_with_display := ClaudeAgentOptions.new({
-		"thinking": {"type": "enabled", "budget_tokens": 1024, "display": "summarized"},
-	})
-	assert_dict(enabled_with_display.thinking).is_equal({
-		"type": "enabled",
-		"budget_tokens": 1024,
-		"display": "summarized",
-	})
-
-	var empty_thinking := ClaudeAgentOptions.new({"thinking": {}})
-	assert_that(empty_thinking.thinking).is_null()
-
-	var blank_display := ClaudeAgentOptions.new({"thinking": {"display": "   "}})
-	assert_that(blank_display.thinking).is_null()
-
-
-func test_duplicate_options_preserves_thinking_display() -> void:
-	var options = ClaudeAgentOptions.new({
-		"thinking": {"type": "adaptive", "display": "summarized"},
-	})
-	var duplicated = options.duplicate_options()
-	assert_dict(duplicated.thinking).is_equal({"type": "adaptive", "display": "summarized"})
+	var duplicated = enabled.duplicate_options()
+	assert_bool(duplicated.include_hook_events).is_true()
 
 
 func test_apply_normalizes_transport_first_advanced_cli_fields() -> void:

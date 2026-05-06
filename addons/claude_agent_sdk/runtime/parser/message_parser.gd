@@ -111,6 +111,14 @@ static func _parse_system_message(data: Dictionary) -> Dictionary:
 				str(data.get("tool_use_id", "")),
 				data.get("usage", {}) if data.get("usage", {}) is Dictionary else {}
 			))
+		"hook_started", "hook_response":
+			return _message_result(ClaudeHookEventMessage.new(
+				subtype,
+				str(data.get("hook_event", "")),
+				str(data.get("session_id", "")),
+				str(data.get("uuid", "")),
+				data
+			))
 		_:
 			return _message_result(ClaudeSystemMessage.new(subtype, data))
 

@@ -34,6 +34,7 @@ var stderr: Callable = Callable()
 var max_thinking_tokens: Variant = null
 var thinking: Variant = null
 var include_partial_messages: bool = false
+var include_hook_events: bool = false
 var enable_file_checkpointing: bool = false
 var user: String = ""
 var fork_session: bool = false
@@ -117,6 +118,8 @@ func apply(config: Dictionary):
 		thinking = _normalize_thinking(config["thinking"])
 	if config.has("include_partial_messages"):
 		include_partial_messages = bool(config["include_partial_messages"])
+	if config.has("include_hook_events"):
+		include_hook_events = bool(config["include_hook_events"])
 	if config.has("enable_file_checkpointing"):
 		enable_file_checkpointing = bool(config["enable_file_checkpointing"])
 	if config.has("user"):
@@ -175,6 +178,7 @@ func duplicate_options():
 			"max_thinking_tokens": max_thinking_tokens,
 				"thinking": _duplicate_variant(thinking),
 				"include_partial_messages": include_partial_messages,
+				"include_hook_events": include_hook_events,
 				"enable_file_checkpointing": enable_file_checkpointing,
 				"user": user,
 				"fork_session": fork_session,
