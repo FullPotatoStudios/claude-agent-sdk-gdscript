@@ -229,7 +229,7 @@ static func _parse_assistant_message(data: Dictionary) -> Dictionary:
 		message.get("content", []) if message.get("content", []) is Array else [],
 		data,
 		"assistant message",
-		["text", "thinking", "tool_use", "tool_result"]
+		["text", "thinking", "tool_use", "tool_result", "server_tool_use", "advisor_tool_result"]
 	)
 	if not str(block_result.get("error", "")).is_empty():
 		return block_result
@@ -295,6 +295,29 @@ static func _parse_blocks_result(
 					str(block.get("tool_use_id", "")),
 					block.get("content"),
 					bool(block.get("is_error", false)),
+					block
+				))
+			"server_tool_use":
+				if not block.has("id"):
+					return _error_result("Missing required field in %s block: id" % context, raw_data)
+				if not block.has("name"):
+					return _error_result("Missing required field in %s block: name" % context, raw_data)
+				if not block.has("input"):
+					return _error_result("Missing required field in %s block: input" % context, raw_data)
+				parsed.append(ClaudeServerToolUseBlock.new(
+					str(block.get("id", "")),
+					str(block.get("name", "")),
+					block.get("input", {}) if block.get("input", {}) is Dictionary else {},
+					block
+				))
+			"advisor_tool_result":
+				if not block.has("tool_use_id"):
+					return _error_result("Missing required field in %s block: tool_use_id" % context, raw_data)
+				if not block.has("content"):
+					return _error_result("Missing required field in %s block: content" % context, raw_data)
+				parsed.append(ClaudeServerToolResultBlock.new(
+					str(block.get("tool_use_id", "")),
+					block.get("content"),
 					block
 				))
 			_:

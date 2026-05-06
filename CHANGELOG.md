@@ -11,6 +11,7 @@ The format follows Keep a Changelog style headings and uses Semantic Versioning 
 - `"defer"` PreToolUse hook permission decision and `ClaudeDeferredToolUse` payload on `ClaudeResultMessage.deferred_tool_use`, parsed from CLI `result` messages so callers can inspect the deferred tool call (upstream parity with Python 0.1.74)
 - forwarded `ClaudeAgentOptions.thinking.display` as `--thinking-display <value>` to the Claude CLI, mirroring upstream Python `0.1.65` so callers can request `"summarized"` or `"omitted"` thinking text independently of the `type` and `budget_tokens` fields
 - forwarded `ClaudeAgentOptions.include_hook_events` as `--include-hook-events` to the Claude CLI and routed `system` messages with subtype `"hook_started"` / `"hook_response"` into a typed `ClaudeHookEventMessage` (extends `ClaudeSystemMessage`), mirroring upstream Python `0.1.74` so callers can observe hook lifecycle events alongside the rest of the message stream
+- typed `ClaudeServerToolUseBlock` and `ClaudeServerToolResultBlock` content blocks plus matching parser support so assistant `server_tool_use` and `advisor_tool_result` payloads (e.g. advisor, web_search) round-trip as typed instances instead of being silently dropped (parity with upstream Python `claude-agent-sdk` v0.1.65)
 
 ### Fixed
 
